@@ -1,0 +1,75 @@
+PetSuite — Estructura de Usuarios, Módulos y Pantallas del MVP
+Documento de planificación funcional para las Etapas 2-3 (arquitectura, diagramas UML/BPMN y desarrollo). Basado en los requerimientos RF-01 a RF-08 y RNF-01 a RNF-03 ya definidos en la Etapa 1.
+
+1. Tipos de Usuario (Actores del sistema)
+#	Actor	Requiere cuenta	Descripción
+1	Tutor de mascota (B2C)	Sí	Registra a sus mascotas, gestiona la Ficha QR, navega el directorio de Pymes, participa en el muro comunal.
+2	Visitante anónimo	No	Cualquier persona que escanea un código QR físico en la calle. No inicia sesión; solo ve la ficha de emergencia pública.
+3	Administrador de Pyme (B2B)	Sí	Dueño/encargado de una veterinaria, tienda de alimentos o peluquería. Gestiona su catálogo y suscripción.
+4	Personal clínico veterinario	Sí (rol dentro de cuenta Pyme)	Consulta la ficha médica del paciente en el punto de atención. Puede ser el mismo usuario que "Administrador de Pyme" en negocios pequeños, o un rol separado en clínicas más grandes.
+5	Administrador de la plataforma	Sí (interno)	Equipo de PetSuite. Modera el muro comunal, valida suscripciones, gestiona usuarios.
+2. Módulos del sistema
+Módulo	Requerimientos que cubre	Descripción
+M1 — Autenticación y Perfiles	Transversal	Registro, login, recuperación de contraseña, gestión de cuenta. Separado por tipo de usuario (tutor / Pyme).
+M2 — Ficha Única de Salud (QR)	RF-01, RF-02, RNF-01, RNF-02	Núcleo del producto. Registro de mascota, historial médico (JSONB), generación de QR, vista pública enmascarada de emergencia.
+M3 — Vitrina Comercial / Catálogo Pyme	RF-03, RF-04	Perfil de negocio, catálogo de productos/servicios autogestionable, sin calificación por estrellas.
+M4 — Directorio Geolocalizado	RF-05	Buscador de Pymes por comuna/rubro con mapa (dependencia externa: API de mapas, ver Sección VII.4 del informe).
+M5 — Panel de Métricas (BI Pyme)	RF-06	Dashboard simple para que cada Pyme vea visitas y productos más consultados.
+M6 — Muro Comunal y Perfiles Públicos	RF-07, RF-08	Feed segmentado por comuna, publicaciones de extravío/encuentro, reacciones y comentarios moderados.
+M7 — Gestión de Suscripción SaaS	Modelo de negocio (Canvas)	Visualización del plan, estado de pago (gestión manual en el MVP, ver Sección VII.4).
+M8 — Administración y Moderación (Backoffice)	RNF-01, RNF-03	Panel interno del equipo PetSuite: moderación de contenido, gestión de usuarios, activación de suscripciones.
+3. Pantallas por módulo y actor
+🐾 Tutor de mascota (B2C)
+#	Pantalla	Módulo	Notas de diseño
+T1	Registro / Login	M1	Formulario simple: nombre, correo, contraseña. Opción login social (futuro).
+T2	Inicio / Dashboard	M2, M6	Resumen: mis mascotas, accesos rápidos a Ficha QR y muro comunal.
+T3	Mis Mascotas (listado)	M2	Tarjetas con foto, nombre, raza; botón "+ Agregar mascota".
+T4	Registrar / Editar Mascota	M2	Formulario: nombre, especie, raza, edad, foto.
+T5	Ficha de Mascota (detalle privado)	M2	Vista completa: historial médico, vacunas, alergias, botón "Generar/Descargar QR".
+T6	Historial Médico (timeline)	M2	Línea de tiempo de atenciones/vacunas (estructura JSONB flexible).
+T7	Directorio de Pymes	M3, M4	Mapa + lista filtrable por comuna y rubro (veterinaria/tienda/peluquería).
+T8	Detalle de Pyme	M3	Catálogo de productos/servicios, datos de contacto, botón de contacto seguro.
+T9	Muro Comunal (feed)	M6	Publicaciones ordenadas por fecha, filtro por comuna.
+T10	Publicar en el Muro	M6	Formulario: tipo (extravío/encuentro/recomendación), foto, descripción.
+T11	Perfil Público de Mascota (opcional)	M6	Foto, raza, insignias de salud — visible si el tutor lo activa.
+T12	Configuración de Cuenta	M1	Datos personales, privacidad, cerrar sesión.
+📷 Visitante anónimo (sin cuenta) — flujo crítico
+#	Pantalla	Módulo	Notas de diseño
+V1	Ficha de Emergencia (pública)	M2	Pantalla más crítica del sistema. Carga en <2,0s (RNF-02). Muestra: foto, nombre, alergias/condiciones críticas, botón "Contactar al tutor" — sin RUT, teléfono ni dirección visibles (RNF-01).
+V2	Confirmación de Contacto Enviado	M2	Mensaje de éxito tras usar el canal de contacto seguro (intermediado por backend).
+🏪 Administrador de Pyme (B2B)
+#	Pantalla	Módulo	Notas de diseño
+P1	Registro / Login Pyme	M1	Incluye selección de rubro (veterinaria/tienda/peluquería).
+P2	Dashboard Pyme	M5, M7	Resumen de métricas + estado de suscripción.
+P3	Editar Perfil del Negocio	M3	Nombre, dirección, horario, foto de portada, ubicación en mapa.
+P4	Gestionar Catálogo (listado)	M3	Tabla de productos/servicios con foto, precio, estado (activo/inactivo).
+P5	Agregar / Editar Producto o Servicio	M3	Formulario simple: nombre, descripción, precio, foto.
+P6	Panel de Métricas	M5	Gráficos simples: visitas al perfil, productos más vistos (RF-06).
+P7	Gestión de Suscripción	M7	Plan actual, historial de pago (gestión manual en MVP), botón de contacto para renovar.
+P8	Mensajes / Contactos Recibidos	M3	Bandeja de contactos generados desde el directorio (T8).
+🛠️ Administrador de la Plataforma (interno)
+#	Pantalla	Módulo	Notas de diseño
+A1	Login Admin	M1	Acceso restringido al equipo PetSuite.
+A2	Dashboard General	M8	KPIs globales: tutores registrados, Pymes activas, publicaciones del mes (alineado a los KPIs de la Sección 5.2.3).
+A3	Gestión de Usuarios	M8	Buscar/activar/desactivar cuentas de tutores y Pymes.
+A4	Moderación del Muro Comunal	M8	Cola de publicaciones reportadas; aprobar/eliminar.
+A5	Gestión de Suscripciones	M8	Validar pagos manuales, activar/renovar cuentas Pyme (mientras no exista pasarela automatizada, ver Sección VII.4).
+4. Flujos clave (para diagramas BPMN/UML en Etapa 2)
+Flujo de registro y generación de Ficha QR (Tutor): T1 → T3 → T4 → T5 → generación de QR → impresión/descarga.
+Flujo de escaneo de emergencia (Visitante anónimo): escaneo físico del QR → V1 (carga <2s) → V2 (contacto enviado). Este es el flujo con mayor exigencia de RNF y debería ser el primer diagrama de secuencia UML que construyan.
+Flujo de alta de Pyme y suscripción: P1 → P3 → P4/P5 (catálogo) → P7 (activación manual por Admin, A5).
+Flujo de publicación y moderación en el muro: T10 → (si es reportada) → A4 → aprobación/eliminación.
+5. Entidades de datos (para el modelo PostgreSQL + JSONB)
+Entidad	Persistencia	Notas
+usuario	Relacional	tutor / pyme / admin (con rol)
+mascota	Relacional + JSONB	Datos base relacionales; historial_medico como columna JSONB (vacunas, alergias, atenciones — estructura variable)
+pyme	Relacional	Perfil de negocio, ubicación (lat/lng), rubro
+producto_servicio	Relacional	Catálogo de cada Pyme
+publicacion_muro	Relacional	Muro comunal, con estado (activa/reportada/eliminada)
+suscripcion	Relacional	Plan, estado de pago, fechas
+contacto_seguro	Relacional	Registro de mensajes intermediados (sin exponer datos del tutor)
+6. Consideraciones técnicas transversales
+Mobile-first / PWA: todas las pantallas del Tutor y del Visitante deben priorizar el diseño móvil, ya que el escaneo de QR ocurre mayormente desde el celular en la vía pública.
+V1 (Ficha de Emergencia) es la pantalla más crítica de todo el sistema — debe optimizarse por separado del resto de la app para cumplir RNF-02 (<2,0 s), incluso si el resto de la PWA carga más lento.
+Los módulos M4 (mapas) dependen de una API externa, ya declarada como dependencia técnica en la Sección VII.4 del informe.
+M7 (suscripción) es manual en este MVP — no requiere pantallas de checkout/pago en línea todavía.

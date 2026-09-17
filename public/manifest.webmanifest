@@ -1,0 +1,11 @@
+{
+  "name": "PetSuite",
+  "short_name": "PetSuite",
+  "description": "Cuidado y seguridad para tus mascotas.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8f7f5",
+  "theme_color": "#c93636",
+  "lang": "es",
+  "icons": []
+}
