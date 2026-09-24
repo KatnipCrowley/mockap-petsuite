@@ -107,3 +107,40 @@ Antes de finalizar cualquier cambio, se debe agregar una entrada con:
 - Cambio realizado: se presenta la acción de cerrar sesión al visualizar Perfil y se oculta de Privacidad, manteniendo su posición bajo el formulario en pantallas grandes y pequeñas.
 - Motivo: agrupar la salida de la cuenta junto a los datos de perfil y reservar Privacidad para opciones de visibilidad.
 - Verificación ejecutada: `npm run build` y `git diff --check` correctamente.
+
+### Paletas visibles y persistentes en Apariencia
+
+- Archivos modificados: `src/App.tsx`, `src/styles.css`, `AGENTS.md`.
+- Cambio realizado: se agregó la paleta Original azul verdosa como opción predeterminada, se corrigió la prioridad de los colores elegidos y se aplicó cada paleta a fondos, navegación y paneles destacados en claro y oscuro. La previsualización se restaura al salir sin guardar y conserva la selección al confirmar.
+- Motivo: hacer que el cambio de paleta sea perceptible y que la configuración guardada se mantenga al navegar.
+- Verificación ejecutada: `npm run build` y `git diff --check` correctamente.
+
+### Corrección del color Original
+
+- Archivos modificados: `src/App.tsx`, `src/styles.css`, `Agents.md`.
+- Cambio realizado: la opción Original y su muestra pasan a rojo brillante; fondos, textos, navegación y paneles destacados acompañan el rojo en claro y oscuro en lugar de mantener la identidad verde anterior.
+- Motivo: respetar el color original indicado por el usuario y diferenciarlo de Carmesí.
+- Verificación ejecutada: `npm run build` y `git diff --check` correctamente.
+
+### Bandeja de usuarios reportados
+
+- Archivos modificados: `src/App.tsx`, `src/styles.css`, `Agents.md`.
+- Cambio realizado: la vista de moderación de usuarios incluye resumen de pendientes, buscador, filas con identidad, rol y estado separados, acciones alineadas y un estado vacío diferenciado. Se conectó la confirmación de suspensión de esta bandeja a la actualización persistente de la cuenta.
+- Motivo: hacer que la revisión de reportes tenga la jerarquía y claridad de las demás vistas administrativas y que sus acciones sean operativas.
+- Verificación ejecutada: `npm run build` y `git diff --check` correctamente.
+
+### Revisión contextual de reportes y medidas
+
+- Archivos modificados o agregados: `src/App.tsx`, `src/moderation.ts`, `src/validators.ts`, `src/styles.css`, `Agents.md`.
+- Cambio realizado: Resolver y Suspender abren modales con el motivo, el perfil o publicación afectada y mensajes de denunciantes. Se agregaron cierre, advertencia o solicitud de información; chat privado mock persistente; suspensión por días o baneo permanente; mensaje obligatorio validado con Zod, registro local de decisiones y conexión de reportes del muro con la bandeja.
+- Motivo: dar contexto a cada decisión de moderación y permitir comunicar y registrar las medidas sin perder los reportes pendientes.
+- Verificación ejecutada: `npm run build` y `git diff --check` correctamente.
+
+## 2026-09-24
+
+### Ficha única de salud y QR público portable
+
+- Archivos modificados o agregados: `src/App.tsx`, `src/types.ts`, `src/validators.ts`, `src/publicQr.ts`, `src/publicQr.test.mjs`, `src/styles.css`, `public/sw.js`, `Agents.md`.
+- Cambio realizado: las mascotas permiten editar datos básicos, alergias, condiciones, medicamentos y notas de emergencia; se agregó un historial privado de vacunas, atenciones y tratamientos. El tutor controla si puede generar el QR, previsualizar y compartir la ficha, descargar PNG e imprimirlo. El enlace QR lleva exclusivamente una instantánea validada de campos públicos, por lo que la ficha abre sin cuenta ni `localStorage` del tutor en otro dispositivo; enlaces inválidos no exponen la ficha privada. El formulario de contacto queda identificado como demo local, con sus mensajes visibles solo en el navegador donde se guardaron. Se renovó el caché PWA para no servir la aplicación antigua al abrir un QR.
+- Motivo: completar el núcleo de salud y seguridad del producto sin confundir una simulación local con un sistema de contacto o revocación remota.
+- Verificación ejecutada: `node --test src/publicQr.test.mjs` (3 pruebas), `npm run build` y `git diff --check` correctamente.

@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
-import { AlertCircle, ArrowRight, ChevronRight, CirclePlus, Clock3, Heart, House, MapPin, MessageCircle, Package, PawPrint, QrCode, Settings, ShieldCheck, ShoppingBag, ShoppingCart, Users, X } from 'lucide-react'
+import { AlertCircle, ArrowRight, CalendarDays, Check, ChevronRight, CirclePlus, Clock3, Copy, Download, Heart, House, MapPin, MessageCircle, Package, PawPrint, Pencil, Printer, QrCode, Search, Send, Settings, ShieldAlert, ShieldCheck, ShoppingBag, ShoppingCart, Users, X } from 'lucide-react'
 import QRCode from 'qrcode'
-import type { Business, BusinessCategory, CommunityPost, Pet, PostType, Product, UserRole } from './types'
-import { communityCommentSchema, communityPostSchema, loginSchema, petSchema } from './validators'
+import type { Business, BusinessCategory, CommunityPost, MedicalEntry, Pet, PostType, Product, PublicPet, UserRole } from './types'
+import { communityCommentSchema, communityPostSchema, emergencyContactSchema, loginSchema, medicalEntrySchema, moderationMessageSchema, moderationSuspensionSchema, petHealthSchema, petSchema } from './validators'
+import { getModerationCase, type ModeratedUser, type ModerationCase } from './moderation'
+import { createPublicQrUrl, readPublicQr } from './publicQr'
 
 const initialPets: Pet[] = [
-  { id: 'luna', name: 'Luna', species: 'Perro', breed: 'Mestiza', age: 4, weight: 12.4, color: 'Canela', initials: 'LU', allergies: ['Pollo'], qrActive: true },
+  { id: 'luna', name: 'Luna', species: 'Perro', breed: 'Mestiza', age: 4, weight: 12.4, color: 'Canela', initials: 'LU', allergies: ['Pollo'], conditions: ['Dermatitis atópica'], medications: ['Antihistamínico según indicación veterinaria'], emergencyNotes: 'Evitar alimentos con pollo.', medicalHistory: [{ id: 'luna-vacuna', date: '2026-08-12', type: 'Vacuna', title: 'Refuerzo anual', notes: 'Vacunas al día según control veterinario.' }, { id: 'luna-control', date: '2026-06-03', type: 'Atención', title: 'Control dermatológico', notes: 'Seguimiento de alergias y cuidado de la piel.' }], qrActive: true },
   { id: 'milo', name: 'Milo', species: 'Gato', breed: 'Europeo', age: 2, weight: 4.8, color: 'Gris', initials: 'MI', allergies: [], qrActive: false },
 ]
 
@@ -47,10 +49,11 @@ const navIcons: Record<string, typeof House> = {
   'clinical-home': House, patients: Heart, 'admin-home': House, users: Users, moderation: ShieldCheck, subscriptions: Package,
 }
 
-type ThemeName = 'carmesí' | 'coral' | 'vino' | 'terracota' | 'frambuesa' | 'borgoña' | 'océano' | 'bosque' | 'lavanda' | 'ámbar'
+type ThemeName = 'original' | 'carmesí' | 'coral' | 'vino' | 'terracota' | 'frambuesa' | 'borgoña' | 'océano' | 'bosque' | 'lavanda' | 'ámbar'
 type ColorMode = 'light' | 'dark' | 'system'
 
 const themeOptions: { name: ThemeName; color: string; label: string }[] = [
+  { name: 'original', color: '#dc2d32', label: 'Original' },
   { name: 'carmesí', color: '#c93636', label: 'Carmesí' },
   { name: 'coral', color: '#b74735', label: 'Coral' },
   { name: 'vino', color: '#873449', label: 'Vino' },
@@ -69,25 +72,33 @@ function App() {
   const [user, setUser] = useState<{ name: string; role: UserRole } | null>(null)
   const [active, setActive] = useState('home')
   const [pets, setPets] = useState<Pet[]>(() => JSON.parse(localStorage.getItem('petsuite-pets') || 'null') || initialPets)
-  const [selectedPet, setSelectedPet] = useState<Pet | null>(pets[0])
+  const [selectedPetId, setSelectedPetId] = useState<string | null>(pets[0]?.id || null)
   const [showAdd, setShowAdd] = useState(false)
+  const [editingPet, setEditingPet] = useState<Pet | null>(null)
   const [qrPet, setQrPet] = useState<Pet | null>(null)
-  const [theme, setTheme] = useState<ThemeName>(() => (localStorage.getItem('petsuite-theme') as ThemeName) || 'bosque')
+  const [theme, setTheme] = useState<ThemeName>(() => {
+    const stored = localStorage.getItem('petsuite-theme')
+    return themeOptions.some(option => option.name === stored) ? stored as ThemeName : 'original'
+  })
   const [mode, setMode] = useState<ColorMode>(() => (localStorage.getItem('petsuite-mode') as ColorMode) || 'light')
   const [brightness, setBrightness] = useState(() => Number(localStorage.getItem('petsuite-brightness')) || 100)
   const [profile, setProfile] = useState(() => JSON.parse(localStorage.getItem('petsuite-profile') || 'null') || { name: 'Ana Soto', email: 'ana@petsuite.cl', phone: '+56 9 6123 4580', avatar: 'AS' })
 
   useEffect(() => {
-    const applyMode = () => { const dark = mode === 'dark' || (mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches); document.documentElement.dataset.theme = theme; document.documentElement.dataset.mode = dark ? 'dark' : 'light' }
-    applyMode(); setBrightnessVariables(brightness); localStorage.setItem('petsuite-theme', theme); localStorage.setItem('petsuite-mode', mode); localStorage.setItem('petsuite-brightness', String(brightness))
+    const applyMode = () => applyAppearance(theme, mode, brightness)
+    applyMode(); localStorage.setItem('petsuite-theme', theme); localStorage.setItem('petsuite-mode', mode); localStorage.setItem('petsuite-brightness', String(brightness))
     if (mode === 'system') { const media = window.matchMedia('(prefers-color-scheme: dark)'); media.addEventListener('change', applyMode); return () => media.removeEventListener('change', applyMode) }
   }, [theme, mode, brightness])
 
-  const publicPet = window.location.hash.startsWith('#emergency/') ? pets.find(pet => pet.id === window.location.hash.slice(11)) : null
-  if (!user) return publicPet ? <EmergencyView pet={publicPet} /> : <Login onLogin={(name, role) => { setUser({ name, role }); setActive(role === 'tutor' ? 'home' : role === 'business' ? 'business-home' : role === 'clinical' ? 'clinical-home' : 'admin-home') }} />
+  const [hash, setHash] = useState(window.location.hash)
+  useEffect(() => { const updateHash = () => setHash(window.location.hash); window.addEventListener('hashchange', updateHash); return () => window.removeEventListener('hashchange', updateHash) }, [])
+  if (hash.startsWith('#emergency/')) return <EmergencyView pet={readPublicQr(hash)} />
+  if (!user) return <Login onLogin={(name, role) => { setUser({ name, role }); setActive(role === 'tutor' ? 'home' : role === 'business' ? 'business-home' : role === 'clinical' ? 'clinical-home' : 'admin-home') }} />
 
   const savePets = (next: Pet[]) => { setPets(next); localStorage.setItem('petsuite-pets', JSON.stringify(next)) }
-  const addPet = (data: Pet) => { savePets([...pets, data]); setShowAdd(false); setActive('pets') }
+  const addPet = (data: Pet) => { savePets([...pets, data]); setSelectedPetId(data.id); setShowAdd(false); setActive('pets') }
+  const updatePet = (data: Pet) => { savePets(pets.map(pet => pet.id === data.id ? data : pet)); setEditingPet(null) }
+  const selectedPet = pets.find(pet => pet.id === selectedPetId) || pets[0] || null
 
   return (
     <div className="app-shell">
@@ -99,23 +110,26 @@ function App() {
       </aside>
       <main className="main-content">
         <header className="topbar"><div className="mobile-brand brand"><span className="brand-mark"><PawPrint size={18} /></span><span>Pet<span>Suite</span></span></div><div className="topbar-context">{roleLabels[user.role]}</div><div className="top-actions"><div className="avatar small" aria-label={user.name}>{user.name.slice(0, 2).toUpperCase()}</div></div></header>
-        {user.role !== 'tutor' && active !== 'settings' ? <RoleDashboard role={user.role} active={active} /> : null}
-        {user.role === 'tutor' && active === 'home' && <Dashboard pets={pets} name={user.name} onSelect={(pet) => { setSelectedPet(pet); setActive('pets') }} onPets={() => setActive('pets')} onCommunity={() => setActive('community')} onAdd={() => setShowAdd(true)} />}
-        {user.role === 'tutor' && active === 'pets' && <PetsView pets={pets} selected={selectedPet} onSelect={setSelectedPet} onAdd={() => setShowAdd(true)} onQr={setQrPet} />}
+        {user.role === 'admin' && active === 'moderation' ? <AdminModerationDashboard /> : user.role !== 'tutor' && active !== 'settings' ? <RoleDashboard role={user.role} active={active} /> : null}
+        {user.role === 'tutor' && active === 'home' && <Dashboard pets={pets} name={user.name} onSelect={(pet) => { setSelectedPetId(pet.id); setActive('pets') }} onPets={() => setActive('pets')} onCommunity={() => setActive('community')} onAdd={() => setShowAdd(true)} />}
+        {user.role === 'tutor' && active === 'pets' && <PetsView pets={pets} selected={selectedPet} onSelect={pet => setSelectedPetId(pet.id)} onAdd={() => setShowAdd(true)} onQr={setQrPet} onEdit={setEditingPet} onSave={updatePet} />}
         {user.role === 'tutor' && active === 'directory' && <StoreDirectoryView />}
         {user.role === 'tutor' && active === 'community' && <CommunityView />}
         {active === 'settings' && <div className="settings-workspace"><TabbedSettingsView profile={profile} setProfile={next => { setProfile(next); localStorage.setItem('petsuite-profile', JSON.stringify(next)) }} theme={theme} setTheme={setTheme} mode={mode} setMode={setMode} brightness={brightness} setBrightness={setBrightness} onLogout={() => setUser(null)} /><section className="settings-card profile-session-card"><div><p className="eyebrow">SESIÓN</p><h2>Salir de PetSuite</h2><p className="muted">Cierra la sesión de este dispositivo.</p></div><button type="button" className="secondary" onClick={() => setUser(null)}>Cerrar sesión</button></section></div>}
       </main>
       {showAdd && <AddPetModal onClose={() => setShowAdd(false)} onSave={addPet} />}
+      {editingPet && <AddPetModal pet={editingPet} onClose={() => setEditingPet(null)} onSave={updatePet} />}
       {qrPet && <QrModal pet={qrPet} onClose={() => setQrPet(null)} />}
     </div>
   )
 }
 
-function setBrightnessVariables(value: number) {
+function applyAppearance(theme: ThemeName, mode: ColorMode, brightness: number) {
   const root = document.documentElement
-  root.style.setProperty('--brightness-dark', `${Math.max(0, 100 - value) * 0.7}%`)
-  root.style.setProperty('--brightness-light', `${Math.max(0, value - 100) * 0.45}%`)
+  root.dataset.theme = theme
+  root.dataset.mode = mode === 'dark' || (mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light'
+  root.style.setProperty('--brightness-dark', `${Math.max(0, 100 - brightness) * 0.7}%`)
+  root.style.setProperty('--brightness-light', `${Math.max(0, brightness - 100) * 0.45}%`)
 }
 
 function Login({ onLogin }: { onLogin: (name: string, role: UserRole) => void }) {
@@ -137,30 +151,61 @@ function Dashboard({ pets, name, onSelect, onPets, onCommunity, onAdd }: { pets:
   </section>
 }
 
-function PetsView({ pets, selected, onSelect, onAdd, onQr }: { pets: Pet[]; selected: Pet | null; onSelect: (pet: Pet) => void; onAdd: () => void; onQr: (pet: Pet) => void }) {
-  return <section className="page pets-page"><div className="page-title"><div><p className="eyebrow">TU ESPACIO</p><h1>Mis mascotas</h1><p className="muted">Sus datos, alertas y QR de emergencia al alcance de tu mano.</p></div><button className="primary" onClick={onAdd}><CirclePlus size={17} /> Agregar mascota</button></div><div className="pets-layout"><section className="pet-list content-panel"><div className="section-heading"><div><p className="eyebrow">TUS COMPAÑEROS</p><h2>Selecciona una ficha</h2></div><span className="pet-count">{pets.length}</span></div>{pets.map(pet => <PetCard key={pet.id} pet={pet} onClick={() => onSelect(pet)} compact selected={selected?.id === pet.id} />)}</section>{selected && <PetDetail pet={selected} onQr={() => onQr(selected)} />}</div></section>
+function PetsView({ pets, selected, onSelect, onAdd, onQr, onEdit, onSave }: { pets: Pet[]; selected: Pet | null; onSelect: (pet: Pet) => void; onAdd: () => void; onQr: (pet: Pet) => void; onEdit: (pet: Pet) => void; onSave: (pet: Pet) => void }) {
+  const [healthOpen, setHealthOpen] = useState(false)
+  const [entryOpen, setEntryOpen] = useState(false)
+  const [editingEntry, setEditingEntry] = useState<MedicalEntry | null>(null)
+  return <section className="page pets-page"><div className="page-title"><div><p className="eyebrow">TU ESPACIO</p><h1>Mis mascotas</h1><p className="muted">Ficha de salud, historial y QR de emergencia en un solo lugar.</p></div><button className="primary" onClick={onAdd}><CirclePlus size={17} /> Agregar mascota</button></div><div className="pets-layout"><section className="pet-list content-panel"><div className="section-heading"><div><p className="eyebrow">TUS COMPAÑEROS</p><h2>Selecciona una ficha</h2></div><span className="pet-count">{pets.length}</span></div>{pets.map(pet => <PetCard key={pet.id} pet={pet} onClick={() => onSelect(pet)} compact selected={selected?.id === pet.id} />)}</section>{selected ? <PetDetail pet={selected} onQr={() => onQr(selected)} onEdit={() => onEdit(selected)} onHealth={() => setHealthOpen(true)} onAddEntry={() => { setEditingEntry(null); setEntryOpen(true) }} onEditEntry={entry => { setEditingEntry(entry); setEntryOpen(true) }} onToggleQr={() => onSave({ ...selected, qrActive: !selected.qrActive })} /> : <div className="detail-card"><p className="muted">Agrega una mascota para comenzar su ficha de salud.</p></div>}</div>
+    {selected && healthOpen && <HealthModal key={selected.id} pet={selected} onClose={() => setHealthOpen(false)} onSave={next => { onSave(next); setHealthOpen(false) }} />}
+    {selected && entryOpen && <MedicalEntryModal key={`${selected.id}-${editingEntry?.id || 'new'}`} entry={editingEntry} onClose={() => setEntryOpen(false)} onSave={entry => { const history = selected.medicalHistory || []; onSave({ ...selected, medicalHistory: editingEntry ? history.map(item => item.id === entry.id ? entry : item) : [...history, entry] }); setEntryOpen(false) }} />}
+  </section>
 }
 
-function PetCard({ pet, onClick, compact, selected }: { pet: Pet; onClick: () => void; compact?: boolean; selected?: boolean }) { return <button className={`pet-card ${compact ? 'compact' : ''} ${selected ? 'selected' : ''}`} onClick={onClick}><div className="pet-photo">{pet.initials}</div><div className="pet-info"><strong>{pet.name}</strong><span>{pet.breed} · {pet.age} años</span>{!compact && <small><b className="status-dot" /> Ficha disponible</small>}</div>{compact && <ChevronRight className="chevron" size={18} />}</button> }
+function PetCard({ pet, onClick, compact, selected }: { pet: Pet; onClick: () => void; compact?: boolean; selected?: boolean }) { return <button className={`pet-card ${compact ? 'compact' : ''} ${selected ? 'selected' : ''}`} onClick={onClick}><div className="pet-photo">{pet.initials}</div><div className="pet-info"><strong>{pet.name}</strong><span>{pet.breed} · {pet.age} años</span>{!compact && <small><b className={pet.qrActive ? 'status-dot' : 'status-dot inactive'} /> {pet.qrActive ? 'QR público activo' : 'QR sin publicar'}</small>}</div>{compact && <ChevronRight className="chevron" size={18} />}</button> }
 
-function PetDetail({ pet, onQr }: { pet: Pet; onQr: () => void }) { return <article className="detail-card"><div className="detail-head"><div className="pet-photo large">{pet.initials}</div><div><p className="eyebrow">FICHA DE MASCOTA</p><h2>{pet.name}</h2><p className="muted">{pet.species} · {pet.breed}</p></div></div><div className="detail-stats"><div><small>Edad</small><strong>{pet.age} años</strong></div><div><small>Peso</small><strong>{pet.weight} kg</strong></div><div><small>Color</small><strong>{pet.color}</strong></div></div><div className="health-row"><div><span className="health-icon"><AlertCircle size={18} /></span><div><small>ALERGIAS</small><strong>{pet.allergies.length ? pet.allergies.join(', ') : 'Sin alergias registradas'}</strong></div></div></div><div className="qr-row"><div className="qr-placeholder"><QrCode size={27} /></div><div><strong>QR de emergencia</strong><p className="muted">Comparte la ficha si se pierde o necesita ayuda.</p></div></div><button className="primary full" onClick={onQr}><QrCode size={17} /> Ver QR de emergencia</button></article> }
+function PetDetail({ pet, onQr, onEdit, onHealth, onAddEntry, onEditEntry, onToggleQr }: { pet: Pet; onQr: () => void; onEdit: () => void; onHealth: () => void; onAddEntry: () => void; onEditEntry: (entry: MedicalEntry) => void; onToggleQr: () => void }) {
+  const history = [...(pet.medicalHistory || [])].sort((a, b) => b.date.localeCompare(a.date))
+  let demoContacts: { id: string; text: string; date: string }[] = []
+  try { const stored = JSON.parse(localStorage.getItem(`petsuite-contact-${pet.id}`) || '[]'); if (Array.isArray(stored)) demoContacts = stored } catch { /* Legacy mock messages used a different format. */ }
+  return <article className="detail-card health-detail"><div className="detail-head"><div className="pet-photo large">{pet.initials}</div><div><p className="eyebrow">FICHA ÚNICA DE SALUD</p><h2>{pet.name}</h2><p className="muted">{pet.species} · {pet.breed}</p></div><button type="button" className="secondary pet-edit-button" onClick={onEdit}><Pencil size={16} /> Editar datos</button></div>
+    <div className="detail-stats"><div><small>Edad</small><strong>{pet.age} años</strong></div><div><small>Peso</small><strong>{pet.weight} kg</strong></div><div><small>Color</small><strong>{pet.color}</strong></div></div>
+    <section className="pet-health-section"><div className="pet-section-head"><div><p className="eyebrow">INFORMACIÓN CRÍTICA</p><h3>Datos de salud</h3></div><button className="secondary" onClick={onHealth}><Pencil size={15} /> Editar salud</button></div><div className="health-facts"><div><span>Alergias</span><strong>{pet.allergies?.length ? pet.allergies.join(', ') : 'No registradas'}</strong></div><div><span>Condiciones médicas</span><strong>{pet.conditions?.length ? pet.conditions.join(', ') : 'No registradas'}</strong></div><div><span>Medicamentos · solo tutor</span><strong>{pet.medications?.length ? pet.medications.join(', ') : 'No registrados'}</strong></div></div>{pet.emergencyNotes && <p className="health-note"><AlertCircle size={17} /> {pet.emergencyNotes}</p>}</section>
+    <section className="pet-health-section"><div className="pet-section-head"><div><p className="eyebrow">REGISTRO PRIVADO</p><h3>Historial médico</h3></div><button className="secondary" onClick={onAddEntry}><CirclePlus size={16} /> Agregar registro</button></div>{history.length ? <div className="medical-timeline">{history.map(entry => <div className="medical-event" key={entry.id}><div className="medical-event-icon"><CalendarDays size={17} /></div><div><span>{entry.type} · {new Date(`${entry.date}T12:00:00`).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}</span><strong>{entry.title}</strong>{entry.notes && <p>{entry.notes}</p>}</div><button className="text-button" onClick={() => onEditEntry(entry)} aria-label={`Editar ${entry.title}`}>Editar</button></div>)}</div> : <p className="muted">Todavía no hay vacunas ni atenciones registradas.</p>}</section>
+    <section className="pet-qr-section"><div className="pet-section-head"><div><p className="eyebrow">ACCESO DE EMERGENCIA</p><h3>QR público</h3></div><span className={pet.qrActive ? 'pet-qr-badge active' : 'pet-qr-badge'}>{pet.qrActive ? 'Habilitado' : 'Desactivado'}</span></div><p className="muted">Al publicarlo se compartirán nombre, especie, raza, alergias, condiciones y nota de emergencia. Medicamentos e historial quedan privados.</p><label className="pet-qr-setting"><input type="checkbox" checked={pet.qrActive} onChange={onToggleQr} /> Permitir generar y compartir la ficha pública</label><p className="pet-qr-warning">Un QR descargado contiene una copia de estos datos: si cambian, genera uno nuevo. Sin servidor, los QR ya compartidos no pueden revocarse a distancia.</p><button className="primary" disabled={!pet.qrActive} onClick={onQr}><QrCode size={17} /> Ver y compartir QR</button></section>
+    {demoContacts.length > 0 && <section className="pet-health-section"><div className="pet-section-head"><div><p className="eyebrow">PRUEBAS EN ESTE NAVEGADOR</p><h3>Mensajes de prueba</h3></div></div><p className="muted">Solo se muestran aquí si se guardaron en este mismo navegador; no son mensajes entregados desde otros dispositivos.</p><div className="demo-contact-list">{demoContacts.map(contact => <div key={contact.id}><small>{new Date(contact.date).toLocaleString('es-CL')}</small><p>{contact.text}</p></div>)}</div></section>}
+  </article>
+}
+
+const splitHealthList = (value: string) => value.split(',').map(item => item.trim()).filter(Boolean)
+
+function HealthModal({ pet, onClose, onSave }: { pet: Pet; onClose: () => void; onSave: (pet: Pet) => void }) {
+  const [form, setForm] = useState({ allergies: pet.allergies?.join(', ') || '', conditions: pet.conditions?.join(', ') || '', medications: pet.medications?.join(', ') || '', emergencyNotes: pet.emergencyNotes || '' })
+  const [error, setError] = useState('')
+  const submit = (event: React.FormEvent) => { event.preventDefault(); const result = petHealthSchema.safeParse(form); if (!result.success) { setError(result.error.issues[0]?.message || 'Revisa los datos'); return }; onSave({ ...pet, allergies: splitHealthList(result.data.allergies), conditions: splitHealthList(result.data.conditions), medications: splitHealthList(result.data.medications), emergencyNotes: result.data.emergencyNotes.trim() }) }
+  return <div className="modal-backdrop"><form className="modal health-form-modal" onSubmit={submit} noValidate><button type="button" className="close" aria-label="Cerrar" onClick={onClose}><X size={20} /></button><p className="eyebrow">FICHA DE {pet.name.toUpperCase()}</p><h2>Editar datos de salud</h2><p className="muted">Separa varios elementos con comas. Alergias, condiciones y nota de emergencia aparecerán en el QR.</p><div className="health-form-fields"><label>Alergias<input value={form.allergies} onChange={event => setForm({ ...form, allergies: event.target.value })} placeholder="Ej.: pollo, penicilina" /></label><label>Condiciones médicas<input value={form.conditions} onChange={event => setForm({ ...form, conditions: event.target.value })} placeholder="Ej.: diabetes" /></label><label>Medicamentos (privado)<input value={form.medications} onChange={event => setForm({ ...form, medications: event.target.value })} placeholder="Ej.: tratamiento indicado por veterinaria" /></label><label>Nota pública de emergencia<textarea rows={3} maxLength={160} value={form.emergencyNotes} onChange={event => setForm({ ...form, emergencyNotes: event.target.value })} placeholder="Indicación importante para quien encuentre a tu mascota" /></label></div>{error && <p className="form-error" role="alert">{error}</p>}<div className="modal-actions"><button className="secondary" type="button" onClick={onClose}>Cancelar</button><button className="primary">Guardar salud</button></div></form></div>
+}
+
+function MedicalEntryModal({ entry, onClose, onSave }: { entry: MedicalEntry | null; onClose: () => void; onSave: (entry: MedicalEntry) => void }) {
+  const [form, setForm] = useState({ date: entry?.date || new Date().toISOString().slice(0, 10), type: entry?.type || 'Atención', title: entry?.title || '', notes: entry?.notes || '' })
+  const [error, setError] = useState('')
+  const submit = (event: React.FormEvent) => { event.preventDefault(); const result = medicalEntrySchema.safeParse(form); if (!result.success) { setError(result.error.issues[0]?.message || 'Revisa el registro'); return }; onSave({ ...result.data, id: entry?.id || crypto.randomUUID() }) }
+  return <div className="modal-backdrop"><form className="modal health-form-modal" onSubmit={submit} noValidate><button type="button" className="close" aria-label="Cerrar" onClick={onClose}><X size={20} /></button><p className="eyebrow">HISTORIAL PRIVADO</p><h2>{entry ? 'Editar registro' : 'Agregar atención o vacuna'}</h2><div className="health-form-fields"><label>Fecha<input type="date" value={form.date} onChange={event => setForm({ ...form, date: event.target.value })} /></label><label>Tipo<select value={form.type} onChange={event => setForm({ ...form, type: event.target.value as MedicalEntry['type'] })}><option>Atención</option><option>Vacuna</option><option>Tratamiento</option></select></label><label>Nombre del registro<input value={form.title} onChange={event => setForm({ ...form, title: event.target.value })} placeholder="Ej.: vacuna antirrábica" /></label><label>Detalles<textarea rows={4} maxLength={500} value={form.notes} onChange={event => setForm({ ...form, notes: event.target.value })} placeholder="Indicaciones, resultados o próxima visita" /></label></div>{error && <p className="form-error" role="alert">{error}</p>}<div className="modal-actions"><button className="secondary" type="button" onClick={onClose}>Cancelar</button><button className="primary">Guardar registro</button></div></form></div>
+}
 
 function QrModal({ pet, onClose }: { pet: Pet; onClose: () => void }) {
   const [src, setSrc] = useState('')
-  const [contactOpen, setContactOpen] = useState(false)
-  const [sent, setSent] = useState(false)
-  const [message, setMessage] = useState('')
-
-  useEffect(() => { QRCode.toDataURL(`${window.location.origin}/#emergency/${pet.id}`, { width: 280, margin: 2, color: { dark: '#171717', light: '#ffffff' } }).then(setSrc) }, [pet.id])
-
+  const [error, setError] = useState('')
+  const [copied, setCopied] = useState(false)
+  let url = ''
+  try { url = createPublicQrUrl(pet, window.location.origin) } catch { /* Existing mock data may predate the public-field limits. */ }
+  useEffect(() => { if (!url) { setError('Revisa los datos públicos de esta mascota antes de generar su QR.'); return }; QRCode.toDataURL(url, { width: 540, margin: 3, errorCorrectionLevel: 'M', color: { dark: '#171717', light: '#ffffff' } }).then(setSrc).catch(() => setError('No se pudo generar el QR. Resume la información pública e inténtalo de nuevo.')) }, [url])
   const download = () => { if (!src) return; const link = document.createElement('a'); link.href = src; link.download = `petsuite-${pet.name.toLowerCase()}-qr.png`; link.click() }
   const print = () => window.print()
-  const submitContact = (event: React.FormEvent) => { event.preventDefault(); if (message.trim().length < 10) return; localStorage.setItem(`petsuite-contact-${pet.id}`, message.trim()); setSent(true) }
-
-  return <div className="modal-backdrop"><div className="modal qr-modal"><button className="close" onClick={onClose}>×</button>{sent ? <><div className="success-mark">✓</div><p className="eyebrow">CONTACTO ENVIADO</p><h2>Gracias por ayudar a {pet.name}</h2><p className="muted">El tutor recibirá tu mensaje de forma segura y podrá contactarte.</p><button className="primary full" onClick={onClose}>Volver a la ficha</button></> : contactOpen ? <form onSubmit={submitContact}><p className="eyebrow">CONTACTO SEGURO</p><h2>Ayuda a encontrar a {pet.name}</h2><p className="muted">Tu mensaje llegará al tutor sin revelar sus datos personales.</p><label className="contact-label">Tu mensaje<textarea value={message} onChange={e => setMessage(e.target.value)} placeholder="Cuéntale al tutor dónde viste a su mascota..." rows={5} /></label><div className="modal-actions"><button type="button" className="secondary" onClick={() => setContactOpen(false)}>Volver</button><button className="primary">Enviar mensaje</button></div></form> : <><p className="eyebrow">FICHA DE EMERGENCIA</p><h2>QR de {pet.name}</h2><p className="muted">Colócalo en su placa para que puedan ayudarte si se pierde.</p><div className="qr-display">{src ? <img src={src} alt={`Código QR de emergencia de ${pet.name}`} /> : <span>Generando...</span>}</div><div className="qr-actions"><button className="primary" onClick={download}>Descargar PNG</button><button className="secondary" onClick={print}>Imprimir</button></div><button className="text-button full" onClick={() => setContactOpen(true)}>Simular escaneo y contacto seguro →</button></>}</div></div>
+  const copy = async () => { if (!url) return; try { await navigator.clipboard.writeText(url); setCopied(true) } catch { setError('No se pudo copiar el enlace. Ábrelo en otra pestaña para compartirlo.') } }
+  return <div className="modal-backdrop"><div className="modal qr-modal public-qr-modal" role="dialog" aria-modal="true" aria-labelledby="qr-title"><button type="button" className="close" aria-label="Cerrar QR" onClick={onClose}><X size={20} /></button><p className="eyebrow">FICHA PÚBLICA DE EMERGENCIA</p><h2 id="qr-title">QR de {pet.name}</h2><p className="muted">Funciona sin iniciar sesión, también desde otro teléfono.</p><div className="qr-display">{src ? <img src={src} alt={`Código QR de emergencia de ${pet.name}`} /> : <span>{error || 'Generando QR...'}</span>}</div><div className="qr-actions"><button className="primary" disabled={!src} onClick={download}><Download size={16} /> Descargar PNG</button><button className="secondary" disabled={!src} onClick={print}><Printer size={16} /> Imprimir</button></div><div className="qr-link-actions"><button className="secondary" disabled={!url} onClick={copy}><Copy size={16} /> {copied ? 'Enlace copiado' : 'Copiar enlace'}</button>{url && <a className="text-button" href={url} target="_blank" rel="noopener noreferrer">Ver ficha pública <ArrowRight size={16} /></a>}</div>{error && <p className="form-error" role="alert">{error}</p>}<p className="qr-disclaimer">El código guarda una copia de los datos públicos actuales. Si los editas, descarga e imprime un QR nuevo. Un QR ya compartido no se puede revocar sin un servidor.</p></div></div>
 }
 
-function AddPetModal({ onClose, onSave }: { onClose: () => void; onSave: (pet: Pet) => void }) { const [form, setForm] = useState({ name: '', species: 'Perro', breed: '', age: '1', weight: '5', color: '' }); const [error, setError] = useState(''); const update = (key: string, value: string) => setForm({ ...form, [key]: value }); const submit = (event: React.FormEvent) => { event.preventDefault(); const parsed = petSchema.safeParse(form); if (!parsed.success) { setError(parsed.error.issues[0]?.message || 'Revisa los campos'); return }; onSave({ ...parsed.data, id: crypto.randomUUID(), initials: parsed.data.name.slice(0, 2).toUpperCase(), allergies: [], qrActive: false }) }; return <div className="modal-backdrop"><form className="modal" onSubmit={submit}><button type="button" className="close" onClick={onClose}>×</button><p className="eyebrow">NUEVA FICHA</p><h2>Agrega un compañero</h2><p className="muted">Comienza con sus datos esenciales.</p><div className="form-grid"><label>Nombre<input value={form.name} onChange={e => update('name', e.target.value)} /></label><label>Especie<select value={form.species} onChange={e => update('species', e.target.value)}><option>Perro</option><option>Gato</option><option>Otro</option></select></label><label>Raza<input value={form.breed} onChange={e => update('breed', e.target.value)} /></label><label>Edad<input type="number" value={form.age} onChange={e => update('age', e.target.value)} /></label><label>Peso (kg)<input type="number" step="0.1" value={form.weight} onChange={e => update('weight', e.target.value)} /></label><label>Color<input value={form.color} onChange={e => update('color', e.target.value)} /></label></div>{error && <div className="form-error">{error}</div>}<div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Cancelar</button><button className="primary">Guardar ficha</button></div></form></div> }
+function AddPetModal({ pet, onClose, onSave }: { pet?: Pet; onClose: () => void; onSave: (pet: Pet) => void }) { const [form, setForm] = useState({ name: pet?.name || '', species: pet?.species || 'Perro', breed: pet?.breed || '', age: String(pet?.age ?? 1), weight: String(pet?.weight ?? 5), color: pet?.color || '' }); const [error, setError] = useState(''); const update = (key: string, value: string) => setForm({ ...form, [key]: value }); const submit = (event: React.FormEvent) => { event.preventDefault(); const parsed = petSchema.safeParse(form); if (!parsed.success) { setError(parsed.error.issues[0]?.message || 'Revisa los campos'); return }; onSave({ ...(pet || { id: crypto.randomUUID(), allergies: [], conditions: [], medications: [], emergencyNotes: '', medicalHistory: [], qrActive: false }), ...parsed.data, initials: parsed.data.name.slice(0, 2).toUpperCase() }) }; return <div className="modal-backdrop"><form className="modal" onSubmit={submit}><button type="button" className="close" aria-label="Cerrar" onClick={onClose}><X size={20} /></button><p className="eyebrow">{pet ? 'EDITAR FICHA' : 'NUEVA FICHA'}</p><h2>{pet ? `Datos de ${pet.name}` : 'Agrega un compañero'}</h2><p className="muted">{pet ? 'Actualiza su información básica.' : 'Comienza con sus datos esenciales.'}</p><div className="form-grid"><label>Nombre<input value={form.name} onChange={e => update('name', e.target.value)} /></label><label>Especie<select value={form.species} onChange={e => update('species', e.target.value)}><option>Perro</option><option>Gato</option><option>Otro</option></select></label><label>Raza<input value={form.breed} onChange={e => update('breed', e.target.value)} /></label><label>Edad<input type="number" min="0" value={form.age} onChange={e => update('age', e.target.value)} /></label><label>Peso (kg)<input type="number" min="0.1" step="0.1" value={form.weight} onChange={e => update('weight', e.target.value)} /></label><label>Color<input value={form.color} onChange={e => update('color', e.target.value)} /></label></div>{error && <div className="form-error" role="alert">{error}</div>}<div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Cancelar</button><button className="primary">Guardar ficha</button></div></form></div> }
 
 function ClinicalDashboard({ section }: { section: string }) { const patients = [{ name: 'Luna', owner: 'Ana Soto', alert: 'Alergia a pollo' }, { name: 'Bruno', owner: 'Camila Rojas', alert: 'Sin alertas' }, { name: 'Coco', owner: 'María Contreras', alert: 'Vacuna pendiente' }]; return <section className="page clinical-page"><div className="page-title"><div><p className="eyebrow">ATENCIÓN VETERINARIA</p><h1>{section === 'patients' ? 'Pacientes' : 'Tu jornada clínica'}</h1><p className="muted">{section === 'patients' ? 'Consulta fichas autorizadas y alertas relevantes.' : 'Una vista rápida de tus atenciones de hoy.'}</p></div><button className="primary">+ Nueva atención</button></div><div className="clinical-summary"><div><strong>12</strong><span>Atenciones hoy</span></div><div><strong>3</strong><span>Alertas clínicas</span></div><div><strong>94%</strong><span>Fichas actualizadas</span></div></div><div className="clinical-panel"><div className="chart-heading"><div><p className="eyebrow">AGENDA</p><h2>Pacientes recientes</h2></div><button className="text-button">Ver historial →</button></div>{patients.map(patient => <div className="patient-row" key={patient.name}><div className="pet-photo small-photo">{patient.name.slice(0, 2).toUpperCase()}</div><div><strong>{patient.name}</strong><small>{patient.owner}</small></div><span className={patient.alert === 'Sin alertas' ? 'clinical-ok' : 'clinical-alert'}>{patient.alert}</span><button className="secondary">Abrir ficha</button></div>)}</div></section> }
 
@@ -177,11 +222,14 @@ function BusinessContacts() { const contacts = [{ name: 'Ana Soto', text: '¿Tie
 
 function BusinessOrders() { const [status, setStatus] = useState('Recibido'); return <section className="page role-page"><div className="page-title"><div><p className="eyebrow">OPERACIÓN DE TIENDA</p><h1>Pedidos recibidos</h1><p className="muted">Gestiona solicitudes de compra y prepara cada entrega.</p></div><span className="order-count">1 pendiente</span></div><div className="order-business-card"><div className="order-heading"><div><strong>Pedido #PS-1042</strong><small>Recibido hace 12 minutos · Ana Soto</small></div><span className="order-status">{status}</span></div><div className="order-product"><span>Alimento Premium Adulto × 1</span><b>$24.990</b></div><div className="order-product"><span>Arnés ajustable rojo × 1</span><b>$12.990</b></div><div className="order-summary"><span>Despacho solicitado</span><strong>$37.980</strong></div><div className="order-progress">{['Recibido', 'Confirmado', 'Preparando', 'Enviado', 'Completado'].map(value => <button key={value} className={status === value ? 'progress-step active' : 'progress-step'} onClick={() => setStatus(value)}>{value}</button>)}</div></div></section> }
 
-function EmergencyView({ pet }: { pet: Pet }) {
+function EmergencyView({ pet }: { pet: PublicPet | null }) {
   const [message, setMessage] = useState('')
   const [sent, setSent] = useState(false)
-  if (sent) return <div className="emergency-page"><div className="emergency-card"><div className="success-mark">✓</div><p className="eyebrow">CONTACTO ENVIADO</p><h1>Gracias por ayudar a {pet.name}</h1><p>El tutor recibirá tu mensaje de forma segura.</p></div></div>
-  return <div className="emergency-page"><div className="emergency-card"><div className="emergency-pet-photo">{pet.initials}</div><p className="eyebrow">FICHA DE EMERGENCIA</p><h1>{pet.name}</h1><p className="emergency-subtitle">{pet.species} · {pet.breed}</p><div className="critical-info"><strong>Información importante</strong><span>{pet.allergies.length ? `Alergias: ${pet.allergies.join(', ')}` : 'No registra alergias conocidas'}</span></div><form onSubmit={event => { event.preventDefault(); if (message.trim().length >= 10) { localStorage.setItem(`petsuite-contact-${pet.id}`, message.trim()); setSent(true) } }}><label>Contactar al tutor<textarea required minLength={10} value={message} onChange={event => setMessage(event.target.value)} placeholder="Cuéntale al tutor dónde viste a su mascota..." rows={4} /></label><button className="primary full">Enviar mensaje seguro <span>→</span></button></form><p className="privacy-note">No mostraremos datos personales del tutor.</p></div></div>
+  const [error, setError] = useState('')
+  if (!pet) return <div className="emergency-page"><div className="emergency-card emergency-invalid"><QrCode size={35} /><h1>Ficha no disponible</h1><p className="muted">Este enlace no contiene una ficha válida. Pide al tutor un QR actualizado.</p><a className="secondary" href="/">Ir a PetSuite</a></div></div>
+  if (sent) return <div className="emergency-page"><div className="emergency-card emergency-invalid"><div className="success-mark"><Check size={26} /></div><h1>Mensaje de prueba guardado</h1><p className="muted">Este mensaje quedó en este navegador. El contacto real con el tutor requiere un servicio de entrega que aún no está conectado.</p><button className="secondary" onClick={() => setSent(false)}>Volver a la ficha</button></div></div>
+  const submit = (event: React.FormEvent) => { event.preventDefault(); const result = emergencyContactSchema.safeParse({ message }); if (!result.success) { setError(result.error.issues[0]?.message || 'Revisa tu mensaje'); return }; const key = `petsuite-contact-${pet.id}`; const previous = JSON.parse(localStorage.getItem(key) || '[]') as { id: string; text: string; date: string }[]; localStorage.setItem(key, JSON.stringify([...previous, { id: crypto.randomUUID(), text: result.data.message, date: new Date().toISOString() }])); setSent(true) }
+  return <div className="emergency-page"><main className="emergency-card public-emergency-card"><div className="public-emergency-brand"><span className="brand-mark"><PawPrint size={18} /></span> PetSuite <span>FICHA PÚBLICA</span></div><div className="emergency-pet-photo">{pet.initials}</div><p className="eyebrow">INFORMACIÓN DE EMERGENCIA</p><h1>{pet.name}</h1><p className="emergency-subtitle">{pet.species} · {pet.breed}</p><div className="public-emergency-facts"><div><strong>Alergias</strong><p>{pet.allergies.length ? pet.allergies.join(', ') : 'No registradas'}</p></div><div><strong>Condiciones médicas</strong><p>{pet.conditions.length ? pet.conditions.join(', ') : 'No registradas'}</p></div>{pet.emergencyNotes && <div><strong>Indicación importante</strong><p>{pet.emergencyNotes}</p></div>}</div><p className="privacy-note">Esta ficha no muestra teléfono, correo, dirección, medicamentos ni historial privado.</p><section className="public-contact-demo"><h2>¿Encontraste a {pet.name}?</h2><p>El contacto seguro está en modo demo: aquí puedes probar el formulario, pero el mensaje no llegará al tutor desde otro dispositivo hasta conectar un servidor.</p><form onSubmit={submit} noValidate><label htmlFor="emergency-message">Mensaje de prueba<textarea id="emergency-message" rows={4} maxLength={500} value={message} onChange={event => { setMessage(event.target.value); setError('') }} placeholder="Cuéntale dónde viste a su mascota..." /></label>{error && <p className="form-error" role="alert">{error}</p>}<button className="primary full">Guardar mensaje de prueba</button></form></section></main></div>
 }
 
 function RoleDashboard({ role, active }: { role: string; active: string }) {
@@ -206,7 +254,134 @@ function LegacyAdminUsers({ users, onSuspend, onReactivate }: { users: { id: str
 
 function AdminUsers({ users, onSuspend, onReactivate }: { users: { id: string; name: string; email: string; role: string; status: string }[]; onSuspend: (id: string) => void; onReactivate: (id: string) => void }) { const [query, setQuery] = useState(''); const [filter, setFilter] = useState<'Todos' | 'Activos' | 'Reportados' | 'Suspendidos'>('Todos'); const filtered = users.filter(user => (filter === 'Todos' || (filter === 'Activos' && user.status === 'Activo') || (filter === 'Reportados' && user.status === 'Reportado') || (filter === 'Suspendidos' && user.status.includes('Suspendido'))) && `${user.name} ${user.email} ${user.role}`.toLowerCase().includes(query.toLowerCase())); return <section className="page admin-page"><div className="page-title"><div><p className="eyebrow">ADMINISTRACIÓN</p><h1>Gestión de usuarios</h1><p className="muted">Busca, filtra y administra las cuentas de PetSuite.</p></div><span className="admin-total">{users.length} cuentas</span></div><div className="user-toolbar"><div className="search-field"><span>⌕</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Buscar por nombre, correo o rol" /></div></div><div className="user-filters">{(['Todos', 'Activos', 'Reportados', 'Suspendidos'] as const).map(value => <button key={value} className={filter === value ? 'category-tab active' : 'category-tab'} onClick={() => setFilter(value)}>{value}<b>{value === 'Todos' ? users.length : value === 'Activos' ? users.filter(user => user.status === 'Activo').length : value === 'Reportados' ? users.filter(user => user.status === 'Reportado').length : users.filter(user => user.status.includes('Suspendido')).length}</b></button>)}</div><div className="admin-table-card user-table polished-user-table"><div className="user-table-head"><span>USUARIO</span><span>ROL</span><span>ESTADO</span><span>ACCIÓN</span></div>{filtered.map(user => <div className="user-row" key={user.id}><div className="avatar">{user.name.slice(0, 2).toUpperCase()}</div><div className="user-identity"><strong>{user.name}</strong><small>{user.email}</small></div><span className="user-role">{user.role}</span><span className={`user-status ${user.status.toLowerCase()}`}>{user.status}</span><button className={user.status === 'Activo' ? 'secondary' : 'primary'} onClick={() => user.status === 'Activo' || user.status === 'Reportado' ? onSuspend(user.id) : onReactivate(user.id)}>{user.status === 'Activo' || user.status === 'Reportado' ? 'Suspender' : 'Reactivar'}</button></div>)}{filtered.length === 0 && <div className="empty-results">No encontramos usuarios con estos filtros.</div>}</div></section> }
 
-function AdminReports({ users, onResolve, onSuspend }: { users: { id: string; name: string; email: string; role: string; status: string }[]; onResolve: (id: string) => void; onSuspend: (id: string) => void }) { return <section className="page admin-page"><div className="page-title"><div><p className="eyebrow">MODERACIÓN</p><h1>Usuarios reportados</h1><p className="muted">Revisa reportes y decide si resolver o suspender una cuenta.</p></div></div><div className="admin-table-card user-table">{users.length ? users.map(user => <div className="user-row" key={user.id}><div className="avatar">{user.name.slice(0, 2).toUpperCase()}</div><div><strong>{user.name}</strong><small>{user.email} · Reporte pendiente</small></div><button className="secondary" onClick={() => onResolve(user.id)}>Resolver</button><button className="primary" onClick={() => onSuspend(user.id)}>Suspender</button></div>) : <div className="empty-results">No hay usuarios reportados.</div>}</div></section> }
+function AdminModerationDashboard() {
+  const [users, setUsers] = useState<ModeratedUser[]>(() => {
+    const stored = JSON.parse(localStorage.getItem('petsuite-admin-users') || 'null') as ModeratedUser[] | null
+    const next = stored || [
+      { id: 'u1', name: 'Ana Soto', email: 'ana@petsuite.cl', role: 'Tutor', status: 'Activo' },
+      { id: 'u2', name: 'Clínica VetCare', email: 'admin@vetcare.cl', role: 'Pyme', status: 'Activo' },
+      { id: 'u3', name: 'Carlos Muñoz', email: 'carlos@email.cl', role: 'Tutor', status: 'Reportado' },
+      { id: 'u4', name: 'Pet Market', email: 'hola@petmarket.cl', role: 'Pyme', status: 'Suspendido' },
+    ]
+    const reportedPosts = (JSON.parse(localStorage.getItem('petsuite-posts') || '[]') as CommunityPost[]).filter(post => post.reported)
+    for (const post of reportedPosts) {
+      const existing = next.find(user => user.name === post.author)
+      if (existing) {
+        if (existing.status === 'Activo') existing.status = 'Reportado'
+      } else {
+        next.push({ id: `post-author-${post.author}`, name: post.author, email: '', role: 'Tutor', status: 'Reportado' })
+      }
+    }
+    return next
+  })
+  useEffect(() => { localStorage.setItem('petsuite-admin-users', JSON.stringify(users)) }, [users])
+  const [selected, setSelected] = useState<{ id: string; mode: 'resolve' | 'suspend' } | null>(null)
+  const selectedUser = users.find(user => user.id === selected?.id)
+  const decide = (decision: { status: string; action: string; message: string; days?: number }) => {
+    if (!selectedUser) return
+    const report = getModerationCase(selectedUser)
+    let status = decision.status
+    if (decision.status !== 'Reportado' && report.target.postId) {
+      const posts = JSON.parse(localStorage.getItem('petsuite-posts') || '[]') as CommunityPost[]
+      const updated = posts.map(post => post.id === report.target.postId ? { ...post, reported: false } : post)
+      localStorage.setItem('petsuite-posts', JSON.stringify(updated))
+      if (updated.some(post => post.author === selectedUser.name && post.reported)) status = 'Reportado'
+    }
+    const next = users.map(user => user.id === selectedUser.id ? { ...user, status } : user)
+    setUsers(next)
+    localStorage.setItem('petsuite-admin-users', JSON.stringify(next))
+    const previous = JSON.parse(localStorage.getItem('petsuite-moderation-decisions') || '[]')
+    localStorage.setItem('petsuite-moderation-decisions', JSON.stringify([...previous, {
+      id: crypto.randomUUID(), userId: selectedUser.id, target: report.target,
+      action: decision.action, message: decision.message, days: decision.days, date: new Date().toISOString(),
+    }]))
+    const chatKey = `petsuite-moderation-chat-${selectedUser.id}`
+    const chat = JSON.parse(localStorage.getItem(chatKey) || '[]') as ModerationChatMessage[]
+    localStorage.setItem(chatKey, JSON.stringify([...chat, { id: crypto.randomUUID(), text: decision.message, date: new Date().toISOString(), action: decision.action }]))
+    setSelected(null)
+  }
+  return <><AdminReports users={users.filter(user => user.status === 'Reportado')} onResolve={id => setSelected({ id, mode: 'resolve' })} onSuspend={id => setSelected({ id, mode: 'suspend' })} />{selected && selectedUser && <ModerationDecisionModal key={`${selected.id}-${selected.mode}`} user={selectedUser} mode={selected.mode} onClose={() => setSelected(null)} onConfirm={decide} />}</>
+}
+
+function AdminReports({ users, onResolve, onSuspend }: { users: { id: string; name: string; email: string; role: string; status: string }[]; onResolve: (id: string) => void; onSuspend: (id: string) => void }) {
+  const [query, setQuery] = useState('')
+  const filtered = users.filter(user => `${user.name} ${user.email} ${user.role}`.toLocaleLowerCase('es').includes(query.trim().toLocaleLowerCase('es')))
+  return <section className="page admin-page moderation-page">
+    <div className="page-title"><div><p className="eyebrow">MODERACIÓN DE CUENTAS</p><h1>Usuarios reportados</h1><p className="muted">Revisa las cuentas señaladas y decide cómo continuar.</p></div><span className="moderation-title-count">{users.length} {users.length === 1 ? 'pendiente' : 'pendientes'}</span></div>
+    <div className="moderation-overview"><div className="moderation-overview-icon"><ShieldAlert size={25} strokeWidth={1.8} /></div><div className="moderation-overview-copy"><p className="eyebrow">BANDEJA DE REVISIÓN</p><h2>Reportes por atender</h2><p>Revisa cada cuenta antes de resolver el reporte o confirmar una suspensión.</p></div><div className="moderation-overview-stat"><strong>{users.length}</strong><span>{users.length === 1 ? 'Cuenta pendiente' : 'Cuentas pendientes'}</span></div></div>
+    <section className="moderation-panel" aria-label="Lista de usuarios reportados">
+      <div className="moderation-panel-header"><div><p className="eyebrow">CASOS ABIERTOS</p><h2>Cola de revisión</h2><p className="muted">{users.length ? 'Cuentas con un reporte pendiente de decisión.' : 'Todos los reportes han sido revisados.'}</p></div><label className="moderation-search"><Search size={18} aria-hidden="true" /><span className="sr-only">Buscar usuario reportado</span><input type="search" placeholder="Buscar nombre o correo" value={query} onChange={event => setQuery(event.target.value)} /></label></div>
+      {filtered.length ? <div className="moderation-list">{filtered.map(user => <article className="moderation-row" key={user.id}><div className="moderation-identity"><div className="avatar moderation-avatar">{user.name.slice(0, 2).toUpperCase()}</div><div><h3>{user.name}</h3><p>{user.email || 'Cuenta del muro comunal'}</p></div></div><div className="moderation-case"><span className="moderation-status"><span className="moderation-status-dot" /> Reporte pendiente</span><span className="moderation-role">{user.role}</span></div><div className="moderation-actions"><button type="button" className="secondary" onClick={() => onResolve(user.id)}><Check size={16} /> Resolver</button><button type="button" className="primary" onClick={() => onSuspend(user.id)}><ShieldAlert size={16} /> Suspender</button></div></article>)}</div> : <div className="moderation-empty"><ShieldCheck size={30} strokeWidth={1.5} /><h3>{query ? 'Sin resultados' : 'Todo al día'}</h3><p>{query ? 'Prueba con otro nombre o correo.' : 'No hay usuarios reportados por revisar.'}</p></div>}
+    </section>
+  </section>
+}
+
+type ModerationChatMessage = { id: string; text: string; date: string; action?: string }
+
+function ModerationContext({ report }: { report: ModerationCase }) {
+  return <div className="moderation-evidence">
+    <div className="moderation-evidence-block"><p className="eyebrow">MOTIVO DEL REPORTE</p><strong>{report.reason}</strong>{report.example && <small>Contexto de ejemplo para esta cuenta demo</small>}</div>
+    <div className="moderation-evidence-block"><p className="eyebrow">{report.target.type === 'post' ? 'PUBLICACIÓN AFECTADA' : 'PERFIL AFECTADO'}</p><strong>{report.target.title}</strong><p>{report.target.detail}</p></div>
+    <div className="moderation-evidence-block"><p className="eyebrow">MENSAJES DE DENUNCIANTES · {report.reporterMessages.length}</p>{report.reporterMessages.length ? <div className="moderation-testimonies">{report.reporterMessages.map((entry, index) => <blockquote key={`${entry.author}-${index}`}><strong>{entry.author}</strong><p>“{entry.text}”</p></blockquote>)}</div> : <p>No se adjuntaron mensajes de denunciantes a este reporte.</p>}</div>
+  </div>
+}
+
+function ModerationDecisionModal({ user, mode, onClose, onConfirm }: { user: ModeratedUser; mode: 'resolve' | 'suspend'; onClose: () => void; onConfirm: (decision: { status: string; action: string; message: string; days?: number }) => void }) {
+  const report = getModerationCase(user)
+  const [resolution, setResolution] = useState<'close' | 'warning' | 'request'>('close')
+  const [duration, setDuration] = useState<'temporary' | 'permanent'>('temporary')
+  const [days, setDays] = useState('30')
+  const [message, setMessage] = useState('')
+  const [error, setError] = useState('')
+  const [chatOpen, setChatOpen] = useState(false)
+  const [chatText, setChatText] = useState('')
+  const [chatError, setChatError] = useState('')
+  const chatKey = `petsuite-moderation-chat-${user.id}`
+  const [chat, setChat] = useState<ModerationChatMessage[]>(() => JSON.parse(localStorage.getItem(chatKey) || '[]'))
+
+  useEffect(() => {
+    const dismiss = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose() }
+    window.addEventListener('keydown', dismiss)
+    return () => window.removeEventListener('keydown', dismiss)
+  }, [onClose])
+
+  const sendChat = (event: React.FormEvent) => {
+    event.preventDefault()
+    const parsed = moderationMessageSchema.safeParse(chatText)
+    if (!parsed.success) { setChatError(parsed.error.issues[0]?.message || 'Revisa el mensaje'); return }
+    const next = [...chat, { id: crypto.randomUUID(), text: parsed.data, date: new Date().toISOString() }]
+    setChat(next)
+    localStorage.setItem(chatKey, JSON.stringify(next))
+    setChatText('')
+    setChatError('')
+  }
+  const submit = (event: React.FormEvent) => {
+    event.preventDefault()
+    if (mode === 'suspend') {
+      const parsed = moderationSuspensionSchema.safeParse({ duration, days: duration === 'permanent' ? 1 : days, message })
+      if (!parsed.success) { setError(parsed.error.issues[0]?.message || 'Revisa la suspensión'); return }
+      onConfirm({ status: parsed.data.duration === 'permanent' ? 'Suspendido · Permanente' : `Suspendido · ${parsed.data.days} días`, action: parsed.data.duration === 'permanent' ? 'Baneo permanente' : 'Suspensión temporal', message: parsed.data.message, days: parsed.data.duration === 'temporary' ? parsed.data.days : undefined })
+      return
+    }
+    const parsed = moderationMessageSchema.safeParse(message)
+    if (!parsed.success) { setError(parsed.error.issues[0]?.message || 'Revisa el mensaje'); return }
+    onConfirm({ status: resolution === 'request' ? 'Reportado' : 'Activo', action: resolution === 'warning' ? 'Advertencia' : resolution === 'request' ? 'Solicitud de información' : 'Reporte resuelto', message: parsed.data })
+  }
+
+  return <div className="modal-backdrop moderation-backdrop"><article className="modal moderation-modal" role="dialog" aria-modal="true" aria-labelledby="moderation-modal-title">
+    <button type="button" className="close" aria-label="Cerrar revisión" autoFocus onClick={onClose}><X size={22} /></button>
+    <div className="moderation-modal-heading"><p className="eyebrow">REVISIÓN DE CUENTA · {user.role.toUpperCase()}</p><h2 id="moderation-modal-title">{mode === 'resolve' ? 'Resolver reporte' : 'Suspender cuenta'}</h2><p className="muted">{user.name}{user.email ? ` · ${user.email}` : ''}</p></div>
+    <div className="moderation-modal-grid">
+      <div className="moderation-modal-context"><ModerationContext report={report} /><button type="button" className="secondary moderation-chat-toggle" onClick={() => setChatOpen(!chatOpen)}><MessageCircle size={17} /> {chatOpen ? 'Ocultar chat privado' : 'Abrir chat privado'}</button>{chatOpen && <section className="moderation-chat"><h3>Chat privado con {user.name}</h3><p className="muted">Mensajes del equipo de moderación · simulación local</p><div className="moderation-chat-thread" aria-live="polite">{chat.length ? chat.map(entry => <div className="moderation-chat-bubble" key={entry.id}><strong>Equipo de moderación{entry.action ? ` · ${entry.action}` : ''}</strong><p>{entry.text}</p></div>) : <p className="muted">Aún no hay mensajes en esta conversación.</p>}</div><form onSubmit={sendChat}><label htmlFor="moderation-chat-message">Nuevo mensaje</label><textarea id="moderation-chat-message" rows={3} maxLength={1000} value={chatText} onChange={event => { setChatText(event.target.value); setChatError('') }} placeholder="Escribe un mensaje privado..." />{chatError && <p className="form-error" role="alert">{chatError}</p>}<button className="secondary" type="submit"><Send size={16} /> Enviar mensaje</button></form></section>}</div>
+      <form className="moderation-decision" onSubmit={submit} noValidate><p className="eyebrow">{mode === 'resolve' ? 'DECISIÓN DEL REPORTE' : 'MEDIDA PARA LA CUENTA'}</p><h3>{mode === 'resolve' ? '¿Cómo quieres continuar?' : 'Elige la duración'}</h3>
+        {mode === 'resolve' ? <div className="moderation-choices"><label className={resolution === 'close' ? 'moderation-choice active' : 'moderation-choice'}><input type="radio" name="resolution" checked={resolution === 'close'} onChange={() => setResolution('close')} /><span><strong>Cerrar reporte</strong><small>Se revisó la cuenta y no se aplicará una medida.</small></span></label><label className={resolution === 'warning' ? 'moderation-choice active' : 'moderation-choice'}><input type="radio" name="resolution" checked={resolution === 'warning'} onChange={() => setResolution('warning')} /><span><strong>Enviar advertencia</strong><small>Se informa al usuario y se cierra el reporte.</small></span></label><label className={resolution === 'request' ? 'moderation-choice active' : 'moderation-choice'}><input type="radio" name="resolution" checked={resolution === 'request'} onChange={() => setResolution('request')} /><span><strong>Solicitar información</strong><small>Se envía un mensaje y el reporte sigue pendiente.</small></span></label></div> : <div className="moderation-choices"><label className={duration === 'temporary' ? 'moderation-choice active' : 'moderation-choice'}><input type="radio" name="duration" checked={duration === 'temporary'} onChange={() => setDuration('temporary')} /><span><strong>Suspensión temporal</strong><small>Elige cuántos días durará la medida.</small></span></label>{duration === 'temporary' && <label className="moderation-days">Días de suspensión<input type="number" min="1" max="3650" step="1" value={days} onChange={event => { setDays(event.target.value); setError('') }} /></label>}<label className={duration === 'permanent' ? 'moderation-choice active' : 'moderation-choice'}><input type="radio" name="duration" checked={duration === 'permanent'} onChange={() => setDuration('permanent')} /><span><strong>Baneo definitivo</strong><small>La cuenta permanecerá bloqueada hasta que se reactive manualmente.</small></span></label></div>}
+        <label className="moderation-message" htmlFor="moderation-decision-message">Mensaje para {user.name}<span>Obligatorio · mínimo 10 caracteres</span><textarea id="moderation-decision-message" rows={5} maxLength={1000} value={message} onChange={event => { setMessage(event.target.value); setError('') }} placeholder={mode === 'suspend' ? 'Explica el motivo y la duración de la suspensión...' : 'Explica la decisión al usuario...'} /></label>
+        {error && <p className="form-error" role="alert">{error}</p>}
+        <div className="moderation-modal-actions"><button type="button" className="secondary" onClick={onClose}>Cancelar</button><button type="submit" className="primary">{mode === 'suspend' ? 'Confirmar suspensión' : resolution === 'warning' ? 'Enviar advertencia' : resolution === 'request' ? 'Solicitar información' : 'Resolver reporte'}</button></div>
+      </form>
+    </div>
+  </article></div>
+}
 
 function SuspensionModal({ onClose, onConfirm }: { onClose: () => void; onConfirm: (status: string) => void }) { const [permanent, setPermanent] = useState(false); const [days, setDays] = useState('30'); return <div className="modal-backdrop"><div className="modal suspension-modal"><button className="close" onClick={onClose}>×</button><p className="eyebrow">ACCIÓN ADMINISTRATIVA</p><h2>Confirmar suspensión</h2><p className="muted">La cuenta perderá acceso durante el tiempo que definas.</p><div className="suspension-choice"><label>Duración en días<input type="number" min="1" max="3650" value={days} disabled={permanent} onChange={event => setDays(event.target.value)} /></label><label className="permanent-choice"><input type="checkbox" checked={permanent} onChange={event => setPermanent(event.target.checked)} /> Suspensión permanente</label></div><div className="suspension-warning">{permanent ? 'La cuenta no podrá acceder hasta que un administrador la reactive.' : `El acceso se bloqueará por ${days || '0'} días.`}</div><div className="modal-actions"><button className="secondary" onClick={onClose}>Cancelar</button><button className="primary" onClick={() => onConfirm(permanent ? 'Suspendido · Permanente' : `Suspendido · ${days} días`)}>Confirmar suspensión</button></div></div></div> }
 
@@ -235,13 +410,33 @@ function CommunityView() {
   const [posts, setPosts] = useState<CommunityPost[]>(() => JSON.parse(localStorage.getItem('petsuite-posts') || 'null') || initialPosts)
   const [filter, setFilter] = useState<'Todos' | PostType>('Todos')
   const [showComposer, setShowComposer] = useState(false)
+  const [reporting, setReporting] = useState<string | null>(null)
   const [commenting, setCommenting] = useState<string | null>(null)
   const visiblePosts = posts.filter(post => filter === 'Todos' || post.type === filter)
   const save = (next: CommunityPost[]) => { setPosts(next); localStorage.setItem('petsuite-posts', JSON.stringify(next)) }
   const react = (id: string) => save(posts.map(post => post.id === id ? { ...post, reacted: !post.reacted, reactions: post.reactions + (post.reacted ? -1 : 1) } : post))
   const addComment = (id: string, text: string) => save(posts.map(post => post.id === id ? { ...post, comments: [...post.comments, { id: crypto.randomUUID(), author: 'Ana Soto', text }] } : post))
-  const report = (id: string) => save(posts.map(post => post.id === id ? { ...post, reported: true } : post))
-  return <section className="page community-page"><div className="page-title"><div><p className="eyebrow">COMUNIDAD PETSUITE</p><h1>Muro comunal</h1><p className="muted">Comparte, encuentra y ayuda a otros tutores de tu comuna.</p></div><button className="primary" onClick={() => setShowComposer(true)}><CirclePlus size={17} /> Publicar</button></div><div className="community-intro"><div className="intro-icon"><Users size={20} /></div><div><strong>Una comunidad que se cuida</strong><p>Juntos podemos hacer que cada mascota vuelva a casa.</p></div></div><div className="community-filters">{(['Todos', 'Extravío', 'Encuentro', 'Recomendación'] as const).map(value => <button key={value} className={filter === value ? 'category-tab active' : 'category-tab'} onClick={() => setFilter(value)}>{value}</button>)}</div><div className="community-feed">{visiblePosts.map(post => <PostCard key={post.id} post={post} onReact={() => react(post.id)} onComment={() => setCommenting(commenting === post.id ? null : post.id)} onReport={() => report(post.id)} showComment={commenting === post.id} onAddComment={text => addComment(post.id, text)} />)}{visiblePosts.length === 0 && <div className="empty-results">Todavía no hay publicaciones de este tipo.</div>}</div>{showComposer && <PostComposer onClose={() => setShowComposer(false)} onSave={post => { save([post, ...posts]); setShowComposer(false) }} />}</section>
+  const report = (id: string, text: string) => {
+    const messages = JSON.parse(localStorage.getItem('petsuite-moderation-post-messages') || '{}') as Record<string, { author: string; text: string }[]>
+    messages[id] = [...(messages[id] || []), { author: 'Ana Soto', text }]
+    localStorage.setItem('petsuite-moderation-post-messages', JSON.stringify(messages))
+    save(posts.map(post => post.id === id ? { ...post, reported: true } : post))
+    setReporting(null)
+  }
+  const reportedPost = posts.find(post => post.id === reporting)
+  return <section className="page community-page"><div className="page-title"><div><p className="eyebrow">COMUNIDAD PETSUITE</p><h1>Muro comunal</h1><p className="muted">Comparte, encuentra y ayuda a otros tutores de tu comuna.</p></div><button className="primary" onClick={() => setShowComposer(true)}><CirclePlus size={17} /> Publicar</button></div><div className="community-intro"><div className="intro-icon"><Users size={20} /></div><div><strong>Una comunidad que se cuida</strong><p>Juntos podemos hacer que cada mascota vuelva a casa.</p></div></div><div className="community-filters">{(['Todos', 'Extravío', 'Encuentro', 'Recomendación'] as const).map(value => <button key={value} className={filter === value ? 'category-tab active' : 'category-tab'} onClick={() => setFilter(value)}>{value}</button>)}</div><div className="community-feed">{visiblePosts.map(post => <PostCard key={post.id} post={post} onReact={() => react(post.id)} onComment={() => setCommenting(commenting === post.id ? null : post.id)} onReport={() => setReporting(post.id)} showComment={commenting === post.id} onAddComment={text => addComment(post.id, text)} />)}{visiblePosts.length === 0 && <div className="empty-results">Todavía no hay publicaciones de este tipo.</div>}</div>{showComposer && <PostComposer onClose={() => setShowComposer(false)} onSave={post => { save([post, ...posts]); setShowComposer(false) }} />}{reportedPost && <ReportPostModal post={reportedPost} onClose={() => setReporting(null)} onSave={text => report(reportedPost.id, text)} />}</section>
+}
+
+function ReportPostModal({ post, onClose, onSave }: { post: CommunityPost; onClose: () => void; onSave: (message: string) => void }) {
+  const [message, setMessage] = useState('')
+  const [error, setError] = useState('')
+  const submit = (event: React.FormEvent) => {
+    event.preventDefault()
+    const result = moderationMessageSchema.safeParse(message)
+    if (!result.success) { setError(result.error.issues[0]?.message || 'Explica el reporte'); return }
+    onSave(result.data)
+  }
+  return <div className="modal-backdrop"><form className="modal report-post-modal" onSubmit={submit} noValidate><button type="button" className="close" aria-label="Cerrar reporte" onClick={onClose}><X size={20} /></button><p className="eyebrow">REPORTAR PUBLICACIÓN</p><h2>Cuéntanos qué pasó</h2><p className="muted">Tu mensaje ayudará al equipo de moderación a revisar “{post.title}”.</p><label htmlFor="report-post-reason">Motivo del reporte<textarea id="report-post-reason" rows={5} maxLength={1000} value={message} onChange={event => { setMessage(event.target.value); setError('') }} placeholder="Describe lo sucedido..." /></label>{error && <p className="form-error" role="alert">{error}</p>}<div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Cancelar</button><button className="primary" type="submit">Enviar reporte</button></div></form></div>
 }
 
 function PostCard({ post, onReact, onComment, onReport, showComment, onAddComment }: { post: CommunityPost; onReact: () => void; onComment: () => void; onReport: () => void; showComment: boolean; onAddComment: (text: string) => void }) { const [text, setText] = useState(''); const submit = (event: React.FormEvent) => { event.preventDefault(); const result = communityCommentSchema.safeParse({ text }); if (!result.success) return; onAddComment(text); setText('') }; return <article className="community-post"><div className="post-top"><div className="post-avatar">{post.initials}</div><div><strong>{post.author}</strong><small>{post.time} · {post.location}</small></div></div><span className={`post-type ${post.type === 'Extravío' ? 'lost' : post.type === 'Encuentro' ? 'found' : 'recommendation'}`}>{post.type.toUpperCase()}</span><h3>{post.title}</h3><p>{post.body}</p>{post.reported && <div className="reported-note">Publicación reportada para revisión</div>}<div className="post-actions"><button className={post.reacted ? 'reacted' : ''} onClick={onReact}><Heart size={16} fill={post.reacted ? 'currentColor' : 'none'} /> {post.reactions}</button><button onClick={onComment}><MessageCircle size={16} /> {post.comments.length} comentarios</button><button onClick={onReport}>Reportar</button></div>{post.comments.length > 0 && <div className="comments">{post.comments.map(comment => <div className="comment" key={comment.id}><strong>{comment.author}</strong><span>{comment.text}</span></div>)}</div>}{showComment && <form className="comment-form" onSubmit={submit}><input aria-label="Comentario" value={text} onChange={event => setText(event.target.value)} placeholder="Escribe un comentario..." /><button className="primary">Enviar</button></form>}</article> }
@@ -261,8 +456,24 @@ function TabbedSettingsView({ profile, setProfile, theme, setTheme, mode, setMod
   const [draftTheme, setDraftTheme] = useState(theme)
   const [draftMode, setDraftMode] = useState(mode)
   const [draftBrightness, setDraftBrightness] = useState(brightness)
-  useEffect(() => { const dark = draftMode === 'dark' || (draftMode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches); document.documentElement.dataset.theme = draftTheme; document.documentElement.dataset.mode = dark ? 'dark' : 'light'; setBrightnessVariables(draftBrightness) }, [draftTheme, draftMode, draftBrightness])
-  useEffect(() => () => { const dark = mode === 'dark' || (mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches); document.documentElement.dataset.theme = theme; document.documentElement.dataset.mode = dark ? 'dark' : 'light'; setBrightnessVariables(brightness) }, [])
+  useEffect(() => {
+    if (section !== 'appearance') return
+    const preview = () => applyAppearance(draftTheme, draftMode, draftBrightness)
+    preview()
+    if (draftMode === 'system') {
+      const media = window.matchMedia('(prefers-color-scheme: dark)')
+      media.addEventListener('change', preview)
+      return () => { media.removeEventListener('change', preview); applyAppearance(theme, mode, brightness) }
+    }
+    return () => applyAppearance(theme, mode, brightness)
+  }, [section, draftTheme, draftMode, draftBrightness, theme, mode, brightness])
+  useEffect(() => {
+    if (section !== 'appearance') {
+      setDraftTheme(theme)
+      setDraftMode(mode)
+      setDraftBrightness(brightness)
+    }
+  }, [section, theme, mode, brightness])
   const saveProfile = (event: React.FormEvent) => { event.preventDefault(); setProfile({ ...draft, avatar: draft.name.split(' ').map(part => part[0]).join('').slice(0, 2).toUpperCase() }); setSaved(true); window.setTimeout(() => setSaved(false), 2200) }
   const toggle = (key: 'notifications' | 'publicProfile', value: boolean) => { if (key === 'notifications') { setNotifications(value); localStorage.setItem('petsuite-notifications', String(value)) } else { setPublicProfile(value); localStorage.setItem('petsuite-public-profile', String(value)) } }
   const confirmAppearance = () => { setTheme(draftTheme); setMode(draftMode); setBrightness(draftBrightness); setSaved(true); window.setTimeout(() => setSaved(false), 2200) }

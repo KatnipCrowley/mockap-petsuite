@@ -10,7 +10,31 @@ export type Pet = {
   color: string
   initials: string
   allergies: string[]
+  conditions?: string[]
+  medications?: string[]
+  emergencyNotes?: string
+  medicalHistory?: MedicalEntry[]
   qrActive: boolean
+}
+
+export type MedicalEntry = {
+  id: string
+  date: string
+  type: 'Vacuna' | 'Atención' | 'Tratamiento'
+  title: string
+  notes: string
+}
+
+export type PublicPet = {
+  version: 1
+  id: string
+  name: string
+  species: string
+  breed: string
+  initials: string
+  allergies: string[]
+  conditions: string[]
+  emergencyNotes: string
 }
 
 export type DemoUser = { name: string; email: string; role: UserRole; label: string }
