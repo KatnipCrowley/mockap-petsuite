@@ -77,3 +77,33 @@ Antes de finalizar cualquier cambio, se debe agregar una entrada con:
 - Cambio realizado: se agregó buscador de usuarios, pestañas por estado, lista administrativa visual, suspensión personalizada o permanente mediante tarjeta de confirmación y reactivación de cuentas.
 - Motivo: mejorar el control administrativo de usuarios y hacer más clara la moderación de cuentas reportadas o activas.
 - Verificación ejecutada: `npm run build` ejecutado correctamente.
+
+## 2026-09-23
+
+### Identidad de suite y jerarquía visual
+
+- Archivos modificados: `src/App.tsx`, `src/styles.css`, `package.json`, `package-lock.json`, `Agents.md`.
+- Cambio realizado: se sustituyó la identidad clínica de la cuenta Pyme por una tienda con catálogo de productos; se ajustó el acceso y la portada para destacar el QR de emergencia, las mascotas y la comunidad. Se incorporaron iconos Lucide a la navegación y vistas principales, separadores estructurales y enlaces funcionales desde Inicio.
+- Motivo: representar PetSuite como plataforma de herramientas para mascotas, sin confundir el rol comercial con el clínico, y mejorar la legibilidad de las vistas sin usar caracteres decorativos como iconos.
+- Verificación ejecutada: `npm run build` y `git diff --check` correctamente.
+
+### Revisión de composición y legibilidad de las cinco vistas de tutor
+
+- Archivos modificados: `src/App.tsx`, `src/styles.css`, `Agents.md`.
+- Cambio realizado: se sustituyó el fondo rosado general por una paleta neutra con paneles contrastados, navegación oscura fija, encabezados y textos más legibles. Inicio y mascotas ahora agrupan sus fichas en paneles; directorio separa resultados y mapa; comunidad aprovecha el ancho en columnas y configuración tiene navegación y formulario en superficies independientes. Se ajustó la presentación móvil y el modo oscuro, y se cambiaron los tonos coral y ámbar de bajo contraste.
+- Motivo: corregir la falta de jerarquía, separación, contraste y densidad que impedía leer y distinguir las herramientas de PetSuite.
+- Verificación ejecutada: `npm run build`, `git diff --check` y cálculo de contraste de los pares de texto principales (mínimo medido: 5,29:1).
+
+### Paleta coherente en modo oscuro
+
+- Archivos modificados: `src/styles.css`, `Agents.md`.
+- Cambio realizado: se unificaron encabezado, tarjetas, campos y opciones de apariencia con las superficies azul verdosas del modo oscuro; el color elegido se conserva en botones y selecciones, con una versión aclarada para textos y contornos.
+- Motivo: eliminar los fondos marrones heredados y evitar que el texto del acento desaparezca sobre superficies oscuras.
+- Verificación ejecutada: `npm run build`, `git diff --check` y cálculo de contraste de los diez acentos aclarados sobre el panel oscuro (mínimo: 5,02:1).
+
+### Acceso a cerrar sesión desde Perfil
+
+- Archivos modificados: `src/App.tsx`, `src/styles.css`, `Agents.md`.
+- Cambio realizado: se presenta la acción de cerrar sesión al visualizar Perfil y se oculta de Privacidad, manteniendo su posición bajo el formulario en pantallas grandes y pequeñas.
+- Motivo: agrupar la salida de la cuenta junto a los datos de perfil y reservar Privacidad para opciones de visibilidad.
+- Verificación ejecutada: `npm run build` y `git diff --check` correctamente.
