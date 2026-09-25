@@ -152,3 +152,11 @@ Antes de finalizar cualquier cambio, se debe agregar una entrada con:
 - Cambio realizado: se configuró la verificación de PR y el despliegue automático de `main` a GitHub Pages; se adaptaron recursos, PWA y enlaces QR a la subruta `/mockap-petsuite/`.
 - Motivo: publicar el mockup sin romper la ficha pública de emergencia ni las rutas de la aplicación.
 - Verificación ejecutada: `node --test src/publicQr.test.mjs` (4 pruebas), `npm run build -- --base=/mockap-petsuite/`, inspección de `dist/index.html` y `git diff --check` correctamente.
+
+### Avisos de cambios y fallos de Pages en Discord
+
+- Fecha: 2026-09-24.
+- Archivos modificados o agregados: `.github/workflows/discord-notifications.yml`, `.github/scripts/notify-discord.mjs`, `Agents.md`.
+- Cambio realizado: se agregaron avisos en Markdown sin embeds al grupo configurado mediante `DISCORD_TOKEN` (secret) y `DISCORD_CHANNEL` (variable) cuando hay pushes a `main` o falla una publicación de Pages en `main`; las menciones quedan desactivadas.
+- Motivo: informar cambios y errores de despliegue en la conversación indicada sin incluir credenciales en el repositorio.
+- Verificación ejecutada: `node --check .github/scripts/notify-discord.mjs` y `git diff --check` correctamente.
