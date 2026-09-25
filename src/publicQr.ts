@@ -17,11 +17,11 @@ export function toPublicPet(pet: Pet): PublicPet {
   })
 }
 
-export function createPublicQrUrl(pet: Pet, origin: string): string {
+export function createPublicQrUrl(pet: Pet, baseUrl: string): string {
   const bytes = new TextEncoder().encode(JSON.stringify(toPublicPet(pet)))
   const encoded = btoa(Array.from(bytes, byte => String.fromCharCode(byte)).join(''))
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-  return `${origin}/#emergency/v1/${encoded}`
+  return new URL(`#emergency/v1/${encoded}`, baseUrl).href
 }
 
 export function readPublicQr(hash: string): PublicPet | null {

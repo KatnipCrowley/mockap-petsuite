@@ -48,3 +48,9 @@ test('a generated QR is a snapshot and editing the pet requires a new QR', () =>
   assert.deepEqual(readPublicQr(oldHash).allergies, ['Pollo'])
   assert.deepEqual(readPublicQr(changedHash).allergies, ['Pollo', 'Abejas'])
 })
+
+test('a QR on GitHub Pages keeps the repository path', () => {
+  const url = new URL(createPublicQrUrl(pet, 'https://example.github.io/mockap-petsuite/'))
+  assert.equal(url.pathname, '/mockap-petsuite/')
+  assert.equal(readPublicQr(url.hash).name, pet.name)
+})

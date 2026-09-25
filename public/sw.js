@@ -1,7 +1,8 @@
-const CACHE_NAME = 'petsuite-shell-v2'
+const CACHE_NAME = 'petsuite-shell-v3'
+const APP_URL = self.registration.scope
 
 self.addEventListener('install', event => {
-  event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(['/'])));
+  event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll([APP_URL])));
   self.skipWaiting();
 })
 
@@ -15,7 +16,7 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return
   if (event.request.mode === 'navigate') {
-    event.respondWith(fetch(event.request).catch(() => caches.match('/')))
+    event.respondWith(fetch(event.request).catch(() => caches.match(APP_URL)))
     return
   }
   event.respondWith(caches.match(event.request).then(cached => cached || fetch(event.request)))

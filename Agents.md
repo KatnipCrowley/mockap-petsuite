@@ -144,3 +144,11 @@ Antes de finalizar cualquier cambio, se debe agregar una entrada con:
 - Cambio realizado: las mascotas permiten editar datos básicos, alergias, condiciones, medicamentos y notas de emergencia; se agregó un historial privado de vacunas, atenciones y tratamientos. El tutor controla si puede generar el QR, previsualizar y compartir la ficha, descargar PNG e imprimirlo. El enlace QR lleva exclusivamente una instantánea validada de campos públicos, por lo que la ficha abre sin cuenta ni `localStorage` del tutor en otro dispositivo; enlaces inválidos no exponen la ficha privada. El formulario de contacto queda identificado como demo local, con sus mensajes visibles solo en el navegador donde se guardaron. Se renovó el caché PWA para no servir la aplicación antigua al abrir un QR.
 - Motivo: completar el núcleo de salud y seguridad del producto sin confundir una simulación local con un sistema de contacto o revocación remota.
 - Verificación ejecutada: `node --test src/publicQr.test.mjs` (3 pruebas), `npm run build` y `git diff --check` correctamente.
+
+### Publicación del mockup en GitHub Pages
+
+- Fecha: 2026-09-24.
+- Archivos modificados o agregados: `.github/workflows/pages.yml`, `index.html`, `src/main.tsx`, `src/App.tsx`, `src/publicQr.ts`, `src/publicQr.test.mjs`, `public/manifest.webmanifest`, `public/sw.js`, `tsconfig.app.json`, `Agents.md`.
+- Cambio realizado: se configuró la verificación de PR y el despliegue automático de `main` a GitHub Pages; se adaptaron recursos, PWA y enlaces QR a la subruta `/mockap-petsuite/`.
+- Motivo: publicar el mockup sin romper la ficha pública de emergencia ni las rutas de la aplicación.
+- Verificación ejecutada: `node --test src/publicQr.test.mjs` (4 pruebas), `npm run build -- --base=/mockap-petsuite/`, inspección de `dist/index.html` y `git diff --check` correctamente.
