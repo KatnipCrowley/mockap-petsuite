@@ -1,0 +1,43 @@
+/* Estilos por pantalla: inicio del tutor y ficha pública del QR. Usa los tokens de design.css. */
+
+/* Inicio del tutor: mascota destacada */
+.pet-hero { display: grid; grid-template-columns: 220px 1fr; gap: var(--space-5); align-items: center; background: var(--color-bg-surface); border: 1px solid var(--color-border-subtle); border-radius: var(--radius-xl); box-shadow: var(--shadow-md); padding: var(--space-4); margin-bottom: var(--space-4); }
+.pet-hero-photo { width: 220px; height: 220px; border-radius: var(--radius-lg); font-size: 3rem; }
+.pet-hero-body { display: grid; gap: var(--space-2); justify-items: start; padding-right: var(--space-4); }
+.pet-hero-body h2 { font-size: clamp(1.8rem, 1.3rem + 1.5vw, 2.5rem); margin: 0; }
+.pet-hero-body .muted { margin: 0; }
+.pet-hero-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: var(--space-2) 0 var(--space-3); }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: var(--radius-pill); font-size: 0.78rem; font-weight: 650; border: 1px solid transparent; }
+.chip-ok { background: var(--color-success-soft); color: var(--color-status-success); }
+.chip-warn { background: var(--color-warm-soft); color: var(--color-warm-strong); }
+[data-mode="dark"] .chip-warn { color: var(--color-warm); }
+.chip-alert { background: var(--color-danger-soft); color: var(--color-danger); }
+[data-mode="dark"] .chip-alert { color: #ff9c90; }
+.chip-info { background: var(--color-info-soft); color: var(--color-accent-solid); }
+@media (max-width: 640px) {
+  .pet-hero { grid-template-columns: 1fr; }
+  .pet-hero-photo { width: 100%; height: 220px; }
+  .pet-hero-body { padding: 0 var(--space-2) var(--space-2); }
+}
+
+/* Ficha pública del QR: lo crítico primero y con alto contraste */
+.public-emergency-card { width: min(100%, 480px); padding: 0 var(--space-5) var(--space-5); overflow: hidden; border-radius: var(--radius-xl); box-shadow: var(--shadow-lg); }
+.public-emergency-brand { padding: var(--space-4) 0; display: flex; align-items: center; gap: 8px; font-family: var(--font-display); font-weight: 800; }
+.public-emergency-brand > span:last-child { margin-left: auto; font: 700 0.68rem var(--font-body); letter-spacing: 0.08em; color: var(--color-text-muted); }
+.emergency-hero { position: relative; margin: 0 calc(-1 * var(--space-5)) var(--space-4); }
+.emergency-hero .emergency-pet-photo { width: 100%; height: 260px; margin: 0; border-radius: 0; }
+.emergency-hero-text { position: absolute; inset: auto 0 0 0; padding: 56px var(--space-5) var(--space-4); background: linear-gradient(180deg, transparent, rgb(6 20 18 / 88%)); }
+.emergency-hero-text h1, .emergency-hero-text p { color: #fff; margin: 0; }
+.emergency-hero-text .eyebrow { color: var(--color-warm); }
+.emergency-hero-text h1 { font-size: 2.2rem; }
+.emergency-alert { display: flex; gap: var(--space-3); align-items: flex-start; background: var(--color-danger-soft); border: 1px solid color-mix(in srgb, var(--color-danger) 35%, transparent); border-left: 5px solid var(--color-danger); border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); margin-bottom: var(--space-4); color: var(--color-danger); }
+.emergency-alert strong { display: block; text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.75rem; }
+.emergency-alert p { margin: 2px 0 0; color: var(--color-text-primary); font-weight: 650; font-size: 1.02rem; }
+.public-emergency-facts { display: grid; gap: var(--space-2); margin-bottom: var(--space-4); }
+.public-emergency-facts > div { background: var(--color-bg-subtle); border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); }
+.public-emergency-facts strong { font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-text-muted); }
+.public-emergency-facts p { margin: 2px 0 0; color: var(--color-text-primary); font-weight: 600; }
+.public-contact-demo form { display: grid; gap: var(--space-3); }
+.public-contact-demo label { display: grid; gap: 6px; }
+.public-contact-demo input, .public-contact-demo textarea { padding: 11px 14px; min-height: 44px; font-size: 0.95rem; }
+.public-contact-demo { border-top: 1px solid var(--color-border-subtle); padding-top: var(--space-4); }

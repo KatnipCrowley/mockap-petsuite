@@ -9,7 +9,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@fontsource-variable/inter": "^5.3.0",
+    "@fontsource-variable/plus-jakarta-sans": "^5.3.0",
     "@tailwindcss/vite": "^4.1.14",
+    "leaflet": "^1.9.4",
     "lucide-react": "^1.47.0",
     "qrcode": "^1.5.4",
     "react": "^19.1.1",
@@ -17,6 +20,7 @@
     "zod": "^4.1.12"
   },
   "devDependencies": {
+    "@types/leaflet": "^1.9.22",
     "@types/qrcode": "^1.5.5",
     "@types/react": "^19.1.13",
     "@types/react-dom": "^19.1.9",

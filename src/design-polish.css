@@ -1,0 +1,74 @@
+/* Pulido general: logotipo, métricas, banners de rol, estados vacíos, carga y muro. Usa los tokens de design.css. */
+
+/* Logotipo */
+.brand-mark { background: none; box-shadow: none; padding: 0; width: 36px; height: 36px; display: inline-grid; place-items: center; border-radius: 10px; overflow: hidden; }
+.brand-mark svg { width: 100%; height: 100%; display: block; }
+.brand > span:last-child { font-size: 1.25rem; }
+
+/* Banner de bienvenida de Pyme y ONG */
+.business-welcome { background: linear-gradient(120deg, var(--color-sidebar-bg), color-mix(in srgb, var(--color-accent-solid) 60%, var(--color-sidebar-bg))); border-radius: var(--radius-xl); box-shadow: var(--shadow-md); padding: var(--space-6) var(--space-6); color: #fff; align-items: center; }
+.business-welcome h1 { color: #fff; margin: 4px 0 6px; }
+.business-welcome p { color: rgb(255 255 255 / 82%); margin: 0; }
+.business-welcome .eyebrow { color: var(--color-warm); }
+.business-welcome > svg { color: var(--color-warm); opacity: .95; }
+
+/* Tarjetas de métricas */
+.metric-card { position: relative; display: grid; gap: 4px; padding: var(--space-4) var(--space-5); background: var(--color-bg-surface); border: 1px solid var(--color-border-subtle); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); overflow: hidden; }
+.metric-card::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 4px; background: linear-gradient(180deg, var(--color-accent-solid), var(--color-warm)); }
+.metric-card small { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-text-muted); }
+.metric-card strong { font-family: var(--font-display); font-size: 2.2rem; line-height: 1.1; font-weight: 800; color: var(--color-text-primary); }
+.metric-card span { font-size: 0.8rem; color: var(--color-status-success); font-weight: 600; }
+
+/* Muro comunal */
+.community-post { border-left: 4px solid var(--color-accent-solid); }
+.community-intro select { background: rgb(255 255 255 / 12%); color: #fff; border: 1px solid rgb(255 255 255 / 30%); border-radius: var(--radius-pill); padding: 8px 14px; font-weight: 600; box-shadow: none; }
+.community-intro select option { color: #13211f; background: #fff; }
+.community-intro { background: linear-gradient(120deg, var(--color-sidebar-bg), color-mix(in srgb, var(--color-accent-solid) 55%, var(--color-sidebar-bg))); border-radius: var(--radius-xl); }
+.community-intro strong, .community-intro p { color: #fff; }
+.community-intro .intro-icon { background: rgb(255 255 255 / 16%); color: #fff; }
+.post-avatar { background: linear-gradient(140deg, var(--color-accent-solid), var(--color-accent-strong)); color: #fff; font-weight: 700; }
+
+/* Estados vacíos */
+.empty-results { display: grid; justify-items: center; gap: var(--space-2); text-align: center; padding: var(--space-7) var(--space-5); color: var(--color-text-secondary); background: var(--color-bg-surface); border: 1px dashed var(--color-border-subtle); border-radius: var(--radius-lg); font-weight: 550; }
+.empty-results::before { content: ''; width: 64px; height: 64px; border-radius: 50%; background: var(--color-bg-subtle) center / 30px no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230e7c72' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M22 12h-6l-2 3h-4l-2-3H2'/%3E%3Cpath d='M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z'/%3E%3C/svg%3E"); }
+
+/* Marcadores de carga */
+@keyframes ps-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+.skeleton { background: linear-gradient(90deg, var(--color-bg-subtle) 25%, color-mix(in srgb, var(--color-bg-subtle) 55%, var(--color-bg-surface)) 50%, var(--color-bg-subtle) 75%); background-size: 200% 100%; animation: ps-shimmer 1.4s linear infinite; border-radius: var(--radius-sm); }
+.skeleton-list { display: grid; gap: var(--space-3); padding: var(--space-5) 0; }
+.skeleton-card { display: flex; gap: var(--space-4); align-items: center; padding: var(--space-4); background: var(--color-bg-surface); border: 1px solid var(--color-border-subtle); border-radius: var(--radius-lg); }
+.skeleton-photo { width: 72px; height: 72px; border-radius: var(--radius-md); flex: none; }
+.skeleton-lines { flex: 1; display: grid; gap: 10px; }
+.skeleton-line { height: 12px; }
+.skeleton-line.w60 { width: 60%; } .skeleton-line.w40 { width: 40%; } .skeleton-line.w80 { width: 80%; }
+@media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } }
+
+/* Listas de gestión (animales, catálogo, solicitudes) */
+.catalog-list { max-width: none; }
+.catalog-item { border-radius: var(--radius-lg); box-shadow: var(--shadow-xs); }
+.catalog-item strong { font-size: 1rem; }
+.catalog-item p { font-size: 0.88rem; }
+.catalog-item small { font-size: 0.78rem; color: var(--color-text-muted); }
+.catalog-item-main { flex: 1; min-width: 0; }
+.catalog-item .small-photo.has-photo { width: 64px; height: 64px; }
+
+/* Muro: el color del borde depende del tipo de publicación */
+.community-post, .community-post:first-child { border-inline-start: 4px solid var(--color-accent-solid); }
+.community-post:has(.post-type.lost) { border-inline-start-color: var(--color-danger); }
+.community-post:has(.post-type.found) { border-inline-start-color: var(--color-warm); }
+.sidebar .brand > span:last-child { font-size: 1.4rem; }
+
+@media (max-width: 800px) { .art-footer { display: none; } .login-art { padding-bottom: var(--space-6); } }
+
+/* Microinteracciones */
+.pet-card, .business-card, .metric-card { transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease; }
+button.pet-card:hover, button.business-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); border-color: color-mix(in srgb, var(--color-accent-solid) 45%, var(--color-border-subtle)); }
+.modal-backdrop { animation: ps-fade .18s ease; }
+.modal { animation: ps-rise .22s ease; }
+@keyframes ps-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ps-rise { from { opacity: 0; transform: translateY(12px) scale(.98); } to { opacity: 1; transform: none; } }
+.main-content > .page { animation: ps-fade .25s ease; }
+@media (prefers-reduced-motion: reduce) { .modal, .modal-backdrop, .main-content > .page { animation: none; } button.pet-card:hover, button.business-card:hover { transform: none; } }
+
+/* Barra de iconos en pantallas angostas: solo quedan el logotipo, el avatar y los iconos. */
+@media (max-width: 800px) { .sidebar .brand > span:last-child, .sidebar .profile-mini > div { display: none; } .sidebar .brand, .sidebar .profile-mini { justify-content: center; padding-inline: 0; margin-inline: 0; } }
