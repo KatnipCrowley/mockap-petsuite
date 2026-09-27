@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="PetSuite">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#17a394"/>
+      <stop offset="1" stop-color="#0a5c55"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="116" fill="url(#bg)"/>
+  <circle cx="256" cy="112" r="34" fill="none" stroke="#fff" stroke-width="22"/>
+  <circle cx="256" cy="296" r="148" fill="#fff"/>
+  <g fill="#0e7c72">
+    <ellipse cx="256" cy="336" rx="62" ry="48"/>
+    <ellipse cx="186" cy="268" rx="22" ry="30" transform="rotate(-22 186 268)"/>
+    <ellipse cx="230" cy="226" rx="22" ry="32" transform="rotate(-6 230 226)"/>
+    <ellipse cx="282" cy="226" rx="22" ry="32" transform="rotate(6 282 226)"/>
+    <ellipse cx="326" cy="268" rx="22" ry="30" transform="rotate(22 326 268)"/>
+  </g>
+  <circle cx="356" cy="182" r="20" fill="#f28c28"/>
+</svg>

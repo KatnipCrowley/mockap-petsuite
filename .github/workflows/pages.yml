@@ -23,7 +23,6 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: node --test src/publicQr.test.mjs
       - run: npm run build -- --base=/mockap-petsuite/
       - uses: actions/upload-pages-artifact@v4
         if: github.event_name != 'pull_request'

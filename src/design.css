@@ -1,0 +1,191 @@
+﻿/* PetSuite — sistema de diseño. Se carga después de styles.css y define la identidad visual:
+   tokens de color, tipografía, espaciado, radios y sombras, y el aspecto base de botones, tarjetas y formularios. */
+
+:root {
+  /* Tipografía */
+  --font-body: 'Inter Variable', Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Plus Jakarta Sans Variable', 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+
+  /* Escala de espaciado, radios y sombras */
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 24px; --space-6: 32px; --space-7: 48px;
+  --radius-sm: 8px; --radius-md: 12px; --radius-lg: 16px; --radius-xl: 22px; --radius-pill: 999px;
+  --shadow-xs: 0 1px 2px rgb(16 32 30 / 6%);
+  --shadow-sm: 0 1px 3px rgb(16 32 30 / 8%), 0 1px 2px rgb(16 32 30 / 5%);
+  --shadow-md: 0 8px 24px -8px rgb(16 32 30 / 14%), 0 2px 6px rgb(16 32 30 / 6%);
+  --shadow-lg: 0 24px 48px -16px rgb(16 32 30 / 22%);
+  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--color-accent-solid) 30%, transparent);
+
+  /* Marca: verde azulado profundo + acento cálido para llamadas de atención */
+  --color-warm: #f28c28;
+  --color-warm-soft: #fff1e0;
+  --color-warm-strong: #a4570b;
+  --color-danger: #c0392b;
+  --color-danger-soft: #fdeceb;
+  --color-success-soft: #e6f4ec;
+  --color-info-soft: #e4f1f4;
+}
+
+/* Tema base de la marca. Los demás temas solo cambian el acento; las superficies son neutras en todos. */
+:root, :root[data-theme] {
+  font-family: var(--font-body);
+  --color-accent-solid: #0e7c72;
+  --color-accent-strong: #0a5c55;
+  --color-accent-on-solid: #ffffff;
+  --color-bg-page: #f4f7f6;
+  --color-bg-page-adjusted: #f4f7f6;
+  --color-bg-surface: #ffffff;
+  --color-bg-surface-adjusted: #ffffff;
+  --color-bg-subtle: #eaf3f1;
+  --color-border-subtle: #dde6e3;
+  --color-text-primary: #13211f;
+  --color-text-secondary: #4f625f;
+  --color-text-muted: #5b6d6a;
+  --color-sidebar-bg: #0b2b28;
+  --color-sidebar-selected: #ffffff;
+  --color-banner-bg: #0b2b28;
+  --color-status-success: #1d6b46;
+  --color-status-recommendation: #8a5a0f;
+  --red: var(--color-accent-solid);
+  --deep-red: var(--color-accent-strong);
+}
+:root[data-theme="original"] { --color-accent-solid: #0e7c72; --color-accent-strong: #0a5c55; --color-sidebar-bg: #0b2b28; --color-banner-bg: #0b2b28; }
+:root[data-theme="océano"]   { --color-accent-solid: #1a6fa0; --color-accent-strong: #115277; --color-sidebar-bg: #0c2536; --color-banner-bg: #0c2536; }
+:root[data-theme="bosque"]   { --color-accent-solid: #3a7d44; --color-accent-strong: #285c30; --color-sidebar-bg: #10281a; --color-banner-bg: #10281a; }
+:root[data-theme="lavanda"]  { --color-accent-solid: #6b4fbb; --color-accent-strong: #4f3894; --color-sidebar-bg: #1e1638; --color-banner-bg: #1e1638; }
+:root[data-theme="coral"]    { --color-accent-solid: #d4553f; --color-accent-strong: #a83c29; --color-sidebar-bg: #2e1612; --color-banner-bg: #2e1612; }
+:root[data-theme="vino"]     { --color-accent-solid: #8a3a55; --color-accent-strong: #672a40; --color-sidebar-bg: #2a141d; --color-banner-bg: #2a141d; }
+
+:root[data-mode="dark"], :root[data-mode="dark"][data-theme] {
+  --color-bg-page: #0d1514;
+  --color-bg-page-adjusted: #0d1514;
+  --color-bg-surface: #142220;
+  --color-bg-surface-adjusted: #142220;
+  --color-bg-subtle: #1b2d2a;
+  --color-border-subtle: #27403c;
+  --color-text-primary: #eaf2f0;
+  --color-text-secondary: #b3c6c2;
+  --color-text-muted: #9fb4b0;
+  --color-sidebar-bg: #08110f;
+  --color-banner-bg: #123833;
+  --color-status-success: #8fd4ac;
+  --color-status-recommendation: #f0ce81;
+  --color-warm-soft: #3a2a14;
+  --color-danger-soft: #3a1c19;
+  --color-success-soft: #14301f;
+  --color-info-soft: #14303a;
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 30%);
+  --shadow-sm: 0 1px 3px rgb(0 0 0 / 35%);
+  --shadow-md: 0 8px 24px -8px rgb(0 0 0 / 50%);
+}
+:root[data-mode="dark"] { --color-accent-solid: #34b3a4; --color-accent-strong: #5fd0c2; --color-accent-on-solid: #06201d; }
+:root[data-mode="dark"][data-theme="océano"]  { --color-accent-solid: #4aa8de; --color-accent-strong: #7cc3ec; }
+:root[data-mode="dark"][data-theme="bosque"]  { --color-accent-solid: #6cc27a; --color-accent-strong: #93d69d; }
+:root[data-mode="dark"][data-theme="lavanda"] { --color-accent-solid: #a58df0; --color-accent-strong: #c0adf6; }
+:root[data-mode="dark"][data-theme="coral"]   { --color-accent-solid: #f08670; --color-accent-strong: #f5a897; }
+:root[data-mode="dark"][data-theme="vino"]    { --color-accent-solid: #d47a98; --color-accent-strong: #e2a0b6; }
+
+html, body { background: var(--color-bg-page); color: var(--color-text-primary); font-family: var(--font-body); -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+body { font-size: 15px; line-height: 1.55; }
+[data-mode="dark"] .app-shell, [data-mode="dark"] .main-content { background: var(--color-bg-page); }
+
+/* Títulos: peso firme y sin compresión de letras, para leerse como marca y no como texto de sistema */
+h1, h2, h3, h4 { font-family: var(--font-display); font-weight: 700; letter-spacing: -0.01em; word-spacing: 0.04em; line-height: 1.15; color: var(--color-text-primary); }
+h1 { font-size: clamp(1.9rem, 1.4rem + 1.6vw, 2.6rem); letter-spacing: -0.02em; }
+h2 { font-size: clamp(1.3rem, 1.1rem + 0.7vw, 1.6rem); }
+h3 { font-size: 1.1rem; }
+p { color: var(--color-text-secondary); }
+
+/* Sobretítulo: menos ruido que las mayúsculas espaciadas en color de acento */
+.eyebrow { font-family: var(--font-body); font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-accent-solid); }
+[data-mode="dark"] .eyebrow { color: var(--color-accent-strong); }
+
+/* Botones */
+button, .primary, .secondary, .text-button { font-family: var(--font-body); }
+.primary { background: var(--color-accent-solid); color: var(--color-accent-on-solid); border: 1px solid transparent; border-radius: var(--radius-md); font-weight: 650; box-shadow: var(--shadow-xs), inset 0 1px 0 rgb(255 255 255 / 14%); transition: background .15s, box-shadow .15s, transform .15s; }
+.primary:hover:not(:disabled) { background: var(--color-accent-strong); box-shadow: var(--shadow-sm); transform: translateY(-1px); }
+.primary:active:not(:disabled) { transform: translateY(0); }
+[data-mode="dark"] .primary:hover:not(:disabled) { background: color-mix(in srgb, var(--color-accent-solid) 88%, #fff); }
+.secondary, .ghost { background: var(--color-bg-surface); color: var(--color-text-primary); border: 1px solid var(--color-border-subtle); border-radius: var(--radius-md); font-weight: 600; box-shadow: var(--shadow-xs); transition: background .15s, border-color .15s; }
+.secondary:hover:not(:disabled) { background: var(--color-bg-subtle); border-color: color-mix(in srgb, var(--color-accent-solid) 40%, var(--color-border-subtle)); }
+.text-button { color: var(--color-accent-solid); font-weight: 600; }
+[data-mode="dark"] .text-button { color: var(--color-accent-strong); }
+button:disabled { opacity: .55; cursor: not-allowed; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+/* Formularios */
+label { font-size: 0.85rem; font-weight: 600; color: var(--color-text-primary); }
+input, select, textarea { font-family: var(--font-body); background: var(--color-bg-surface); color: var(--color-text-primary); border: 1px solid var(--color-border-subtle); border-radius: var(--radius-md); box-shadow: var(--shadow-xs); transition: border-color .15s, box-shadow .15s; }
+input:hover, select:hover, textarea:hover { border-color: color-mix(in srgb, var(--color-accent-solid) 35%, var(--color-border-subtle)); }
+input:focus, select:focus, textarea:focus { border-color: var(--color-accent-solid); box-shadow: var(--focus-ring); outline: none; }
+[data-mode="dark"] input, [data-mode="dark"] select, [data-mode="dark"] textarea,
+[data-mode="dark"] .modal input, [data-mode="dark"] .modal select, [data-mode="dark"] .login-card input, [data-mode="dark"] .search-field input,
+[data-mode="dark"] .directory-toolbar select, [data-mode="dark"] .composer-label input, [data-mode="dark"] .composer-label textarea, [data-mode="dark"] .contact-label textarea { background: var(--color-bg-page); border-color: var(--color-border-subtle); color: var(--color-text-primary); }
+.form-error { background: var(--color-danger-soft); color: var(--color-danger); border: 1px solid color-mix(in srgb, var(--color-danger) 30%, transparent); border-radius: var(--radius-md); }
+
+/* Tarjetas y superficies */
+.pet-card, .detail-card, .business-card, .post-preview, .community-post, .settings-card, .map-header, .modal, .panel, .catalog-item, .stat-card, .metric-card {
+  background: var(--color-bg-surface); border: 1px solid var(--color-border-subtle); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm);
+}
+[data-mode="dark"] .sidebar, [data-mode="dark"] .topbar, [data-mode="dark"] .pet-card, [data-mode="dark"] .add-card, [data-mode="dark"] .detail-card, [data-mode="dark"] .business-card,
+[data-mode="dark"] .post-preview, [data-mode="dark"] .community-post, [data-mode="dark"] .settings-card, [data-mode="dark"] .map-header, [data-mode="dark"] .modal { background: var(--color-bg-surface); border-color: var(--color-border-subtle); }
+[data-mode="dark"] .sidebar { background: var(--color-sidebar-bg); }
+.modal { border-radius: var(--radius-xl); box-shadow: var(--shadow-lg); }
+
+/* Barra superior */
+.topbar { background: color-mix(in srgb, var(--color-bg-surface) 88%, transparent); backdrop-filter: saturate(1.4) blur(10px); border-bottom: 1px solid var(--color-border-subtle); }
+.topbar-context { font-weight: 600; color: var(--color-text-secondary); font-size: 0.85rem; }
+
+/* Navegación lateral */
+.sidebar { background: var(--color-sidebar-bg); border-right: 0; }
+.brand { font-family: var(--font-display); font-weight: 800; letter-spacing: -0.01em; }
+.brand-mark { background: linear-gradient(140deg, var(--color-accent-solid), color-mix(in srgb, var(--color-accent-solid) 60%, var(--color-warm))); color: #fff; border-radius: 11px; box-shadow: 0 4px 12px -4px rgb(0 0 0 / 45%); }
+.brand > span:last-child > span { color: var(--color-warm); }
+.sidebar .brand { color: #fff; }
+.nav-item { border-radius: var(--radius-md); color: rgb(255 255 255 / 72%); font-weight: 550; transition: background .15s, color .15s; }
+.nav-item:hover { background: rgb(255 255 255 / 8%); color: #fff; }
+.nav-item.active { background: rgb(255 255 255 / 14%); color: #fff; box-shadow: inset 3px 0 0 var(--color-warm); }
+.nav-item.active .nav-icon { color: var(--color-warm); }
+.profile-mini { border-color: rgb(255 255 255 / 10%); }
+.profile-mini small { color: rgb(255 255 255 / 60%); }
+.avatar { background: linear-gradient(140deg, var(--color-accent-solid), var(--color-accent-strong)); color: #fff; font-family: var(--font-display); font-weight: 700; }
+
+/* Banner de aviso del inicio */
+.hero-banner, .alert-banner, .notice-banner { background: linear-gradient(120deg, var(--color-sidebar-bg), color-mix(in srgb, var(--color-accent-solid) 55%, var(--color-sidebar-bg))); border-radius: var(--radius-xl); color: #fff; box-shadow: var(--shadow-md); }
+
+/* Insignias de estado */
+.badge, .pill, .status, .chip { border-radius: var(--radius-pill); font-weight: 650; font-size: 0.74rem; }
+
+/* Pantalla de entrada */
+.login-page { background: var(--color-bg-page); }
+.login-art { background: radial-gradient(120% 90% at 0% 0%, color-mix(in srgb, var(--color-accent-solid) 70%, #000) 0%, var(--color-sidebar-bg) 62%); color: #fff; overflow: hidden; position: relative; }
+.login-art .art-orb { background: radial-gradient(circle at 30% 30%, color-mix(in srgb, var(--color-warm) 55%, transparent), transparent 65%); opacity: .5; }
+.login-art h1 { font-size: clamp(2.4rem, 1.5rem + 2.6vw, 3.6rem); font-weight: 800; letter-spacing: -0.025em; line-height: 1.08; color: #fff; }
+.login-art p { color: rgb(255 255 255 / 80%); font-size: 1.05rem; }
+.login-art .eyebrow { color: var(--color-warm); }
+.login-card h2 { font-size: 1.75rem; font-weight: 800; }
+.demo-role { background: var(--color-bg-surface); border: 1px solid var(--color-border-subtle); border-radius: var(--radius-pill); color: var(--color-text-secondary); font-weight: 600; font-size: 0.8rem; box-shadow: var(--shadow-xs); }
+.demo-role:hover { border-color: var(--color-accent-solid); color: var(--color-accent-solid); background: var(--color-bg-subtle); }
+.login-divider span { background: transparent; color: var(--color-text-muted); }
+
+
+/* Banners oscuros: el texto hereda color claro y no el de los títulos globales */
+.directory-hero, .business-hero, .qr-banner, .home-alert, .login-art, .hero-banner { background: linear-gradient(120deg, var(--color-sidebar-bg), color-mix(in srgb, var(--color-accent-solid) 50%, var(--color-sidebar-bg))); color: #fff; border-radius: var(--radius-xl); box-shadow: var(--shadow-md); }
+.directory-hero h1, .directory-hero h2, .directory-hero h3, .business-hero h1, .business-hero h2, .business-hero h3,
+.qr-banner h1, .qr-banner h2, .qr-banner h3, .home-alert h2, .home-alert h3, .hero-banner h1, .hero-banner h2, .hero-banner h3 { color: #fff; }
+.directory-hero p, .business-hero p { color: rgb(255 255 255 / 82%); }
+.directory-hero .eyebrow, .business-hero .eyebrow { color: var(--color-warm); }
+.login-art { border-radius: 0; box-shadow: none; }
+
+/* Fotos de mascotas, animales y negocios */
+.has-photo { background-size: cover; background-position: center; color: transparent; background-color: var(--color-bg-subtle); }
+.pet-photo.has-photo { border-radius: var(--radius-md); box-shadow: var(--shadow-sm); }
+.emergency-pet-photo.has-photo { height: 200px; border-radius: var(--radius-lg); }
+.public-emergency-card .emergency-pet-photo.has-photo { height: 190px; }
+.adoption-photo { width: 96px; height: 104px; }
+.business-thumb.has-photo { width: 84px; height: 84px; border-radius: var(--radius-md); flex: none; }
+.business-hero.modal-photo.has-photo { height: 190px; min-height: 190px; width: 100%; border-radius: var(--radius-lg); margin-bottom: var(--space-4); }
+.small-photo.has-photo { width: 48px; height: 48px; }
+
+/* Pantalla de entrada con fotografía */
+.login-art { background-image: linear-gradient(160deg, rgb(11 43 40 / 78%) 0%, rgb(11 43 40 / 88%) 100%), url('/img/mujer-abraza.jpg'); background-size: cover; background-position: center 30%; }
+.login-art .art-orb { display: none; }
