@@ -5,13 +5,15 @@ import type { ApiRole, FichaDatos } from '../api'
 export type Rubro = 'veterinaria' | 'tienda' | 'peluqueria' | 'otro'
 export type Verificacion = 'pendiente' | 'aprobada' | 'rechazada' | 'suspendida'
 
-export type Usuario = { id: string; correo: string; clave: string; rol: ApiRole; nombre_visible: string; comuna_id: number | null; estado: 'activo' | 'suspendido'; creado_en: string }
+export type Suspension = { tipo: 'temporal' | 'permanente'; dias: number | null; hasta: string | null; motivo: string; mensaje: string; aplicada_en: string }
+export type Usuario = { id: string; correo: string; clave: string; rol: ApiRole; nombre_visible: string; comuna_id: number | null; estado: 'activo' | 'suspendido'; suspension?: Suspension | null; creado_en: string }
 export type MascotaRow = { id: string; tutor_id: string; nombre: string; especie: string; raza: string | null; sexo: string | null; fecha_nacimiento: string | null; foto_url: string | null; datos_clinicos: FichaDatos; ficha_version: number; creado_en: string }
 export type Medalla = { id: string; mascota_id: string; token: string; estado: 'activa' | 'inactiva' | 'reemplazada'; emitida_en: string }
 export type Escaneo = { id: string; medalla_id: string; ocurrido_en: string }
 export type MensajeQr = { id: string; medalla_id: string; remitente_nombre: string | null; remitente_contacto: string | null; mensaje: string; latitud: string | null; longitud: string | null; estado: 'nuevo' | 'leido' | 'respondido'; enviado_en: string }
 export type Acceso = { id: string; mascota_id: string; pyme_id: string; otorgado_por: string; permiso: 'lectura' | 'escritura'; vigente_hasta: string; revocado_en: string | null }
-export type Pyme = { id: string; propietario_id: string; nombre_comercial: string; rut_empresa: string; rubro: Rubro; descripcion: string | null; comuna_id: number; direccion: string | null; latitud: string | null; longitud: string | null; telefono: string | null; whatsapp: string | null; horario: Record<string, string>; estado_verificacion: Verificacion; creado_en: string }
+export type Pyme = { id: string; propietario_id: string; nombre_comercial: string; rut_empresa: string; rubro: Rubro; descripcion: string | null; comuna_id: number; direccion: string | null; latitud: string | null; longitud: string | null; telefono: string | null; whatsapp: string | null; horario: Record<string, string>; foto_portada?: string | null; estado_verificacion: Verificacion; creado_en: string }
+export type ContactoPyme = { id: string; pyme_id: string; remitente_id: string; remitente_nombre: string; remitente_contacto: string | null; mensaje: string; estado: 'nuevo' | 'leido' | 'respondido'; respuesta: string | null; creado_en: string; respondido_en: string | null }
 export type Item = { id: string; pyme_id: string; tipo: 'producto' | 'servicio'; nombre: string; descripcion: string | null; precio_referencial_clp: number | null; disponible: boolean; creado_en: string }
 export type EventoPyme = { id: string; pyme_id: string; item_id: string | null; tipo: 'visita_perfil' | 'vista_item' | 'clic_contacto' | 'clic_whatsapp'; ocurrido_en: string }
 export type Plan = { id: number; nombre: string; precio_mensual_clp: number; max_items_catalogo: number }
@@ -39,6 +41,7 @@ export type Db = {
   pymes: Pyme[]
   catalogo: Item[]
   eventos: EventoPyme[]
+  contactos_pymes: ContactoPyme[]
   suscripciones: Suscripcion[]
   pagos: Pago[]
   publicaciones: Publicacion[]
@@ -65,7 +68,7 @@ function seed(): Db {
   const db: Db = {
     comunas: [{ id: 1, nombre: 'Osorno' }, { id: 2, nombre: 'Puerto Montt' }, { id: 3, nombre: 'Castro' }],
     planes: [{ id: 1, nombre: 'Básico', precio_mensual_clp: 15000, max_items_catalogo: 20 }, { id: 2, nombre: 'Plus', precio_mensual_clp: 25000, max_items_catalogo: 60 }],
-    usuarios: [], sesiones: {}, mascotas: [], medallas: [], escaneos: [], mensajes: [], accesos: [], pymes: [], catalogo: [], eventos: [],
+    usuarios: [], sesiones: {}, mascotas: [], medallas: [], escaneos: [], mensajes: [], accesos: [], pymes: [], catalogo: [], eventos: [], contactos_pymes: [],
     suscripciones: [], pagos: [], publicaciones: [], comentarios: [], reacciones: [], reportes: [], ongs: [], animales: [], solicitudes: [], eventos_adopcion: [],
   }
   const user = (correo: string, rol: ApiRole, nombre: string, comuna: number) => {
@@ -142,7 +145,10 @@ function seed(): Db {
 function stored(): Db | null {
   try {
     const raw = localStorage.getItem(KEY)
-    return raw ? JSON.parse(raw) as Db : null
+    if (!raw) return null
+    const value = JSON.parse(raw) as Db
+    value.contactos_pymes ??= [] // compatibilidad con datos demo guardados antes de añadir la bandeja
+    return value
   } catch { return null /* almacenamiento no disponible o dañado */ }
 }
 

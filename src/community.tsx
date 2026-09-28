@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { CirclePlus, Heart, MessageCircle, Users, X } from 'lucide-react'
 import { api, errorText, getSession, iniciales, type Comuna, type Mascota } from './api'
 import { Loading } from './media'
-import { moderationMessageSchema } from './validators'
+import { communityCommentSchema, moderationMessageSchema, wallPostSchema } from './validators'
 
 type Tipo = 'extravio' | 'encuentro' | 'recomendacion'
 type Post = { id: string; tipo: Tipo; texto: string; creado_en: string; autor: string; reacciones: number; reaccione: boolean; comentarios: { id: string; autor: string; texto: string }[] }
@@ -58,11 +58,12 @@ export function CommunityView() {
 
 function PostCard({ post, onReact, onComment, onReport, showComment, onAddComment }: { post: Post; onReact: () => void; onComment: () => void; onReport: () => void; showComment: boolean; onAddComment: (text: string) => Promise<void> | void }) {
   const [text, setText] = useState('')
-  const submit = async (event: React.FormEvent) => { event.preventDefault(); if (text.trim().length < 3) return; await onAddComment(text.trim()); setText('') }
+  const [error, setError] = useState('')
+  const submit = async (event: React.FormEvent) => { event.preventDefault(); const parsed = communityCommentSchema.safeParse({ text }); if (!parsed.success) { setError(parsed.error.issues[0]?.message || 'Revisa el comentario'); return }; await onAddComment(parsed.data.text); setText(''); setError('') }
   return <article className="community-post"><div className="post-top"><div className="post-avatar">{iniciales(post.autor)}</div><div><strong>{post.autor}</strong><small>{ago(post.creado_en)}</small></div></div><span className={`post-type ${tipoClass[post.tipo]}`}>{tipoLabel[post.tipo].toUpperCase()}</span><p>{post.texto}</p>
     <div className="post-actions"><button className={post.reaccione ? 'reacted' : ''} onClick={onReact}><Heart size={16} fill={post.reaccione ? 'currentColor' : 'none'} /> {post.reacciones}</button><button onClick={onComment}><MessageCircle size={16} /> {post.comentarios.length} comentarios</button><button onClick={onReport}>Reportar</button></div>
     {post.comentarios.length > 0 && <div className="comments">{post.comentarios.map(c => <div className="comment" key={c.id}><strong>{c.autor}</strong><span>{c.texto}</span></div>)}</div>}
-    {showComment && <form className="comment-form" onSubmit={submit}><input aria-label="Comentario" maxLength={1000} value={text} onChange={e => setText(e.target.value)} placeholder="Escribe un comentario..." /><button className="primary">Enviar</button></form>}
+    {showComment && <form className="comment-form" onSubmit={submit}><input aria-label="Comentario" maxLength={1000} value={text} onChange={e => { setText(e.target.value); setError('') }} placeholder="Escribe un comentario..." /><button className="primary">Enviar</button>{error && <p className="form-error" role="alert">{error}</p>}</form>}
   </article>
 }
 
@@ -74,9 +75,10 @@ function Composer({ onClose, onSaved }: { onClose: () => void; onSaved: () => Pr
   useEffect(() => { api<Mascota[]>('/mascotas').then(setPets).catch(() => undefined) }, [])
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
-    if (form.texto.trim().length < 15) { setError('Cuéntanos un poco más para ayudar a la comunidad'); return }
+    const parsed = wallPostSchema.safeParse(form)
+    if (!parsed.success) { setError(parsed.error.issues[0]?.message || 'Revisa la publicación'); return }
     setBusy(true)
-    try { await api('/muro', { method: 'POST', body: { tipo: form.tipo, texto: form.texto.trim(), ...(form.mascota_id && form.tipo === 'extravio' ? { mascota_id: form.mascota_id } : {}) } }); await onSaved() } catch (e) { setError(errorText(e)); setBusy(false) }
+    try { await api('/muro', { method: 'POST', body: { tipo: parsed.data.tipo, texto: parsed.data.texto, ...(form.mascota_id && parsed.data.tipo === 'extravio' ? { mascota_id: form.mascota_id } : {}) } }); await onSaved() } catch (e) { setError(errorText(e)); setBusy(false) }
   }
   return <div className="modal-backdrop"><form className="modal" onSubmit={submit} noValidate><button type="button" className="close" aria-label="Cerrar" onClick={onClose}><X size={20} /></button><p className="eyebrow">NUEVA PUBLICACIÓN</p><h2>Comparte con tu comunidad</h2><p className="muted">Se publicará en el muro de tu comuna. No se permiten enlaces externos.</p>
     <div className="form-grid"><label>Tipo<select value={form.tipo} onChange={e => setForm({ ...form, tipo: e.target.value as Tipo })}><option value="recomendacion">Recomendación</option><option value="extravio">Extravío</option><option value="encuentro">Encuentro</option></select></label>{form.tipo === 'extravio' && pets.length > 0 && <label>Mascota extraviada<select value={form.mascota_id} onChange={e => setForm({ ...form, mascota_id: e.target.value })}><option value="">Ninguna en particular</option>{pets.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}</select></label>}</div>

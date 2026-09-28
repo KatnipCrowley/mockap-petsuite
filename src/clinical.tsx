@@ -3,6 +3,7 @@ import { X } from 'lucide-react'
 import { Loading, Photo } from './media'
 import { api, emptyFicha, errorText, iniciales, type FichaDatos } from './api'
 import { RegisterPyme, usePyme } from './business'
+import { medicalEntrySchema } from './validators'
 
 type Paciente = { id: string; nombre: string; especie: string; raza: string | null; foto_url?: string | null; tutor: string; permiso: 'lectura' | 'escritura'; vigente_hasta: string; alertas: string[] | null }
 type FichaResp = { id: string; datos_clinicos: FichaDatos; version: number }
@@ -40,12 +41,14 @@ function FichaModal({ paciente, onClose }: { paciente: Paciente; onClose: () => 
   const add = async (event: React.FormEvent) => {
     event.preventDefault()
     if (!ficha) return
-    if (form.titulo.trim().length < 3) { setError('Describe el registro'); return }
+    const type = ({ vacuna: 'Vacuna', tratamiento: 'Tratamiento', atencion: 'Atención' } as const)[form.tipo as 'vacuna' | 'tratamiento' | 'atencion']
+    const parsed = medicalEntrySchema.safeParse({ type, date: form.fecha, title: form.titulo, notes: form.notas })
+    if (!parsed.success) { setError(parsed.error.issues[0]?.message || 'Revisa el registro'); return }
     const d = { ...emptyFicha(), ...ficha.datos_clinicos }
-    const id = crypto.randomUUID(), notas = form.notas.trim() || undefined
-    if (form.tipo === 'vacuna') d.vacunas = [...d.vacunas, { id, nombre: form.titulo.trim(), fecha: form.fecha, notas }]
-    else if (form.tipo === 'tratamiento') d.tratamientos = [...d.tratamientos, { id, descripcion: form.titulo.trim(), inicio: form.fecha, notas }]
-    else d.atenciones = [...d.atenciones, { id, fecha: form.fecha, motivo: form.titulo.trim(), notas }]
+    const id = crypto.randomUUID(), notas = parsed.data.notes || undefined
+    if (parsed.data.type === 'Vacuna') d.vacunas = [...d.vacunas, { id, nombre: parsed.data.title, fecha: parsed.data.date, notas }]
+    else if (parsed.data.type === 'Tratamiento') d.tratamientos = [...d.tratamientos, { id, descripcion: parsed.data.title, inicio: parsed.data.date, notas }]
+    else d.atenciones = [...d.atenciones, { id, fecha: parsed.data.date, motivo: parsed.data.title, notas }]
     try {
       await api(`/mascotas/${paciente.id}/ficha`, { method: 'PUT', body: { version: ficha.version, datos_clinicos: d } })
       setForm({ ...form, titulo: '', notas: '' }); setError(''); await load()

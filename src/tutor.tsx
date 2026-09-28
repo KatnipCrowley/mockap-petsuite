@@ -3,7 +3,7 @@ import { AlertCircle, ArrowRight, CalendarDays, Check, ChevronRight, CirclePlus,
 import QRCode from 'qrcode'
 import { LogoMark, Loading, Photo } from './media'
 import { api, edadDesde, emptyFicha, errorText, iniciales, type FichaDatos, type Mascota, type PublicaEmergencia, type PymeResumen } from './api'
-import { emergencyContactSchema } from './validators'
+import { emergencyContactSchema, medicalEntrySchema, petDetailsSchema, petHealthSchema } from './validators'
 import { AdoptionCatalog } from './adoption'
 import { CommunityView } from './community'
 import { DirectoryView } from './directory'
@@ -180,13 +180,13 @@ function HealthModal({ pet, onClose, onSave }: { pet: Mascota; onClose: () => vo
   const [busy, setBusy] = useState(false)
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
-    const lists = [form.allergies, form.conditions, form.medications].map(splitList)
-    if (lists.some(l => l.length > 8 || l.some(i => i.length > 80))) { setError('Usa hasta 8 elementos de máximo 80 caracteres, separados por comas'); return }
-    if (form.emergencyNotes.length > 160) { setError('La nota pública no puede superar 160 caracteres'); return }
+    const parsed = petHealthSchema.safeParse(form)
+    if (!parsed.success) { setError(parsed.error.issues[0]?.message || 'Revisa los datos de salud'); return }
+    const lists = [parsed.data.allergies, parsed.data.conditions, parsed.data.medications].map(splitList)
     setBusy(true)
     try {
       const known = new Map(f.alergias.map(a => [a.agente.toLowerCase(), a]))
-      await onSave({ ...f, alergias: lists[0].map(agente => known.get(agente.toLowerCase()) || { agente }), condiciones: lists[1], medicamentos: lists[2], notaEmergencia: form.emergencyNotes.trim() })
+      await onSave({ ...f, alergias: lists[0].map(agente => known.get(agente.toLowerCase()) || { agente }), condiciones: lists[1], medicamentos: lists[2], notaEmergencia: parsed.data.emergencyNotes.trim() })
     } catch (e) { setError(errorText(e)) } finally { setBusy(false) }
   }
   return <div className="modal-backdrop"><form className="modal health-form-modal" onSubmit={submit} noValidate><button type="button" className="close" aria-label="Cerrar" onClick={onClose}><X size={20} /></button><p className="eyebrow">FICHA DE {pet.nombre.toUpperCase()}</p><h2>Editar datos de salud</h2><p className="muted">Separa varios elementos con comas. Alergias, condiciones y nota de emergencia aparecerán en el QR.</p><div className="health-form-fields"><label>Alergias<input value={form.allergies} onChange={e => setForm({ ...form, allergies: e.target.value })} placeholder="Ej.: pollo, penicilina" /></label><label>Condiciones médicas<input value={form.conditions} onChange={e => setForm({ ...form, conditions: e.target.value })} placeholder="Ej.: diabetes" /></label><label>Medicamentos (privado)<input value={form.medications} onChange={e => setForm({ ...form, medications: e.target.value })} placeholder="Ej.: tratamiento indicado por veterinaria" /></label><label>Nota pública de emergencia<textarea rows={3} maxLength={160} value={form.emergencyNotes} onChange={e => setForm({ ...form, emergencyNotes: e.target.value })} placeholder="Indicación importante para quien encuentre a tu mascota" /></label></div>{error && <p className="form-error" role="alert">{error}</p>}<div className="modal-actions"><button className="secondary" type="button" onClick={onClose}>Cancelar</button><button className="primary" disabled={busy}>{busy ? 'Guardando...' : 'Guardar salud'}</button></div></form></div>
@@ -198,10 +198,10 @@ function EntryModal({ entry, onClose, onSave }: { entry: Entry | null; onClose: 
   const [busy, setBusy] = useState(false)
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(form.date)) { setError('Indica una fecha válida'); return }
-    if (form.title.trim().length < 3) { setError('Describe la atención'); return }
+    const parsed = medicalEntrySchema.safeParse(form)
+    if (!parsed.success) { setError(parsed.error.issues[0]?.message || 'Revisa el registro'); return }
     setBusy(true)
-    try { await onSave({ id: entry?.id.match(/^[vat]\d+$/) ? crypto.randomUUID() : entry?.id || crypto.randomUUID(), type: form.type, date: form.date, title: form.title.trim().slice(0, 80), notes: form.notes.trim() }) } catch (e) { setError(errorText(e)) } finally { setBusy(false) }
+    try { await onSave({ id: entry?.id.match(/^[vat]\d+$/) ? crypto.randomUUID() : entry?.id || crypto.randomUUID(), ...parsed.data }) } catch (e) { setError(errorText(e)) } finally { setBusy(false) }
   }
   return <div className="modal-backdrop"><form className="modal health-form-modal" onSubmit={submit} noValidate><button type="button" className="close" aria-label="Cerrar" onClick={onClose}><X size={20} /></button><p className="eyebrow">HISTORIAL PRIVADO</p><h2>{entry ? 'Editar registro' : 'Agregar atención o vacuna'}</h2><div className="health-form-fields"><label>Fecha<input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} /></label><label>Tipo<select value={form.type} onChange={e => setForm({ ...form, type: e.target.value as Entry['type'] })}><option>Atención</option><option>Vacuna</option><option>Tratamiento</option></select></label><label>Nombre del registro<input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="Ej.: vacuna antirrábica" /></label><label>Detalles<textarea rows={4} maxLength={500} value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} placeholder="Indicaciones, resultados o próxima visita" /></label></div>{error && <p className="form-error" role="alert">{error}</p>}<div className="modal-actions"><button className="secondary" type="button" onClick={onClose}>Cancelar</button><button className="primary" disabled={busy}>{busy ? 'Guardando...' : 'Guardar registro'}</button></div></form></div>
 }
@@ -212,8 +212,10 @@ function PetFormModal({ pet, onClose, onSaved }: { pet?: Mascota; onClose: () =>
   const [busy, setBusy] = useState(false)
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
-    if (form.nombre.trim().length < 2) { setError('Ingresa el nombre de tu mascota'); return }
-    const body = { nombre: form.nombre.trim(), especie: form.especie, sexo: form.sexo, ...(form.raza.trim() ? { raza: form.raza.trim() } : {}), ...(form.fecha_nacimiento ? { fecha_nacimiento: form.fecha_nacimiento } : {}) }
+    const parsed = petDetailsSchema.safeParse(form)
+    if (!parsed.success) { setError(parsed.error.issues[0]?.message || 'Revisa los datos de tu mascota'); return }
+    const d = parsed.data
+    const body = { nombre: d.nombre, especie: d.especie, sexo: d.sexo, ...(d.raza ? { raza: d.raza } : {}), ...(d.fecha_nacimiento ? { fecha_nacimiento: d.fecha_nacimiento } : {}) }
     setBusy(true)
     try {
       const saved = pet ? await api<{ id: string }>(`/mascotas/${pet.id}`, { method: 'PATCH', body }) : await api<{ id: string }>('/mascotas', { method: 'POST', body })

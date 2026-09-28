@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { PawPrint } from 'lucide-react'
 import { api, errorText, setSession, type ApiRole, type Comuna, type Session } from './api'
-import { loginSchema } from './validators'
+import { loginSchema, registrationSchema } from './validators'
 import { LogoMark } from './media'
 
 type Auth = { token: string; usuario: { id: string; rol: ApiRole; nombre_visible: string; comuna_id: number | null } }
@@ -37,11 +37,8 @@ export function Login({ onLogin }: { onLogin: (session: Session) => void }) {
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
     setError('')
-    const parsed = loginSchema.safeParse({ email, password })
+    const parsed = mode === 'register' ? registrationSchema.safeParse({ email, password, name, comunaId, terms }) : loginSchema.safeParse({ email, password })
     if (!parsed.success) { setError(parsed.error.issues[0]?.message || 'Revisa los datos'); return }
-    if (mode === 'register' && (name.trim().length < 2)) { setError('Ingresa tu nombre'); return }
-    if (mode === 'register' && password.length < 8) { setError('La contraseña debe tener al menos 8 caracteres'); return }
-    if (mode === 'register' && !terms) { setError('Debes aceptar los términos y el aviso de privacidad'); return }
     setBusy(true)
     try {
       const data = mode === 'login'

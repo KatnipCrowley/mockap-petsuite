@@ -2,6 +2,9 @@ import { useCallback, useEffect, useState } from 'react'
 import { ShoppingBag } from 'lucide-react'
 import { api, clp, errorText, type Comuna, type ItemCatalogo } from './api'
 import { Loading } from './media'
+import { BusinessProfile } from './business-profile'
+import { BusinessContacts } from './business-contacts'
+import { catalogItemFormSchema, registerPymeSchema } from './validators'
 
 export type MiPyme = { id: string; nombre_comercial: string; rubro: string; estado_verificacion: 'pendiente' | 'aprobada' | 'rechazada' | 'suspendida'; comuna_id: number; suscripcion: { estado: string; fin: string; plan: string; precio: number; max_items: number } | null }
 type Planes = { id: number; nombre: string; precio_mensual_clp: number; max_items_catalogo: number }[]
@@ -33,11 +36,12 @@ export function RegisterPyme({ veterinaria, onDone }: { veterinaria?: boolean; o
   const set = (key: string, value: string | number) => setForm({ ...form, [key]: value })
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
-    if (form.nombre_comercial.trim().length < 2) { setError('Ingresa el nombre de tu negocio'); return }
-    const lat = form.latitud ? Number(form.latitud) : undefined, lng = form.longitud ? Number(form.longitud) : undefined
+    const parsed = registerPymeSchema.safeParse({ ...form, latitud: form.latitud.trim() ? Number(form.latitud) : null, longitud: form.longitud.trim() ? Number(form.longitud) : null })
+    if (!parsed.success) { setError(parsed.error.issues[0]?.message || 'Revisa los datos del negocio'); return }
+    const d = parsed.data
     setBusy(true); setError('')
     try {
-      await api('/pymes', { method: 'POST', body: { nombre_comercial: form.nombre_comercial.trim(), rut_empresa: form.rut_empresa.trim(), rubro: form.rubro, comuna_id: form.comuna_id, plan_id: form.plan_id, ...(form.direccion && { direccion: form.direccion }), ...(form.telefono && { telefono: form.telefono }), ...(form.whatsapp && { whatsapp: form.whatsapp }), ...(form.descripcion && { descripcion: form.descripcion }), ...(form.referencia_pago && { referencia_pago: form.referencia_pago }), ...(lat !== undefined && !Number.isNaN(lat) && { latitud: lat }), ...(lng !== undefined && !Number.isNaN(lng) && { longitud: lng }) } })
+      await api('/pymes', { method: 'POST', body: { nombre_comercial: d.nombre_comercial, rut_empresa: d.rut_empresa, rubro: d.rubro, comuna_id: d.comuna_id, plan_id: d.plan_id, ...(d.direccion && { direccion: d.direccion }), ...(d.telefono && { telefono: d.telefono }), ...(d.whatsapp && { whatsapp: d.whatsapp }), ...(d.descripcion && { descripcion: d.descripcion }), ...(d.referencia_pago && { referencia_pago: d.referencia_pago }), ...(d.latitud !== null && { latitud: d.latitud }), ...(d.longitud !== null && { longitud: d.longitud }) } })
       onDone()
     } catch (e) { setError(errorText(e)); setBusy(false) }
   }
@@ -68,7 +72,9 @@ export function BusinessArea({ active }: { active: string }) {
   const { pyme, loading, error, reload } = usePyme()
   if (loading) return <section className="page">{error ? <p className="muted">{error}</p> : <Loading />}</section>
   if (!pyme) return <RegisterPyme onDone={reload} />
+  if (active === 'business-profile') return <BusinessProfile pyme={pyme} onSaved={reload} />
   if (active === 'catalog') return <Catalog pyme={pyme} />
+  if (active === 'contacts') return <BusinessContacts pyme={pyme} />
   if (active === 'metrics') return <MetricsView pyme={pyme} />
   if (active === 'subscription') return <Subscription pyme={pyme} />
   return <Overview pyme={pyme} />
@@ -87,22 +93,28 @@ function Overview({ pyme }: { pyme: MiPyme }) {
 function Catalog({ pyme }: { pyme: MiPyme }) {
   const [items, setItems] = useState<ItemCatalogo[] | null>(null)
   const [draft, setDraft] = useState({ tipo: 'producto' as 'producto' | 'servicio', nombre: '', descripcion: '', precio: '' })
+  const [editing, setEditing] = useState<ItemCatalogo | null>(null)
   const [error, setError] = useState('')
   const load = useCallback(() => api<ItemCatalogo[]>(`/pymes/${pyme.id}/catalogo`).then(setItems).catch(e => setError(errorText(e))), [pyme.id])
   useEffect(() => { void load() }, [load])
-  const add = async (event: React.FormEvent) => {
+  const submit = async (event: React.FormEvent) => {
     event.preventDefault(); setError('')
-    if (draft.nombre.trim().length < 2) { setError('Ingresa el nombre del ítem'); return }
-    const precio = draft.precio.trim() ? Number(draft.precio.replace(/\D/g, '')) : undefined
-    try { await api(`/pymes/${pyme.id}/catalogo`, { method: 'POST', body: { tipo: draft.tipo, nombre: draft.nombre.trim(), ...(draft.descripcion && { descripcion: draft.descripcion }), ...(precio !== undefined && { precio_referencial_clp: precio }) } }); setDraft({ tipo: 'producto', nombre: '', descripcion: '', precio: '' }); await load() } catch (e) { setError(errorText(e)) }
+    const parsed = catalogItemFormSchema.safeParse(draft)
+    if (!parsed.success) { setError(parsed.error.issues[0]?.message || 'Revisa el ítem'); return }
+    const precio = parsed.data.precio ? Number(parsed.data.precio) : undefined
+    try {
+      await api(`/pymes/${pyme.id}/catalogo${editing ? `/${editing.id}` : ''}`, { method: editing ? 'PUT' : 'POST', body: { tipo: parsed.data.tipo, nombre: parsed.data.nombre, descripcion: parsed.data.descripcion, ...(precio !== undefined && { precio_referencial_clp: precio }), ...(editing && { disponible: editing.disponible }) } })
+      setDraft({ tipo: 'producto', nombre: '', descripcion: '', precio: '' }); setEditing(null); await load()
+    } catch (e) { setError(errorText(e)) }
   }
+  const edit = (item: ItemCatalogo) => { setEditing(item); setDraft({ tipo: item.tipo, nombre: item.nombre, descripcion: item.descripcion || '', precio: item.precio_referencial_clp == null ? '' : String(item.precio_referencial_clp) }); setError('') }
   const toggle = async (item: ItemCatalogo) => { try { await api(`/pymes/${pyme.id}/catalogo/${item.id}`, { method: 'PUT', body: { tipo: item.tipo, nombre: item.nombre, descripcion: item.descripcion ?? undefined, precio_referencial_clp: item.precio_referencial_clp ?? undefined, disponible: !item.disponible } }); await load() } catch (e) { setError(errorText(e)) } }
-  const remove = async (item: ItemCatalogo) => { try { await api(`/pymes/${pyme.id}/catalogo/${item.id}`, { method: 'DELETE' }); await load() } catch (e) { setError(errorText(e)) } }
+  const remove = async (item: ItemCatalogo) => { if (!window.confirm(`¿Eliminar «${item.nombre}» del catálogo?`)) return; try { await api(`/pymes/${pyme.id}/catalogo/${item.id}`, { method: 'DELETE' }); if (editing?.id === item.id) setEditing(null); await load() } catch (e) { setError(errorText(e)) } }
   return <section className="page role-page"><div className="page-title"><div><p className="eyebrow">GESTIÓN B2B</p><h1>Catálogo</h1><p className="muted">Productos y servicios con precio referencial, visibles en tu perfil del directorio.{pyme.suscripcion ? ` Tu plan permite hasta ${pyme.suscripcion.max_items} ítems.` : ''}</p></div></div>
     <StatusBanner pyme={pyme} />
-    <form className="catalog-form" onSubmit={add} noValidate><select aria-label="Tipo" value={draft.tipo} onChange={e => setDraft({ ...draft, tipo: e.target.value as 'producto' | 'servicio' })}><option value="producto">Producto</option><option value="servicio">Servicio</option></select><input aria-label="Nombre" value={draft.nombre} onChange={e => setDraft({ ...draft, nombre: e.target.value })} placeholder="Nombre del producto o servicio" /><input aria-label="Descripción" value={draft.descripcion} onChange={e => setDraft({ ...draft, descripcion: e.target.value })} placeholder="Descripción" /><input aria-label="Precio referencial" inputMode="numeric" value={draft.precio} onChange={e => setDraft({ ...draft, precio: e.target.value })} placeholder="Precio referencial" /><button className="primary">Agregar</button></form>
+    <form className="catalog-form business-catalog-form" onSubmit={submit} noValidate><select aria-label="Tipo" value={draft.tipo} onChange={e => setDraft({ ...draft, tipo: e.target.value as 'producto' | 'servicio' })}><option value="producto">Producto</option><option value="servicio">Servicio</option></select><input aria-label="Nombre" value={draft.nombre} onChange={e => setDraft({ ...draft, nombre: e.target.value })} placeholder="Nombre del producto o servicio" /><input aria-label="Descripción" value={draft.descripcion} onChange={e => setDraft({ ...draft, descripcion: e.target.value })} placeholder="Descripción" /><input aria-label="Precio referencial" inputMode="numeric" value={draft.precio} onChange={e => setDraft({ ...draft, precio: e.target.value })} placeholder="Precio en pesos" /><div className="business-catalog-actions"><button className="primary">{editing ? 'Guardar' : 'Agregar'}</button>{editing && <button type="button" className="secondary" onClick={() => { setEditing(null); setDraft({ tipo: 'producto', nombre: '', descripcion: '', precio: '' }); setError('') }}>Cancelar</button>}</div></form>
     {error && <p className="form-error" role="alert">{error}</p>}
-    <div className="catalog-list">{items?.map(item => <div className="catalog-item" key={item.id}><div><strong>{item.nombre}</strong><p>{item.tipo === 'servicio' ? 'Servicio' : 'Producto'}{item.descripcion ? ` · ${item.descripcion}` : ''}</p><b>{clp(item.precio_referencial_clp)}</b></div><div><button className={item.disponible ? 'toggle on' : 'toggle'} aria-label={`Mostrar u ocultar ${item.nombre}`} onClick={() => toggle(item)} /><button className="text-button" onClick={() => remove(item)}>Eliminar</button></div></div>)}{items && items.length === 0 && <div className="empty-results">Todavía no tienes ítems en tu catálogo.</div>}</div></section>
+    <div className="catalog-list">{items?.map(item => <div className="catalog-item" key={item.id}><div className="catalog-item-main"><strong>{item.nombre}</strong><p>{item.tipo === 'servicio' ? 'Servicio' : 'Producto'}{item.descripcion ? ` · ${item.descripcion}` : ''}</p><b>{clp(item.precio_referencial_clp)}</b></div><div className="business-catalog-row-actions"><button className={item.disponible ? 'toggle on' : 'toggle'} aria-label={`Mostrar u ocultar ${item.nombre}`} onClick={() => toggle(item)} /><button className="text-button" onClick={() => edit(item)}>Editar</button><button className="text-button" onClick={() => void remove(item)}>Eliminar</button></div></div>)}{items && items.length === 0 && <div className="empty-results">Todavía no tienes ítems en tu catálogo.</div>}</div></section>
 }
 
 function MetricsView({ pyme }: { pyme: MiPyme }) {

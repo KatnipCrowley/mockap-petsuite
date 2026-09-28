@@ -171,3 +171,29 @@ Antes de finalizar cualquier cambio, se debe agregar una entrada con:
 - Motivo: dejar el frontend igual al prototipo de referencia mientras no hay servidor, de modo que conectar el API real solo requiera cambiar `src/api.ts`.
 - Limitaciones declaradas: sin servidor, un QR solo se abre en el navegador donde se creó (en otro teléfono muestra «Medalla no válida»); no se incrustan datos en la URL para conservar la desactivación de medallas. No hay correo, notificaciones push ni carga de fotos, y el catálogo de adopción no es indexable. Las contraseñas demo se guardan sin cifrar en `localStorage`.
 - Verificación ejecutada: `npx tsc -b` y `npm run build` con la base de Pages, correctos. Recorrido con Playwright (Chromium) contra `vite`: 8 de 8 flujos correctos y sin errores de consola (QR y aviso al tutor, reemplazo de medalla, acceso de escritura y registro clínico visto por el tutor, directorio sin carrito y métricas de la Pyme, publicación, reporte y ocultamiento, adopción de Canela traspasada a Diego con Óctuple, aprobación de Rescate Nuevo, tema y modo oscuro persistentes). Revisión visual a 390 px sin desplazamiento horizontal. `git diff --check` no se ejecutó porque `git` no está en el PATH de esta terminal.
+
+## 2026-09-28
+
+### Perfil Pyme y consultas desde el directorio
+
+- Fecha: 2026-09-28.
+- Archivos modificados o agregados: `src/App.tsx`, `src/Login.tsx`, `src/api.ts`, `src/business.tsx`, `src/business-profile.tsx`, `src/business-contacts.tsx`, `src/business.test.mjs`, `src/clinical.tsx`, `src/community.tsx`, `src/directory.tsx`, `src/design-polish.css`, `src/mock/db.ts`, `src/mock/server.ts`, `src/tutor.tsx`, `src/validators.ts`, `.env.example`, `Agents.md`.
+- Cambio realizado: la Pyme puede editar nombre, comuna, dirección, teléfono, WhatsApp, horarios, descripción y coordenadas mediante un mapa, además de elegir una portada de las imágenes demo. La ficha pública del directorio usa los datos editados. El tutor puede enviar consultas desde el directorio y revisar respuestas en «Mis consultas»; la Pyme dispone de una bandeja para leerlas y responder. Los contactos se persisten por usuario y negocio en el mock y se migran los datos demo antiguos. El catálogo permite editar ítems y confirma su eliminación. Se integraron esquemas Zod para los nuevos formularios y otros formularios principales. `src/api.ts` acepta opcionalmente `VITE_API_URL` para usar un API HTTP compartido sin alterar las pantallas; sin configurarlo sigue usando el mock.
+- Motivo: completar las pantallas Pyme P3, P5 y P8 y preparar la siguiente integración del QR entre dispositivos manteniendo la identidad visual vigente.
+- Verificación ejecutada: `node --test src/business.test.mjs` (3 pruebas de permisos, perfil, consultas y migración), `npm run build`, `npm run build -- --base=/mockap-petsuite/` y `git diff --check` correctamente. No se verificó el flujo visual en navegador en esta sesión.
+
+### API HTTP compartida para probar QR entre dispositivos
+
+- Fecha: 2026-09-28.
+- Archivos modificados o agregados: `backend/server.mjs`, `backend/server.test.mjs`, `backend/README.md`, `package.json`, `.gitignore`, `.env.example`, `Agents.md`.
+- Cambio realizado: se añadió un servidor Node 24 para las rutas `/api/v1` del mock, con datos persistidos en un archivo compartido fuera de Git, escritura atómica, límite de tamaño del cuerpo, control de origen CORS y acceso de red a las cuentas demo solo cuando se habilita expresamente. El frontend puede usarlo con `VITE_API_URL`; QR, avisos y desactivación de medallas funcionan desde clientes HTTP distintos cuando ambos alcanzan el mismo servidor.
+- Motivo: permitir pruebas del flujo crítico QR y contacto entre dispositivos sin modificar el diseño ni incrustar información médica en la URL, manteniendo explícito que esta API comparte credenciales demo y no constituye autenticación de producción.
+- Verificación ejecutada: `node --test backend/server.test.mjs` (lectura anónima del QR, contacto, revocación, CORS y persistencia al reiniciar), `node --check backend/server.mjs`, `npm run build -- --base=/mockap-petsuite/` y `git diff --check` correctamente.
+
+### Suspensión administrativa con revisión de denuncias
+
+- Fecha: 2026-09-28.
+- Archivos modificados o agregados: `src/admin.tsx`, `src/admin-suspension.tsx`, `src/admin-suspension.test.mjs`, `src/design-polish.css`, `src/mock/db.ts`, `src/mock/server.ts`, `src/validators.ts`, `Agents.md`.
+- Cambio realizado: Suspender desde Usuarios u Ocultar y suspender desde Moderación abre una tarjeta compartida con los antecedentes de las denuncias de las publicaciones del usuario, incluidos contenido, motivo, denunciante, fecha y estado. El administrador puede elegir motivos rápidos, suspensión temporal de 1 a 3650 días o permanente, redactar un mensaje obligatorio y confirmar expresamente la medida. El mock guarda el tipo, razón, mensaje y vencimiento; revoca sesiones, reactiva las suspensiones temporales al vencer y permite reactivar manualmente las permanentes. Desde Moderación oculta y resuelve la publicación denunciada en la misma operación. «Ver denuncias» ofrece acceso independiente al historial desde Usuarios.
+- Motivo: facilitar decisiones informadas y registradas, sin suspender directamente desde la lista ni perder el contexto de los reportes.
+- Verificación ejecutada: `node --test src/admin-suspension.test.mjs src/business.test.mjs backend/server.test.mjs` (6 pruebas), `npm run build -- --base=/mockap-petsuite/` y `git diff --check` correctamente. Sin revisión visual en navegador en esta sesión.

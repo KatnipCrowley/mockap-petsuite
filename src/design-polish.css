@@ -72,3 +72,136 @@ button.pet-card:hover, button.business-card:hover { transform: translateY(-2px);
 
 /* Barra de iconos en pantallas angostas: solo quedan el logotipo, el avatar y los iconos. */
 @media (max-width: 800px) { .sidebar .brand > span:last-child, .sidebar .profile-mini > div { display: none; } .sidebar .brand, .sidebar .profile-mini { justify-content: center; padding-inline: 0; margin-inline: 0; } }
+
+/* Perfil Pyme y mensajería del directorio: mismas superficies y ritmos que el resto de la suite. */
+.business-profile-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 320px); gap: var(--space-5); align-items: start; }
+.business-profile-main, .business-profile-side { display: grid; gap: var(--space-5); min-width: 0; }
+.business-profile-page .settings-card-heading { margin-bottom: var(--space-4); }
+.business-profile-page .settings-card h2 { margin: 0; }
+.business-profile-page .settings-form-grid { gap: var(--space-4); }
+.business-profile-page .settings-form-grid input, .business-profile-page .settings-form-grid select { min-height: 44px; width: 100%; }
+.business-profile-description { display: grid; gap: var(--space-2); margin-top: var(--space-4); }
+.business-profile-description textarea, .business-reply-form textarea, .directory-contact-form textarea { width: 100%; resize: vertical; padding: 11px 13px; }
+.business-location-hint { display: flex; align-items: center; gap: var(--space-2); margin: var(--space-5) 0 var(--space-3); }
+.business-location-hint svg { flex: none; color: var(--color-accent-solid); }
+.business-location-map { height: 230px; overflow: hidden; border: 1px solid var(--color-border-subtle); border-radius: var(--radius-lg); background: var(--color-bg-subtle); }
+.business-coordinates { margin-top: var(--space-4); }
+.business-profile-cover { width: 100%; height: 178px; border-radius: var(--radius-md); background-color: var(--color-bg-subtle); }
+.business-profile-side .settings-card > .muted { margin: var(--space-3) 0; font-size: 0.82rem; }
+.business-cover-options { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-2); }
+.business-cover-option { overflow: hidden; padding: 3px; border: 2px solid transparent; border-radius: var(--radius-md); background: var(--color-bg-page); }
+.business-cover-option.active { border-color: var(--color-accent-solid); }
+.business-cover-option:focus-visible { outline: 2px solid var(--color-accent-solid); outline-offset: 2px; }
+.business-cover-thumb { height: 54px; border-radius: var(--radius-sm); }
+.business-profile-verification { background: var(--color-bg-subtle); }
+.business-profile-verification h2 { font-size: 1.1rem; }
+.business-profile-submit { display: grid; gap: var(--space-3); }
+.business-saved { display: flex; align-items: center; gap: var(--space-2); margin: 0; color: var(--color-status-success); font-weight: 650; font-size: 0.87rem; }
+
+.business-contacts-intro { display: flex; align-items: center; gap: var(--space-4); padding: var(--space-5); margin-bottom: var(--space-5); background: var(--color-bg-subtle); border: 1px solid var(--color-border-subtle); border-radius: var(--radius-lg); }
+.business-contacts-icon { display: grid; place-items: center; width: 52px; height: 52px; flex: none; border-radius: var(--radius-md); background: var(--color-bg-surface); color: var(--color-accent-solid); }
+.business-contacts-intro strong { color: var(--color-text-primary); font-family: var(--font-display); font-size: 1.05rem; }
+.business-contacts-intro p { margin: 4px 0 0; font-size: 0.85rem; }
+.business-contact-list { display: grid; gap: var(--space-3); }
+.business-contact-card, .directory-my-contacts { background: var(--color-bg-surface); border: 1px solid var(--color-border-subtle); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); padding: var(--space-5); }
+.business-contact-head { display: flex; align-items: center; gap: var(--space-3); }
+.business-contact-head > div:nth-child(2) { flex: 1; min-width: 0; }
+.business-contact-head h2 { margin: 0; font-size: 1rem; }
+.business-contact-head p { margin: 2px 0 0; font-size: 0.8rem; overflow-wrap: anywhere; }
+.business-contact-status { padding: 5px 11px; border-radius: var(--radius-pill); color: var(--color-text-secondary); background: var(--color-bg-subtle); font-size: 0.75rem; font-weight: 700; white-space: nowrap; }
+.business-contact-status.nuevo { background: var(--color-warm-soft); color: var(--color-warm-strong); }
+.business-contact-status.respondido { background: var(--color-success-soft); color: var(--color-status-success); }
+.business-contact-message { padding: var(--space-4); margin: var(--space-4) 0; border-radius: var(--radius-md); background: var(--color-bg-page); color: var(--color-text-primary); overflow-wrap: anywhere; }
+.business-contact-answer { padding: var(--space-3) var(--space-4); border-inline-start: 3px solid var(--color-accent-solid); background: var(--color-bg-subtle); border-radius: var(--radius-sm); }
+.business-contact-answer strong { color: var(--color-text-primary); font-size: 0.8rem; }
+.business-contact-answer p { margin: 3px 0 0; overflow-wrap: anywhere; }
+.business-contact-actions { display: flex; gap: var(--space-2); margin-top: var(--space-4); flex-wrap: wrap; }
+.business-reply-form { display: grid; justify-items: start; gap: var(--space-3); margin-top: var(--space-4); padding-top: var(--space-4); border-top: 1px solid var(--color-border-subtle); }
+.business-reply-form label { display: grid; gap: var(--space-2); width: 100%; }
+.business-reply-form textarea { min-height: 106px; }
+.directory-contact-bar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--space-3); margin-bottom: var(--space-5); padding: var(--space-4) var(--space-5); background: var(--color-bg-surface); border: 1px solid var(--color-border-subtle); border-radius: var(--radius-lg); }
+.directory-contact-bar span { color: var(--color-text-secondary); font-size: 0.85rem; }
+.directory-my-contacts { margin-bottom: var(--space-5); }
+.directory-contact-item { padding: var(--space-4) 0; border-top: 1px solid var(--color-border-subtle); }
+.directory-contact-item > div:first-child { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-2); }
+.directory-contact-item small { color: var(--color-text-muted); }
+.directory-contact-item > p { margin: var(--space-2) 0; overflow-wrap: anywhere; }
+.directory-contact-form { margin: var(--space-5) 0; padding: var(--space-5); background: var(--color-bg-subtle); border-radius: var(--radius-lg); }
+.directory-contact-form h3 { margin: 0 0 var(--space-2); }
+.directory-contact-form form { display: grid; gap: var(--space-3); margin-top: var(--space-4); }
+.directory-contact-form label { display: grid; gap: 7px; }
+.directory-contact-form input, .directory-contact-form textarea { width: 100%; min-height: 44px; }
+.directory-contact-form button { justify-self: start; }
+[data-mode="dark"] .business-contact-status.nuevo { color: var(--color-warm); }
+@media (max-width: 1080px) { .business-profile-layout { grid-template-columns: 1fr; } .business-profile-side { grid-template-columns: repeat(2, minmax(0, 1fr)); } .business-profile-submit { grid-column: 1 / -1; } }
+@media (max-width: 680px) { .business-profile-side { grid-template-columns: 1fr; } .business-profile-submit { grid-column: auto; } .business-contacts-intro { align-items: flex-start; } .business-contact-head { flex-wrap: wrap; } .business-contact-status { margin-inline-start: 64px; } .directory-contact-form { padding: var(--space-4); } .business-profile-page input, .business-profile-page select, .business-profile-page textarea, .business-reply-form textarea, .directory-contact-form input, .directory-contact-form textarea { font-size: 16px; } }
+.business-catalog-form { grid-template-columns: 135px minmax(150px, 1fr) minmax(130px, 1fr) 140px auto; }
+.business-catalog-form > * { min-width: 0; }
+.business-catalog-actions, .business-catalog-row-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
+.business-catalog-form .business-catalog-actions { flex-wrap: nowrap; }
+.business-catalog-row-actions .text-button { padding: 6px; }
+@media (max-width: 1140px) { .business-catalog-form { grid-template-columns: repeat(2, minmax(0, 1fr)); } .business-catalog-actions { grid-column: 1 / -1; } }
+@media (max-width: 600px) { .business-catalog-form { grid-template-columns: 1fr; } .business-catalog-actions { grid-column: auto; } .business-catalog-form input, .business-catalog-form select { font-size: 16px; } }
+
+/* Administración: antecedentes y confirmación de una suspensión de cuenta. */
+.user-identity .user-reports-link { justify-content: flex-start; min-height: 30px; padding: 0; font-size: 0.78rem; }
+.account-review-backdrop { overflow-y: auto; padding: var(--space-4); }
+.account-review-modal { width: min(100%, 1040px); max-width: none; max-height: 94dvh; overflow-y: auto; padding: var(--space-6); }
+.account-review-modal .close { display: grid; place-items: center; width: 40px; height: 40px; border-radius: var(--radius-sm); }
+.account-review-heading { padding: 0 var(--space-7) var(--space-4) 0; border-bottom: 1px solid var(--color-border-subtle); }
+.account-review-heading h2 { margin: 0 0 6px; }
+.account-review-heading .muted { overflow-wrap: anywhere; }
+.account-review-tabs { display: flex; gap: var(--space-2); padding: var(--space-4) 0; }
+.account-review-tabs button { min-height: 42px; padding: 9px 16px; border: 1px solid var(--color-border-subtle); border-radius: var(--radius-pill); background: var(--color-bg-surface); color: var(--color-text-secondary); font-weight: 650; }
+.account-review-tabs button.active { background: var(--color-bg-subtle); border-color: var(--color-accent-solid); color: var(--color-accent-strong); }
+[data-mode="dark"] .account-review-tabs button.active { color: var(--color-accent-strong); }
+.account-review-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr); align-items: start; gap: var(--space-5); }
+.account-review-evidence, .account-review-form, .account-review-side-note { min-width: 0; padding: var(--space-5); border: 1px solid var(--color-border-subtle); border-radius: var(--radius-lg); background: var(--color-bg-page); }
+.account-review-section-title { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-3); }
+.account-review-section-title h3, .account-review-form h3, .account-review-side-note h3 { margin: 0 0 8px; }
+.account-review-count { padding: 6px 12px; border-radius: var(--radius-pill); color: var(--color-accent-strong); background: var(--color-bg-subtle); font-weight: 750; }
+.account-review-evidence > .muted { margin: 0 0 var(--space-4); font-size: .82rem; }
+.account-review-complaints { display: grid; gap: var(--space-3); max-height: 430px; overflow-y: auto; padding-inline-end: 3px; }
+.account-complaint { padding: var(--space-4); border: 1px solid var(--color-border-subtle); border-radius: var(--radius-md); background: var(--color-bg-surface); }
+.account-complaint.highlighted { border-color: var(--color-accent-solid); box-shadow: var(--focus-ring); }
+.account-complaint-heading { display: flex; justify-content: space-between; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-3); }
+.account-complaint-heading span { font-size: .74rem; font-weight: 700; color: var(--color-accent-strong); }
+.account-complaint-heading small, .account-complaint > small { font-size: .77rem; color: var(--color-text-muted); }
+.account-complaint > strong { display: block; font-size: .77rem; color: var(--color-text-primary); }
+.account-complaint p { margin: 4px 0 var(--space-3); font-size: .86rem; line-height: 1.5; overflow-wrap: anywhere; }
+.account-review-empty { display: grid; justify-items: center; gap: var(--space-2); padding: var(--space-6); border: 1px dashed var(--color-border-subtle); border-radius: var(--radius-md); text-align: center; }
+.account-review-empty svg { color: var(--color-text-muted); }
+.account-review-empty strong { color: var(--color-text-primary); }
+.account-review-empty p { margin: 0; font-size: .85rem; }
+.account-review-form { display: grid; gap: var(--space-4); background: var(--color-bg-surface); }
+.account-review-form > .eyebrow { margin: 0; }
+.account-review-form h3 { margin-top: calc(-1 * var(--space-3)); }
+.account-suspension-types { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
+.account-review-modal .account-suspension-types label { display: flex; align-items: flex-start; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--color-border-subtle); border-radius: var(--radius-md); background: var(--color-bg-page); cursor: pointer; }
+.account-review-modal .account-suspension-types label.active { border-color: var(--color-accent-solid); background: var(--color-bg-subtle); }
+.account-review-modal input[type="radio"], .account-review-modal input[type="checkbox"] { flex: none; width: 18px; height: 18px; min-height: 0; padding: 0; margin: 2px 0 0; accent-color: var(--color-accent-solid); }
+.account-suspension-types span { display: grid; gap: 4px; }
+.account-suspension-types strong { color: var(--color-text-primary); font-size: .88rem; }
+.account-suspension-types small { color: var(--color-text-secondary); font-weight: 400; line-height: 1.4; }
+.account-review-modal .account-days { display: grid; gap: 5px; }
+.account-days small, .account-decision-message small { font-weight: 400; color: var(--color-text-secondary); }
+.account-review-modal .account-days input { width: min(100%, 160px); min-height: 42px; }
+.account-quick-reasons { min-width: 0; margin: 0; padding: 0; border: 0; }
+.account-quick-reasons legend { font-size: .85rem; color: var(--color-text-primary); font-weight: 700; }
+.account-quick-reasons .muted { margin: 3px 0 var(--space-3); font-size: .8rem; }
+.account-quick-reasons > div { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.account-quick-reasons button { min-height: 36px; padding: 6px 11px; border: 1px solid var(--color-border-subtle); border-radius: var(--radius-pill); background: var(--color-bg-page); color: var(--color-text-secondary); font-size: .77rem; font-weight: 650; }
+.account-quick-reasons button.active { color: var(--color-accent-strong); border-color: var(--color-accent-solid); background: var(--color-bg-subtle); }
+.account-review-modal .account-decision-message { display: grid; gap: var(--space-2); }
+.account-decision-message textarea { width: 100%; resize: vertical; min-height: 100px; padding: 11px 13px; font-size: .9rem; }
+.account-related-note { margin: 0; padding: var(--space-3); border-radius: var(--radius-sm); background: var(--color-warm-soft); color: var(--color-warm-strong); font-size: .82rem; }
+[data-mode="dark"] .account-related-note { color: var(--color-warm); }
+.account-decision-summary { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--color-border-subtle); border-radius: var(--radius-sm); font-size: .83rem; }
+.account-decision-summary svg { flex: none; color: var(--color-accent-solid); }
+.account-review-modal .account-confirm { display: flex; align-items: flex-start; gap: var(--space-2); font-size: .83rem; font-weight: 550; cursor: pointer; }
+.account-review-actions { display: flex; justify-content: flex-end; gap: var(--space-2); flex-wrap: wrap; padding-top: var(--space-3); border-top: 1px solid var(--color-border-subtle); }
+.account-review-side-note { display: grid; gap: var(--space-2); align-content: start; }
+.account-review-side-note p { margin: 0; overflow-wrap: anywhere; }
+.account-review-side-note .primary { justify-self: start; margin-top: var(--space-3); }
+@media (max-width: 900px) { .account-review-grid { grid-template-columns: 1fr; } .account-review-complaints { max-height: 280px; } }
+@media (max-width: 600px) { .account-review-backdrop { padding: var(--space-2); } .account-review-modal { padding: var(--space-4); } .account-review-evidence, .account-review-form, .account-review-side-note { padding: var(--space-4); } .account-suspension-types { grid-template-columns: 1fr; } .account-review-actions button { flex: 1; } .account-review-modal input[type="number"], .account-review-modal textarea { font-size: 16px; } }
