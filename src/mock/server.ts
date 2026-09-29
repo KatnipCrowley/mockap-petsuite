@@ -1,8 +1,9 @@
 // API simulado de PetSuite: mismas rutas, validaciones y reglas que el servidor real (server/src/routes),
 // resueltas en el navegador sobre mock/db.ts. Los mensajes de error se mantienen en español.
 import { z } from 'zod'
-import { ApiError, type Session } from '../api'
-import { db, ficha, now, refresh, save, uid, dayOffset, type Animal, type MascotaRow, type Pyme, type Usuario } from './db'
+import { ApiError, type FichaDatos, type Session } from '../api'
+import { db, ficha, now, refresh, save, uid, dayOffset, type Animal, type Item, type MascotaRow, type Publicacion, type Pyme, type Usuario } from './db'
+import type { Oferta } from '../api'
 
 z.config(z.locales.es())
 
@@ -34,25 +35,39 @@ function auth(req: Req, ...roles: Usuario['rol'][]): Usuario {
 
 const vigente = (a: { revocado_en: string | null; vigente_hasta: string }) => !a.revocado_en && a.vigente_hasta > now()
 const suscripcionActiva = (pymeId: string) => db.suscripciones.some(s => s.pyme_id === pymeId && s.estado === 'activa' && s.fin >= dayOffset(0))
-const ultimaSuscripcion = (pymeId: string) => db.suscripciones.filter(s => s.pyme_id === pymeId).sort((a, b) => b.inicio.localeCompare(a.inicio))[0]
+// Suscripción que rige hoy: la activa ya iniciada; una renovación pendiente o futura no reemplaza a la actual.
+const ultimaSuscripcion = (pymeId: string) => {
+  const subs = db.suscripciones.filter(s => s.pyme_id === pymeId).sort((a, b) => b.inicio.localeCompare(a.inicio))
+  return subs.find(s => s.estado === 'activa' && s.inicio <= dayOffset(0)) ?? subs.find(s => s.estado === 'activa') ?? subs.find(s => s.estado !== 'pendiente' && s.estado !== 'cancelada') ?? subs[0]
+}
+const pagoPendiente = (pymeId: string) => {
+  const ids = new Set(db.suscripciones.filter(s => s.pyme_id === pymeId).map(s => s.id))
+  return db.pagos.find(p => ids.has(p.suscripcion_id) && p.estado === 'pendiente')
+}
 const comunaNombre = (id: number) => db.comunas.find(c => c.id === id)?.nombre ?? ''
 const nombreUsuario = (id: string) => db.usuarios.find(u => u.id === id)?.nombre_visible ?? 'Usuario'
 const hace = (dias: number) => new Date(Date.now() - dias * 86_400_000).toISOString()
 
+const ofertaVigente = (o: Oferta | null | undefined) => !!o && o.desde <= dayOffset(0) && o.hasta >= dayOffset(0)
+const itemsPublicos = (pymeId: string) => db.catalogo.filter(i => i.pyme_id === pymeId && i.disponible)
+
 const pymeResumen = (p: Pyme) => ({
   id: p.id, nombre_comercial: p.nombre_comercial, rubro: p.rubro, descripcion: p.descripcion, comuna_id: p.comuna_id, comuna: comunaNombre(p.comuna_id),
   direccion: p.direccion, latitud: p.latitud, longitud: p.longitud, telefono: p.telefono, whatsapp: p.whatsapp, horario: p.horario,
+  servicios: p.servicios ?? [], ofertas: itemsPublicos(p.id).filter(i => ofertaVigente(i.oferta)).length,
 })
 
 // ---------- Esquemas ----------
+// Autoría de los registros clínicos: se conserva al guardar la ficha completa.
+const meta = { registrado_por: z.string().optional(), clinica: z.string().max(100).optional(), anulado: z.object({ motivo: z.string().max(200), en: z.string() }).optional() }
 const fichaSchema = z.object({
   condiciones: z.array(z.string().max(80)).max(8).default([]),
   medicamentos: z.array(z.string().max(80)).max(8).default([]),
   notaEmergencia: z.string().max(160).default(''),
-  vacunas: z.array(z.object({ id: z.string().optional(), nombre: z.string().max(80), fecha: z.string().max(10), proxima: z.string().max(10).optional(), notas: z.string().max(500).optional() })).max(100).default([]),
+  vacunas: z.array(z.object({ id: z.string().optional(), nombre: z.string().max(80), fecha: z.string().max(10), proxima: z.string().max(10).optional(), notas: z.string().max(500).optional(), ...meta })).max(100).default([]),
   alergias: z.array(z.object({ agente: z.string().max(80), reaccion: z.string().max(120).optional(), gravedad: z.enum(['leve', 'moderada', 'grave']).optional() })).max(50).default([]),
-  tratamientos: z.array(z.object({ id: z.string().optional(), descripcion: z.string().max(200), inicio: z.string().max(10).optional(), fin: z.string().max(10).optional(), notas: z.string().max(500).optional() })).max(100).default([]),
-  atenciones: z.array(z.object({ id: z.string().optional(), fecha: z.string().max(10), motivo: z.string().max(200), notas: z.string().max(500).optional() })).max(200).default([]),
+  tratamientos: z.array(z.object({ id: z.string().optional(), descripcion: z.string().max(200), inicio: z.string().max(10).optional(), fin: z.string().max(10).optional(), notas: z.string().max(500).optional(), ...meta })).max(100).default([]),
+  atenciones: z.array(z.object({ id: z.string().optional(), fecha: z.string().max(10), motivo: z.string().max(200), notas: z.string().max(500).optional(), ...meta })).max(200).default([]),
   alertasCriticas: z.array(z.string().max(200)).max(20).default([]),
 })
 
@@ -168,7 +183,90 @@ on('PUT', '/mascotas/:id/ficha', req => {
   if (permiso !== 'escritura') return fail(403, 'Acceso de solo lectura')
   const d = parse(z.object({ version: z.number().int().positive(), datos_clinicos: fichaSchema }), req.body)
   if (d.version !== m.ficha_version) return fail(409, 'La ficha fue modificada por otra persona. Recarga e inténtalo de nuevo')
+  protegerRegistrosClinicos(m.datos_clinicos, d.datos_clinicos)
   m.datos_clinicos = d.datos_clinicos
+  m.ficha_version += 1
+  return { id: m.id, datos_clinicos: m.datos_clinicos, version: m.ficha_version }
+})
+
+// ---------- Registros clínicos con autoría ----------
+type Registro = { id?: string; fecha?: string; inicio?: string; nombre?: string; motivo?: string; descripcion?: string; notas?: string; proxima?: string; registrado_por?: string; clinica?: string; anulado?: { motivo: string; en: string } }
+const registrosDe = (f: FichaDatos): Registro[] => [...f.vacunas, ...f.atenciones, ...f.tratamientos]
+
+// Los registros de una clínica solo los cambia esa clínica: el tutor no puede editarlos, borrarlos ni firmar como clínica.
+// Comparación sin depender del orden de las claves ni de campos vacíos.
+const canonico = (r: Registro | undefined) => r ? JSON.stringify(Object.entries(r).filter(([, v]) => v !== undefined && v !== '').sort(([a], [b]) => a.localeCompare(b))) : ''
+
+function protegerRegistrosClinicos(prev: FichaDatos, next: FichaDatos) {
+  const antes = new Map(registrosDe(prev).filter(r => r.registrado_por && r.id).map(r => [r.id!, canonico(r)]))
+  const despues = new Map(registrosDe(next).filter(r => r.id).map(r => [r.id!, r]))
+  for (const [id, json] of antes) if (canonico(despues.get(id)) !== json) fail(403, 'Los registros hechos por una clínica no se pueden modificar desde la cuenta del tutor')
+  for (const r of registrosDe(next)) if (r.registrado_por && !antes.has(r.id ?? '')) { delete r.registrado_por; delete r.clinica; delete r.anulado }
+}
+
+function clinicaConEscritura(req: Req): [MascotaRow, Pyme] {
+  const [u, m, permiso] = accesoFicha(req)
+  if (u.rol !== 'clinico' || permiso !== 'escritura') return fail(403, 'Necesitas acceso de registro a esta ficha')
+  const mias = db.pymes.filter(p => p.propietario_id === u.id)
+  const acceso = db.accesos.find(a => a.mascota_id === m.id && a.permiso === 'escritura' && vigente(a) && mias.some(p => p.id === a.pyme_id))
+  return [m, mias.find(p => p.id === acceso?.pyme_id)!]
+}
+
+const fecha = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida')
+const registroSchema = z.object({
+  version: z.number().int().positive(),
+  tipo: z.enum(['atencion', 'vacuna', 'tratamiento']),
+  fecha,
+  titulo: z.string().trim().min(3, 'Describe el registro').max(200),
+  notas: z.string().trim().max(500).optional(),
+  proxima: fecha.optional(),
+})
+
+function versionOk(m: MascotaRow, version: number) {
+  if (version !== m.ficha_version) fail(409, 'La ficha fue modificada por otra persona. Recarga e inténtalo de nuevo')
+}
+
+on('POST', '/mascotas/:id/registros', req => {
+  const [m, clinica] = clinicaConEscritura(req)
+  const d = parse(registroSchema, req.body)
+  versionOk(m, d.version)
+  const firma = { id: uid(), registrado_por: clinica.id, clinica: clinica.nombre_comercial, ...(d.notas ? { notas: d.notas } : {}) }
+  const f = m.datos_clinicos
+  if (d.tipo === 'vacuna') f.vacunas.push({ ...firma, nombre: d.titulo, fecha: d.fecha, ...(d.proxima ? { proxima: d.proxima } : {}) })
+  else if (d.tipo === 'tratamiento') f.tratamientos.push({ ...firma, descripcion: d.titulo, inicio: d.fecha })
+  else f.atenciones.push({ ...firma, motivo: d.titulo, fecha: d.fecha })
+  m.ficha_version += 1
+  return { id: m.id, datos_clinicos: m.datos_clinicos, version: m.ficha_version }
+})
+
+function registroPropio(m: MascotaRow, clinica: Pyme, rid: string) {
+  const r = registrosDe(m.datos_clinicos).find(x => x.id === rid)
+  if (!r) return fail(404, 'Registro no encontrado')
+  if (r.registrado_por !== clinica.id) return fail(403, 'Solo puedes cambiar los registros de tu clínica')
+  if (r.anulado) return fail(422, 'El registro está anulado')
+  return r
+}
+
+on('PATCH', '/mascotas/:id/registros/:rid', req => {
+  const [m, clinica] = clinicaConEscritura(req)
+  const d = parse(registroSchema.omit({ tipo: true }), req.body)
+  versionOk(m, d.version)
+  const r = registroPropio(m, clinica, req.params.rid)
+  if ('nombre' in r) { r.nombre = d.titulo; r.fecha = d.fecha; if (d.proxima) r.proxima = d.proxima; else delete r.proxima }
+  else if ('descripcion' in r) { r.descripcion = d.titulo; r.inicio = d.fecha }
+  else { r.motivo = d.titulo; r.fecha = d.fecha }
+  if (d.notas) r.notas = d.notas; else delete r.notas
+  m.ficha_version += 1
+  return { id: m.id, datos_clinicos: m.datos_clinicos, version: m.ficha_version }
+})
+
+// Anular no borra: el registro queda tachado con el motivo, para que el historial sea trazable.
+on('POST', '/mascotas/:id/registros/:rid/anular', req => {
+  const [m, clinica] = clinicaConEscritura(req)
+  const d = parse(z.object({ version: z.number().int().positive(), motivo: z.string().trim().min(5, 'Indica el motivo de la anulación (mínimo 5 caracteres)').max(200) }), req.body)
+  versionOk(m, d.version)
+  const r = registroPropio(m, clinica, req.params.rid)
+  r.anulado = { motivo: d.motivo, en: now() }
   m.ficha_version += 1
   return { id: m.id, datos_clinicos: m.datos_clinicos, version: m.ficha_version }
 })
@@ -274,7 +372,7 @@ on('GET', '/pymes/mias', req => {
   const u = auth(req, 'pyme', 'clinico')
   return db.pymes.filter(p => p.propietario_id === u.id).map(p => {
     const s = ultimaSuscripcion(p.id), plan = s && db.planes.find(x => x.id === s.plan_id)
-    return { id: p.id, nombre_comercial: p.nombre_comercial, rubro: p.rubro, estado_verificacion: p.estado_verificacion, comuna_id: p.comuna_id, suscripcion: s && plan ? { estado: s.estado, fin: s.fin, plan: plan.nombre, precio: plan.precio_mensual_clp, max_items: plan.max_items_catalogo } : null }
+    return { id: p.id, nombre_comercial: p.nombre_comercial, rubro: p.rubro, estado_verificacion: p.estado_verificacion, comuna_id: p.comuna_id, solicitud_pendiente: !!pagoPendiente(p.id), suscripcion: s && plan ? { estado: s.estado, fin: s.fin, plan: plan.nombre, plan_id: plan.id, precio: plan.precio_mensual_clp, max_items: plan.max_items_catalogo } : null }
   })
 })
 
@@ -300,7 +398,7 @@ on('POST', '/pymes', req => {
   const p: Pyme = {
     id: uid(), propietario_id: u.id, nombre_comercial: d.nombre_comercial, rut_empresa: d.rut_empresa, rubro: d.rubro, descripcion: d.descripcion ?? null, comuna_id: d.comuna_id,
     direccion: d.direccion ?? null, latitud: d.latitud != null ? String(d.latitud) : null, longitud: d.longitud != null ? String(d.longitud) : null,
-    telefono: d.telefono ?? null, whatsapp: d.whatsapp ?? null, horario: {}, estado_verificacion: 'pendiente', creado_en: now(),
+    telefono: d.telefono ?? null, whatsapp: d.whatsapp ?? null, horario: {}, servicios: [], estado_verificacion: 'pendiente', creado_en: now(),
   }
   db.pymes.push(p)
   const s = { id: uid(), pyme_id: p.id, plan_id: plan.id, inicio: dayOffset(0), fin: dayOffset(30), estado: 'pendiente' as const }
@@ -313,8 +411,10 @@ on('GET', '/pymes/:id', req => {
   const p = db.pymes.find(x => x.id === req.params.id && x.estado_verificacion === 'aprobada')
   if (!p) return fail(404, 'No encontrada')
   db.eventos.push({ id: uid(), pyme_id: p.id, item_id: null, tipo: 'visita_perfil', ocurrido_en: now() })
-  const catalogo = db.catalogo.filter(i => i.pyme_id === p.id && i.disponible).sort((a, b) => a.nombre.localeCompare(b.nombre))
-    .map(i => ({ id: i.id, tipo: i.tipo, nombre: i.nombre, descripcion: i.descripcion, precio_referencial_clp: i.precio_referencial_clp }))
+  // Las ofertas se muestran solo mientras están vigentes, y primero.
+  const catalogo = itemsPublicos(p.id)
+    .map(i => ({ id: i.id, tipo: i.tipo, nombre: i.nombre, descripcion: i.descripcion, precio_referencial_clp: i.precio_referencial_clp, categoria: i.categoria, sin_stock: i.sin_stock, oferta: ofertaVigente(i.oferta) ? i.oferta : null }))
+    .sort((a, b) => Number(!!b.oferta) - Number(!!a.oferta) || (a.categoria ?? '').localeCompare(b.categoria ?? '') || a.nombre.localeCompare(b.nombre))
   return { ...pymeResumen(p), catalogo }
 })
 
@@ -332,13 +432,54 @@ function miPyme(req: Req): Pyme {
   return p
 }
 
+// Perfil público del negocio. Nombre, RUT y rubro quedan fuera porque los verifica el equipo PetSuite.
+const horarioSchema = z.string().trim().max(40)
+const perfilSchema = z.object({
+  descripcion: z.string().trim().max(1000).refine(sinEnlaces, 'No se permiten enlaces externos en la descripción'),
+  direccion: z.string().trim().max(200),
+  telefono: z.string().trim().max(20).regex(/^[\d+\s()-]*$/, 'Teléfono inválido'),
+  whatsapp: z.string().trim().max(20).regex(/^[\d+\s]*$/, 'WhatsApp inválido: usa solo números (ej. 56912345678)'),
+  horario: z.object({ 'lun-vie': horarioSchema, sab: horarioSchema, dom: horarioSchema }),
+  servicios: z.array(z.string().trim().min(2).max(40)).max(12, 'Puedes destacar hasta 12 servicios'),
+  latitud: z.number().min(-90).max(90).nullable(),
+  longitud: z.number().min(-180).max(180).nullable(),
+})
+
+on('GET', '/pymes/:id/perfil', req => {
+  const p = miPyme(req)
+  return { ...pymeResumen(p), rut_empresa: p.rut_empresa, estado_verificacion: p.estado_verificacion }
+})
+
+on('PATCH', '/pymes/:id/perfil', req => {
+  const p = miPyme(req)
+  const d = parse(perfilSchema, req.body)
+  Object.assign(p, {
+    descripcion: d.descripcion || null, direccion: d.direccion || null, telefono: d.telefono || null, whatsapp: d.whatsapp.replace(/\D/g, '') || null,
+    horario: Object.fromEntries(Object.entries(d.horario).filter(([, h]) => h)), servicios: [...new Set(d.servicios)],
+    latitud: d.latitud != null ? String(d.latitud) : null, longitud: d.longitud != null ? String(d.longitud) : null,
+  })
+  return { ok: true }
+})
+
+const ofertaSchema = z.object({ precio_clp: z.number().int().min(0).max(100_000_000), desde: fecha, hasta: fecha })
+  .refine(o => o.hasta >= o.desde, 'La oferta debe terminar después de comenzar')
 const itemSchema = z.object({
   tipo: z.enum(['producto', 'servicio']),
   nombre: z.string().trim().min(2, 'El nombre debe tener al menos 2 caracteres').max(120),
-  descripcion: z.string().max(1000).optional(),
-  precio_referencial_clp: z.number().int().min(0).max(100_000_000).optional(),
+  descripcion: z.string().trim().max(1000).nullable().optional(),
+  precio_referencial_clp: z.number().int().min(0).max(100_000_000).nullable().optional(),
+  categoria: z.string().trim().max(40).nullable().optional(),
+  sin_stock: z.boolean().optional(),
+  oferta: ofertaSchema.nullable().optional(),
   disponible: z.boolean().optional(),
 })
+
+// Una oferta tiene sentido solo si baja el precio referencial.
+function validarOferta(precio: number | null, oferta: Oferta | null | undefined) {
+  if (!oferta) return
+  if (precio == null) fail(400, 'Para publicar una oferta, el ítem necesita un precio referencial')
+  if (precio != null && oferta.precio_clp >= precio) fail(400, 'El precio de oferta debe ser menor que el precio referencial')
+}
 
 on('GET', '/pymes/:id/catalogo', req => { const p = miPyme(req); return db.catalogo.filter(i => i.pyme_id === p.id).sort((a, b) => b.creado_en.localeCompare(a.creado_en)) })
 
@@ -347,18 +488,33 @@ on('POST', '/pymes/:id/catalogo', req => {
   const d = parse(itemSchema, req.body)
   const s = ultimaSuscripcion(p.id), plan = s && db.planes.find(x => x.id === s.plan_id)
   if (plan && db.catalogo.filter(i => i.pyme_id === p.id).length >= plan.max_items_catalogo) return fail(422, `Tu plan permite hasta ${plan.max_items_catalogo} ítems`)
+  validarOferta(d.precio_referencial_clp ?? null, d.oferta)
   // Sin suscripción vigente el ítem se guarda, pero no se publica.
-  const item = { id: uid(), pyme_id: p.id, tipo: d.tipo, nombre: d.nombre, descripcion: d.descripcion ?? null, precio_referencial_clp: d.precio_referencial_clp ?? null, disponible: (d.disponible ?? true) && suscripcionActiva(p.id), creado_en: now() }
+  const item: Item = {
+    id: uid(), pyme_id: p.id, tipo: d.tipo, nombre: d.nombre, descripcion: d.descripcion || null, precio_referencial_clp: d.precio_referencial_clp ?? null,
+    disponible: (d.disponible ?? true) && suscripcionActiva(p.id), categoria: d.categoria || null, sin_stock: d.sin_stock ?? false, oferta: d.oferta ?? null, creado_en: now(),
+  }
   db.catalogo.push(item)
   return item
 })
 
+// Los campos omitidos se conservan; null los borra (por ejemplo, oferta: null quita la oferta).
 on('PUT', '/pymes/:id/catalogo/:itemId', req => {
   const p = miPyme(req)
   const d = parse(itemSchema, req.body)
   const item = db.catalogo.find(i => i.id === req.params.itemId && i.pyme_id === p.id)
   if (!item) return fail(404, 'Ítem no encontrado')
-  Object.assign(item, { tipo: d.tipo, nombre: d.nombre, descripcion: d.descripcion ?? null, precio_referencial_clp: d.precio_referencial_clp ?? null, disponible: d.disponible ?? item.disponible })
+  const next = {
+    tipo: d.tipo, nombre: d.nombre,
+    descripcion: d.descripcion === undefined ? item.descripcion : d.descripcion || null,
+    precio_referencial_clp: d.precio_referencial_clp === undefined ? item.precio_referencial_clp : d.precio_referencial_clp,
+    categoria: d.categoria === undefined ? item.categoria : d.categoria || null,
+    sin_stock: d.sin_stock ?? item.sin_stock,
+    oferta: d.oferta === undefined ? item.oferta : d.oferta,
+    disponible: d.disponible ?? item.disponible,
+  }
+  validarOferta(next.precio_referencial_clp, next.oferta)
+  Object.assign(item, next)
   return item
 })
 
@@ -372,8 +528,11 @@ on('DELETE', '/pymes/:id/catalogo/:itemId', req => {
 
 on('GET', '/pymes/:id/metricas', req => {
   const p = miPyme(req)
-  const desde = hace(30)
+  const desde = hace(30), previo = hace(60)
   const eventos = db.eventos.filter(e => e.pyme_id === p.id && e.ocurrido_en > desde)
+  // Mismo conteo para los 30 días anteriores, para comparar.
+  const anteriores = { visita_perfil: 0, vista_item: 0, clic_contacto: 0, clic_whatsapp: 0 }
+  for (const e of db.eventos) if (e.pyme_id === p.id && e.ocurrido_en > previo && e.ocurrido_en <= desde) anteriores[e.tipo]++
   const totales = { visita_perfil: 0, vista_item: 0, clic_contacto: 0, clic_whatsapp: 0 }
   const dias = new Map<string, number>(), vistas = new Map<string, number>()
   for (const e of eventos) {
@@ -385,6 +544,8 @@ on('GET', '/pymes/:id/metricas', req => {
   }
   return {
     totales,
+    anteriores,
+    ofertas_vigentes: itemsPublicos(p.id).filter(i => ofertaVigente(i.oferta)).length,
     por_dia: [...dias].sort(([a], [b]) => a.localeCompare(b)).map(([dia, n]) => ({ dia, eventos: n })),
     items_mas_vistos: [...vistas].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([nombre, n]) => ({ nombre, vistas: n })),
   }
@@ -401,52 +562,182 @@ on('GET', '/pymes/:id/suscripcion', req => {
   })
 })
 
+// Renovar o cambiar de plan: queda pendiente hasta que el equipo confirme la transferencia.
+// El nuevo periodo empieza cuando termina el vigente, así no se pierden días ya pagados.
+on('POST', '/pymes/:id/suscripcion', req => {
+  const p = miPyme(req)
+  const d = parse(z.object({ plan_id: z.number().int().positive(), referencia_pago: z.string().trim().min(3, 'Ingresa la referencia de la transferencia').max(60) }), req.body)
+  if (p.estado_verificacion !== 'aprobada') return fail(422, 'Tu negocio debe estar verificado para renovar o cambiar de plan')
+  if (pagoPendiente(p.id)) return fail(409, 'Ya tienes una solicitud de pago en revisión')
+  const plan = db.planes.find(x => x.id === d.plan_id)
+  if (!plan) return fail(400, 'Plan no disponible')
+  const actual = db.suscripciones.filter(s => s.pyme_id === p.id && s.estado === 'activa').sort((a, b) => b.fin.localeCompare(a.fin))[0]
+  const inicio = actual && actual.fin > dayOffset(0) ? actual.fin : dayOffset(0)
+  const fin = new Date(`${inicio}T12:00:00Z`); fin.setUTCDate(fin.getUTCDate() + 30)
+  const s = { id: uid(), pyme_id: p.id, plan_id: plan.id, inicio, fin: fin.toISOString().slice(0, 10), estado: 'pendiente' as const }
+  db.suscripciones.push(s)
+  db.pagos.push({ id: uid(), suscripcion_id: s.id, monto_clp: plan.precio_mensual_clp, referencia: d.referencia_pago, estado: 'pendiente', pagado_en: now() })
+  return { id: s.id, inicio: s.inicio, fin: s.fin }
+})
+
 // Muro comunal
 const textoMuro = (min: number) => z.string().trim().min(min, `Escribe al menos ${min} caracteres`).max(1000).refine(sinEnlaces, 'No se permiten enlaces externos')
 
-on('GET', '/muro', req => {
-  const u = auth(req)
-  const comuna = Number(req.query.get('comuna') || u.comuna_id)
-  return db.publicaciones.filter(p => p.comuna_id === comuna && p.estado === 'publicada').sort((a, b) => b.creado_en.localeCompare(a.creado_en)).slice(0, 100).map(p => ({
-    id: p.id, tipo: p.tipo, texto: p.texto, creado_en: p.creado_en, autor: nombreUsuario(p.autor_id),
+// Urgente: extravíos sin resolver y alertas de salud de la última semana. Se muestran primero.
+const urgente = (p: Publicacion) => (p.tipo === 'extravio' && !p.resuelto_en) || (p.tipo === 'alerta' && p.creado_en > hace(7))
+
+function vistaPublicacion(p: Publicacion, u: Usuario) {
+  const a = p.animal_id ? db.animales.find(x => x.id === p.animal_id) : undefined
+  const o = a && ongDe(a)
+  return {
+    id: p.id, tipo: p.tipo, texto: p.texto, creado_en: p.creado_en, editado: !!p.editado_en, autor: nombreUsuario(p.autor_id), es_mio: p.autor_id === u.id,
+    comuna_id: p.comuna_id, sector: p.sector, foto_url: p.foto_url, fecha_evento: p.fecha_evento, resuelto: !!p.resuelto_en, urgente: urgente(p),
+    mascota: p.mascota_id ? db.mascotas.find(m => m.id === p.mascota_id)?.nombre ?? null : null,
+    // La adopción solo se enlaza mientras el animal siga publicado.
+    animal: a && o && visible(a) ? { id: a.id, nombre: a.nombre, ong: o.nombre } : null,
     reacciones: db.reacciones.filter(r => r.publicacion_id === p.id).length,
     reaccione: db.reacciones.some(r => r.publicacion_id === p.id && r.usuario_id === u.id),
-    comentarios: db.comentarios.filter(c => c.publicacion_id === p.id).sort((a, b) => a.creado_en.localeCompare(b.creado_en)).map(c => ({ id: c.id, autor: nombreUsuario(c.autor_id), texto: c.texto })),
-  }))
+    guardado: db.guardados.some(g => g.publicacion_id === p.id && g.usuario_id === u.id),
+    comentarios: db.comentarios.filter(c => c.publicacion_id === p.id && c.estado === 'visible').sort((x, y) => x.creado_en.localeCompare(y.creado_en))
+      .map(c => ({ id: c.id, autor: nombreUsuario(c.autor_id), texto: c.texto, es_mio: c.autor_id === u.id, editado: !!c.editado_en })),
+  }
+}
+
+// ?comuna=<id> muestra el muro de esa comuna; ?guardadas=1, lo que el usuario guardó en cualquier comuna.
+on('GET', '/muro', req => {
+  const u = auth(req)
+  const guardadas = req.query.get('guardadas') === '1'
+  const comuna = Number(req.query.get('comuna') || u.comuna_id)
+  const mias = new Set(db.guardados.filter(g => g.usuario_id === u.id).map(g => g.publicacion_id))
+  return db.publicaciones.filter(p => p.estado === 'publicada' && (guardadas ? mias.has(p.id) : p.comuna_id === comuna))
+    .sort((a, b) => b.creado_en.localeCompare(a.creado_en)).slice(0, 100).map(p => vistaPublicacion(p, u))
+})
+
+const publicacionSchema = z.object({
+  tipo: z.enum(['extravio', 'encuentro', 'recomendacion', 'alerta', 'evento', 'adopcion']),
+  texto: textoMuro(15),
+  mascota_id: z.string().optional(),
+  animal_id: z.string().optional(),
+  sector: z.string().trim().max(80, 'El sector admite hasta 80 caracteres').refine(sinEnlaces, 'No se permiten enlaces externos').optional(),
+  fecha_evento: fecha.optional(),
 })
 
 on('POST', '/muro', req => {
-  const u = auth(req, 'tutor')
-  const d = parse(z.object({ tipo: z.enum(['extravio', 'encuentro', 'recomendacion']), texto: textoMuro(15), mascota_id: z.string().optional() }), req.body)
-  if (!u.comuna_id) return fail(400, 'Define tu comuna en el perfil')
-  if (d.mascota_id && !db.mascotas.some(m => m.id === d.mascota_id && m.tutor_id === u.id)) return fail(403, 'La mascota no es tuya')
-  const p = { id: uid(), autor_id: u.id, comuna_id: u.comuna_id, mascota_id: d.mascota_id ?? null, tipo: d.tipo, texto: d.texto, estado: 'publicada' as const, creado_en: now() }
+  const u = auth(req, 'tutor', 'ong')
+  const d = parse(publicacionSchema, req.body)
+  const base = { id: uid(), autor_id: u.id, mascota_id: null, animal_id: null, tipo: d.tipo, texto: d.texto, sector: d.sector || null, foto_url: null, fecha_evento: null, resuelto_en: null, editado_en: null, estado: 'publicada' as const, creado_en: now() }
+  let p: Publicacion
+  if (u.rol === 'ong' || d.tipo === 'adopcion') {
+    // Solo una ONG verificada difunde a sus propios animales publicados, en el muro de la comuna de la ONG.
+    const o = db.ongs.find(x => x.propietario_id === u.id)
+    if (u.rol !== 'ong' || d.tipo !== 'adopcion') return fail(403, 'Las adopciones las publican las ONG verificadas')
+    if (!o || o.estado_verificacion !== 'aprobada') return fail(403, 'Tu organización debe estar verificada para difundir en el muro')
+    const a = db.animales.find(x => x.id === d.animal_id && x.ong_id === o.id)
+    if (!a || !visible(a)) return fail(422, 'Solo puedes difundir animales disponibles y publicados')
+    if (db.publicaciones.some(x => x.animal_id === a.id && x.estado === 'publicada')) return fail(409, `${a.nombre} ya está difundido en el muro`)
+    p = { ...base, comuna_id: o.comuna_id, animal_id: a.id, foto_url: a.foto_url }
+  } else {
+    if (!u.comuna_id) return fail(400, 'Define tu comuna en el perfil')
+    const m = d.mascota_id ? db.mascotas.find(x => x.id === d.mascota_id) : undefined
+    if (d.mascota_id && m?.tutor_id !== u.id) return fail(403, 'La mascota no es tuya')
+    if (d.tipo === 'evento' && !d.fecha_evento) return fail(400, 'Indica la fecha del evento')
+    if (d.tipo === 'evento' && d.fecha_evento! < dayOffset(0)) return fail(400, 'La fecha del evento ya pasó')
+    p = { ...base, comuna_id: u.comuna_id, mascota_id: d.tipo === 'extravio' ? m?.id ?? null : null, foto_url: d.tipo === 'extravio' ? m?.foto_url ?? null : null, fecha_evento: d.tipo === 'evento' ? d.fecha_evento! : null }
+  }
   db.publicaciones.push(p)
   return { id: p.id, tipo: p.tipo, texto: p.texto, creado_en: p.creado_en }
 })
 
+function publicacionPropia(req: Req): [Usuario, Publicacion] {
+  const u = auth(req)
+  const p = db.publicaciones.find(x => x.id === req.params.id && x.estado !== 'eliminada')
+  if (!p) return fail(404, 'Publicación no encontrada')
+  if (p.autor_id !== u.id) return fail(403, 'Solo puedes cambiar tus propias publicaciones')
+  return [u, p]
+}
+
+on('PATCH', '/muro/:id', req => {
+  const [, p] = publicacionPropia(req)
+  const d = parse(publicacionSchema.pick({ texto: true, sector: true, fecha_evento: true }), req.body)
+  if (p.estado === 'oculta') return fail(422, 'La publicación fue ocultada por moderación y no se puede editar')
+  if (p.tipo === 'evento' && d.fecha_evento && d.fecha_evento < dayOffset(0)) return fail(400, 'La fecha del evento ya pasó')
+  Object.assign(p, { texto: d.texto, sector: d.sector || null, fecha_evento: p.tipo === 'evento' ? d.fecha_evento ?? p.fecha_evento : null, editado_en: now() })
+  return { ok: true }
+})
+
+on('DELETE', '/muro/:id', req => {
+  const [, p] = publicacionPropia(req)
+  p.estado = 'eliminada'
+  // Los reportes pendientes sobre lo eliminado ya no requieren revisión.
+  for (const r of db.reportes) if (r.objeto_id === p.id && r.estado === 'abierto') r.estado = 'resuelto_mantenido'
+  return undefined
+})
+
+// Cerrar un extravío o encuentro cuando la mascota volvió a casa (se puede reabrir).
+on('PATCH', '/muro/:id/resuelto', req => {
+  const [, p] = publicacionPropia(req)
+  const d = parse(z.object({ resuelto: z.boolean() }), req.body)
+  if (p.tipo !== 'extravio' && p.tipo !== 'encuentro') return fail(422, 'Solo los extravíos y encuentros se marcan como resueltos')
+  p.resuelto_en = d.resuelto ? now() : null
+  return { ok: true }
+})
+
 on('POST', '/muro/:id/reacciones', req => {
   const u = auth(req)
-  if (!db.publicaciones.some(p => p.id === req.params.id)) return fail(404, 'Publicación no encontrada')
+  if (!db.publicaciones.some(p => p.id === req.params.id && p.estado === 'publicada')) return fail(404, 'Publicación no encontrada')
   const i = db.reacciones.findIndex(r => r.publicacion_id === req.params.id && r.usuario_id === u.id)
   if (i >= 0) db.reacciones.splice(i, 1)
   else db.reacciones.push({ publicacion_id: req.params.id, usuario_id: u.id })
   return { reaccione: i < 0 }
 })
 
+on('POST', '/muro/:id/guardar', req => {
+  const u = auth(req)
+  if (!db.publicaciones.some(p => p.id === req.params.id && p.estado === 'publicada')) return fail(404, 'Publicación no encontrada')
+  const i = db.guardados.findIndex(g => g.publicacion_id === req.params.id && g.usuario_id === u.id)
+  if (i >= 0) db.guardados.splice(i, 1)
+  else db.guardados.push({ publicacion_id: req.params.id, usuario_id: u.id })
+  return { guardado: i < 0 }
+})
+
 on('POST', '/muro/:id/comentarios', req => {
   const u = auth(req)
   const d = parse(z.object({ texto: textoMuro(3) }), req.body)
   if (!db.publicaciones.some(p => p.id === req.params.id && p.estado === 'publicada')) return fail(404, 'Publicación no disponible')
-  const c = { id: uid(), autor_id: u.id, publicacion_id: req.params.id, texto: d.texto, creado_en: now() }
+  const c = { id: uid(), autor_id: u.id, publicacion_id: req.params.id, texto: d.texto, estado: 'visible' as const, editado_en: null, creado_en: now() }
   db.comentarios.push(c)
   return { id: c.id, texto: c.texto, creado_en: c.creado_en }
 })
 
+function comentarioPropio(req: Req) {
+  const u = auth(req)
+  const c = db.comentarios.find(x => x.id === req.params.cid && x.estado === 'visible')
+  if (!c) return fail(404, 'Comentario no encontrado')
+  if (c.autor_id !== u.id) return fail(403, 'Solo puedes cambiar tus propios comentarios')
+  return c
+}
+
+on('PATCH', '/muro/comentarios/:cid', req => {
+  const c = comentarioPropio(req)
+  const d = parse(z.object({ texto: textoMuro(3) }), req.body)
+  Object.assign(c, { texto: d.texto, editado_en: now() })
+  return { ok: true }
+})
+
+on('DELETE', '/muro/comentarios/:cid', req => {
+  const c = comentarioPropio(req)
+  c.estado = 'eliminado'
+  for (const r of db.reportes) if (r.objeto_id === c.id && r.estado === 'abierto') r.estado = 'resuelto_mantenido'
+  return undefined
+})
+
 on('POST', '/reportes', req => {
   const u = auth(req)
-  const d = parse(z.object({ objeto_tipo: z.literal('publicacion'), objeto_id: z.string().min(1), motivo: z.string().trim().min(10, 'Describe el motivo con al menos 10 caracteres').max(200) }), req.body)
-  if (!db.publicaciones.some(p => p.id === d.objeto_id)) return fail(404, 'Contenido no encontrado')
+  const d = parse(z.object({ objeto_tipo: z.enum(['publicacion', 'comentario']), objeto_id: z.string().min(1), motivo: z.string().trim().min(10, 'Describe el motivo con al menos 10 caracteres').max(200) }), req.body)
+  const objeto = d.objeto_tipo === 'publicacion' ? db.publicaciones.find(p => p.id === d.objeto_id && p.estado === 'publicada') : db.comentarios.find(c => c.id === d.objeto_id && c.estado === 'visible')
+  if (!objeto) return fail(404, 'Contenido no encontrado')
+  if (objeto.autor_id === u.id) return fail(422, 'No puedes reportar tu propio contenido')
+  if (db.reportes.some(r => r.objeto_id === d.objeto_id && r.reportante_id === u.id && r.estado === 'abierto')) return fail(409, 'Ya reportaste este contenido; el equipo lo está revisando')
   const r = { id: uid(), reportante_id: u.id, objeto_tipo: d.objeto_tipo, objeto_id: d.objeto_id, motivo: d.motivo, estado: 'abierto' as const, creado_en: now() }
   db.reportes.push(r)
   return { id: r.id }
@@ -655,8 +946,8 @@ on('PATCH', '/admin/usuarios/:id', req => {
 on('GET', '/admin/reportes', req => {
   auth(req, 'admin')
   return db.reportes.filter(r => r.estado === 'abierto').sort((a, b) => a.creado_en.localeCompare(b.creado_en)).map(r => {
-    const p = db.publicaciones.find(x => x.id === r.objeto_id)
-    return { id: r.id, objeto_tipo: r.objeto_tipo, objeto_id: r.objeto_id, motivo: r.motivo, estado: r.estado, creado_en: r.creado_en, reportante: nombreUsuario(r.reportante_id), contenido: p?.texto ?? null, autor: p ? nombreUsuario(p.autor_id) : null, autor_id: p?.autor_id ?? null }
+    const o = r.objeto_tipo === 'comentario' ? db.comentarios.find(x => x.id === r.objeto_id) : db.publicaciones.find(x => x.id === r.objeto_id)
+    return { id: r.id, objeto_tipo: r.objeto_tipo, objeto_id: r.objeto_id, motivo: r.motivo, estado: r.estado, creado_en: r.creado_en, reportante: nombreUsuario(r.reportante_id), contenido: o?.texto ?? null, autor: o ? nombreUsuario(o.autor_id) : null, autor_id: o?.autor_id ?? null }
   })
 })
 
@@ -666,9 +957,9 @@ on('PATCH', '/admin/reportes/:id', req => {
   const r = db.reportes.find(x => x.id === req.params.id && x.estado === 'abierto')
   if (!r) return fail(404, 'Reporte no disponible')
   if (d.decision === 'ocultar') {
-    const p = db.publicaciones.find(x => x.id === r.objeto_id)
-    if (p) p.estado = 'oculta'
-    // Ocultar la publicación cierra también los demás reportes sobre ella.
+    if (r.objeto_tipo === 'comentario') { const c = db.comentarios.find(x => x.id === r.objeto_id); if (c) c.estado = 'oculto' }
+    else { const p = db.publicaciones.find(x => x.id === r.objeto_id); if (p) p.estado = 'oculta' }
+    // Ocultar el contenido cierra también los demás reportes sobre él.
     for (const x of db.reportes) if (x.objeto_id === r.objeto_id && x.estado === 'abierto') x.estado = 'resuelto_ocultado'
   }
   r.estado = d.decision === 'ocultar' ? 'resuelto_ocultado' : 'resuelto_mantenido'
@@ -678,10 +969,18 @@ on('PATCH', '/admin/reportes/:id', req => {
 on('GET', '/admin/pymes', req => {
   auth(req, 'admin')
   const estado = req.query.get('estado') || 'pendiente'
-  return db.pymes.filter(p => p.estado_verificacion === estado).sort((a, b) => a.creado_en.localeCompare(b.creado_en)).map(p => {
-    const s = ultimaSuscripcion(p.id), pago = s && db.pagos.find(pg => pg.suscripcion_id === s.id)
-    return { id: p.id, nombre_comercial: p.nombre_comercial, rut_empresa: p.rut_empresa, rubro: p.rubro, comuna: comunaNombre(p.comuna_id), estado_verificacion: p.estado_verificacion, referencia: pago?.referencia ?? null, monto_clp: pago?.monto_clp ?? null }
-  })
+  // Pendientes incluye las renovaciones o cambios de plan de Pymes ya verificadas que esperan confirmar su pago.
+  return db.pymes.filter(p => p.estado_verificacion === estado || (estado === 'pendiente' && p.estado_verificacion === 'aprobada' && pagoPendiente(p.id)))
+    .sort((a, b) => a.creado_en.localeCompare(b.creado_en)).map(p => {
+      const pend = pagoPendiente(p.id), s = ultimaSuscripcion(p.id)
+      const pago = pend ?? (s && db.pagos.find(pg => pg.suscripcion_id === s.id))
+      const sub = pago && db.suscripciones.find(x => x.id === pago.suscripcion_id)
+      return {
+        id: p.id, nombre_comercial: p.nombre_comercial, rut_empresa: p.rut_empresa, rubro: p.rubro, comuna: comunaNombre(p.comuna_id), estado_verificacion: p.estado_verificacion,
+        solicitud: p.estado_verificacion === 'aprobada' && pend ? 'renovacion' : 'alta', plan: db.planes.find(x => x.id === sub?.plan_id)?.nombre ?? null,
+        referencia: pago?.referencia ?? null, monto_clp: pago?.monto_clp ?? null,
+      }
+    })
 })
 
 on('PATCH', '/admin/pymes/:id/verificacion', req => {
@@ -689,15 +988,25 @@ on('PATCH', '/admin/pymes/:id/verificacion', req => {
   const d = parse(z.object({ decision: z.enum(['aprobar', 'rechazar', 'suspender']) }), req.body)
   const p = db.pymes.find(x => x.id === req.params.id)
   if (!p) return fail(404, 'Pyme no encontrada')
-  p.estado_verificacion = ({ aprobar: 'aprobada', rechazar: 'rechazada', suspender: 'suspendida' } as const)[d.decision]
   const subs = db.suscripciones.filter(s => s.pyme_id === p.id), ids = new Set(subs.map(s => s.id))
-  for (const s of subs) {
-    if (d.decision === 'aprobar') Object.assign(s, { estado: 'activa', inicio: dayOffset(0), fin: dayOffset(30) })
-    else s.estado = 'cancelada'
-  }
-  for (const pg of db.pagos) if (ids.has(pg.suscripcion_id)) {
-    if (d.decision === 'aprobar') { if (pg.estado !== 'confirmado') Object.assign(pg, { estado: 'confirmado', pagado_en: now() }) }
-    else if (pg.estado === 'pendiente') pg.estado = 'rechazado'
+  const pendientes = subs.filter(s => s.estado === 'pendiente')
+  const renovacion = p.estado_verificacion === 'aprobada' && pendientes.length > 0 && d.decision !== 'suspender'
+  const pagos = db.pagos.filter(pg => ids.has(pg.suscripcion_id) && pg.estado === 'pendiente')
+
+  if (d.decision === 'aprobar') {
+    // Renovación: el periodo pedido se respeta. Alta o reactivación: parte hoy.
+    const activar = pendientes.length ? pendientes : subs.slice(-1)
+    for (const s of activar) {
+      if (!renovacion || s.inicio < dayOffset(0)) Object.assign(s, { inicio: dayOffset(0), fin: dayOffset(30) })
+      s.estado = 'activa'
+    }
+    for (const pg of pagos) Object.assign(pg, { estado: 'confirmado', pagado_en: now() })
+    p.estado_verificacion = 'aprobada'
+  } else {
+    for (const s of renovacion ? pendientes : subs) s.estado = 'cancelada'
+    for (const pg of pagos) pg.estado = 'rechazado'
+    // Rechazar una renovación solo rechaza ese pago; el negocio sigue verificado.
+    if (!renovacion) p.estado_verificacion = d.decision === 'rechazar' ? 'rechazada' : 'suspendida'
   }
   return { ok: true }
 })

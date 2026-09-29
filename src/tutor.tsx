@@ -2,13 +2,14 @@ import { useCallback, useEffect, useState } from 'react'
 import { AlertCircle, ArrowRight, CalendarDays, Check, ChevronRight, CirclePlus, Copy, Download, MessageCircle, PawPrint, Pencil, Printer, QrCode, ShieldCheck, TriangleAlert, X } from 'lucide-react'
 import QRCode from 'qrcode'
 import { LogoMark, Loading, Photo } from './media'
-import { api, edadDesde, emptyFicha, errorText, iniciales, type FichaDatos, type Mascota, type PublicaEmergencia, type PymeResumen } from './api'
+import { api, edadDesde, emptyFicha, errorText, iniciales, type FichaDatos, type Mascota, type PublicaEmergencia, type PymeResumen, type RegistroMeta } from './api'
 import { emergencyContactSchema } from './validators'
 import { AdoptionCatalog } from './adoption'
 import { CommunityView } from './community'
 import { DirectoryView } from './directory'
 
-type Entry = { id: string; type: 'Vacuna' | 'Atención' | 'Tratamiento'; date: string; title: string; notes: string }
+// meta conserva lo que el formulario del tutor no edita (próxima dosis, autoría de la clínica, anulación).
+type Entry = { id: string; type: 'Vacuna' | 'Atención' | 'Tratamiento'; date: string; title: string; notes: string; meta?: RegistroMeta & { proxima?: string; fin?: string } }
 
 const splitList = (value: string) => value.split(',').map(item => item.trim()).filter(Boolean)
 const ficha = (pet: Mascota): FichaDatos => ({ ...emptyFicha(), ...pet.datos_clinicos })
@@ -17,18 +18,18 @@ const qrUrl = (token: string) => `${window.location.origin}${import.meta.env.BAS
 const entriesOf = (pet: Mascota): Entry[] => {
   const f = ficha(pet)
   return [
-    ...f.vacunas.map((v, i): Entry => ({ id: v.id || `v${i}`, type: 'Vacuna', date: v.fecha, title: v.nombre, notes: v.notas || '' })),
-    ...f.atenciones.map((a, i): Entry => ({ id: a.id || `a${i}`, type: 'Atención', date: a.fecha, title: a.motivo, notes: a.notas || '' })),
-    ...f.tratamientos.map((t, i): Entry => ({ id: t.id || `t${i}`, type: 'Tratamiento', date: t.inicio || '', title: t.descripcion, notes: t.notas || '' })),
+    ...f.vacunas.map(({ id, nombre, fecha, notas, ...meta }, i): Entry => ({ id: id || `v${i}`, type: 'Vacuna', date: fecha, title: nombre, notes: notas || '', meta })),
+    ...f.atenciones.map(({ id, motivo, fecha, notas, ...meta }, i): Entry => ({ id: id || `a${i}`, type: 'Atención', date: fecha, title: motivo, notes: notas || '', meta })),
+    ...f.tratamientos.map(({ id, descripcion, inicio, notas, ...meta }, i): Entry => ({ id: id || `t${i}`, type: 'Tratamiento', date: inicio || '', title: descripcion, notes: notas || '', meta })),
   ].sort((a, b) => b.date.localeCompare(a.date))
 }
 
 // Reconstruye los tres arreglos JSONB de la ficha a partir de la lista unificada del historial.
 const withEntries = (f: FichaDatos, entries: Entry[]): FichaDatos => ({
   ...f,
-  vacunas: entries.filter(e => e.type === 'Vacuna').map(e => ({ id: e.id, nombre: e.title, fecha: e.date, ...(e.notes ? { notas: e.notes } : {}) })),
-  atenciones: entries.filter(e => e.type === 'Atención').map(e => ({ id: e.id, fecha: e.date, motivo: e.title, ...(e.notes ? { notas: e.notes } : {}) })),
-  tratamientos: entries.filter(e => e.type === 'Tratamiento').map(e => ({ id: e.id, descripcion: e.title, ...(e.date ? { inicio: e.date } : {}), ...(e.notes ? { notas: e.notes } : {}) })),
+  vacunas: entries.filter(e => e.type === 'Vacuna').map(e => ({ ...e.meta, id: e.id, nombre: e.title, fecha: e.date, ...(e.notes ? { notas: e.notes } : {}) })),
+  atenciones: entries.filter(e => e.type === 'Atención').map(e => ({ ...e.meta, id: e.id, fecha: e.date, motivo: e.title, ...(e.notes ? { notas: e.notes } : {}) })),
+  tratamientos: entries.filter(e => e.type === 'Tratamiento').map(e => ({ ...e.meta, id: e.id, descripcion: e.title, ...(e.date ? { inicio: e.date } : {}), ...(e.notes ? { notas: e.notes } : {}) })),
 })
 
 // La ficha se guarda con control de versión: si otra persona la cambió, el API responde 409 (CP-05).
@@ -52,7 +53,7 @@ export function TutorArea({ active, setActive, name }: { active: string; setActi
 
   if (active === 'adoption') return <AdoptionCatalog />
   if (active === 'directory') return <DirectoryView />
-  if (active === 'community') return <CommunityView />
+  if (active === 'community') return <CommunityView onAdoption={() => setActive('adoption')} />
   if (!pets) return <section className="page">{error ? <p className="muted">{error}</p> : <Loading />}</section>
   const selected = pets.find(p => p.id === selectedId) || pets[0] || null
   const pick = (pet: Mascota) => { setSelectedId(pet.id); setActive('pets') }
@@ -120,7 +121,7 @@ function PetsView({ pets, selected, onSelect, onAdd, onQr, onEdit, onChanged }: 
     {selected && healthOpen && <HealthModal key={selected.id} pet={selected} onClose={() => setHealthOpen(false)} onSave={async next => { await persist(selected, next); setHealthOpen(false) }} />}
     {selected && entryOpen && <EntryModal key={`${selected.id}-${editingEntry?.id || 'new'}`} entry={editingEntry} onClose={() => setEntryOpen(false)} onSave={async entry => {
       const others = entriesOf(selected).filter(e => e.id !== editingEntry?.id)
-      await persist(selected, withEntries(ficha(selected), [...others, entry])); setEntryOpen(false)
+      await persist(selected, withEntries(ficha(selected), [...others, { ...entry, meta: editingEntry?.meta }])); setEntryOpen(false)
     }} />}
   </section>
 }
@@ -132,7 +133,7 @@ function PetDetail({ pet, onQr, onEdit, onHealth, onAddEntry, onEditEntry }: { p
   return <article className="detail-card health-detail"><div className="detail-head"><Photo src={pet.foto_url} nombre={pet.nombre} className="pet-photo large" /><div><p className="eyebrow">FICHA ÚNICA DE SALUD</p><h2>{pet.nombre}</h2><p className="muted">{pet.especie}{pet.raza ? ` · ${pet.raza}` : ''}</p></div><button type="button" className="secondary pet-edit-button" onClick={onEdit}><Pencil size={16} /> Editar datos</button></div>
     <div className="detail-stats"><div><small>Edad</small><strong>{edad == null ? 'Sin dato' : `${edad} ${edad === 1 ? 'año' : 'años'}`}</strong></div><div><small>Sexo</small><strong>{pet.sexo ? pet.sexo[0].toUpperCase() + pet.sexo.slice(1) : 'Sin dato'}</strong></div><div><small>Versión de ficha</small><strong>{pet.ficha_version}</strong></div></div>
     <section className="pet-health-section"><div className="pet-section-head"><div><p className="eyebrow">INFORMACIÓN CRÍTICA</p><h3>Datos de salud</h3></div><button className="secondary" onClick={onHealth}><Pencil size={15} /> Editar salud</button></div><div className="health-facts"><div><span>Alergias</span><strong>{f.alergias.length ? f.alergias.map(a => a.agente).join(', ') : 'No registradas'}</strong></div><div><span>Condiciones médicas</span><strong>{f.condiciones.length ? f.condiciones.join(', ') : 'No registradas'}</strong></div><div><span>Medicamentos · solo tutor</span><strong>{f.medicamentos.length ? f.medicamentos.join(', ') : 'No registrados'}</strong></div></div>{f.notaEmergencia && <p className="health-note"><AlertCircle size={17} /> {f.notaEmergencia}</p>}</section>
-    <section className="pet-health-section"><div className="pet-section-head"><div><p className="eyebrow">REGISTRO PRIVADO</p><h3>Historial médico</h3></div><button className="secondary" onClick={onAddEntry}><CirclePlus size={16} /> Agregar registro</button></div>{history.length ? <div className="medical-timeline">{history.map(entry => <div className="medical-event" key={`${entry.type}-${entry.id}`}><div className="medical-event-icon"><CalendarDays size={17} /></div><div><span>{entry.type}{entry.date ? ` · ${new Date(`${entry.date}T12:00:00`).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}` : ''}</span><strong>{entry.title}</strong>{entry.notes && <p>{entry.notes}</p>}</div><button className="text-button" onClick={() => onEditEntry(entry)} aria-label={`Editar ${entry.title}`}>Editar</button></div>)}</div> : <p className="muted">Todavía no hay vacunas ni atenciones registradas.</p>}</section>
+    <section className="pet-health-section"><div className="pet-section-head"><div><p className="eyebrow">REGISTRO PRIVADO</p><h3>Historial médico</h3></div><button className="secondary" onClick={onAddEntry}><CirclePlus size={16} /> Agregar registro</button></div>{history.length ? <div className="medical-timeline">{history.map(entry => <div className={entry.meta?.anulado ? 'medical-event is-void' : 'medical-event'} key={`${entry.type}-${entry.id}`}><div className="medical-event-icon"><CalendarDays size={17} /></div><div><span>{entry.type}{entry.date ? ` · ${new Date(`${entry.date}T12:00:00`).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}` : ''}</span><strong>{entry.title}</strong>{entry.notes && <p>{entry.notes}</p>}{entry.meta?.proxima && <p>Próxima dosis: {new Date(`${entry.meta.proxima}T12:00:00`).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}</p>}{entry.meta?.clinica && <small className="event-author">Registrado por {entry.meta.clinica}{entry.meta.anulado ? ` · Anulado por la clínica: ${entry.meta.anulado.motivo}` : ''}</small>}</div>{entry.meta?.registrado_por ? <span className="event-lock">Registro clínico</span> : <button className="text-button" onClick={() => onEditEntry(entry)} aria-label={`Editar ${entry.title}`}>Editar</button>}</div>)}</div> : <p className="muted">Todavía no hay vacunas ni atenciones registradas.</p>}</section>
     <section className="pet-qr-section"><div className="pet-section-head"><div><p className="eyebrow">ACCESO DE EMERGENCIA</p><h3>Medalla QR</h3></div><span className={pet.token_activo ? 'pet-qr-badge active' : 'pet-qr-badge'}>{pet.token_activo ? 'Activa' : 'Sin medalla'}</span></div><p className="muted">El QR contiene solo un código opaco. La ficha pública muestra nombre, especie, raza, alergias, condiciones y la nota de emergencia; tus datos personales, medicamentos e historial nunca se exponen.</p><p className="pet-qr-warning">Si pierdes la medalla, genera una nueva o desactívala: el código anterior deja de funcionar de inmediato.</p><button className="primary" onClick={onQr}><QrCode size={17} /> {pet.token_activo ? 'Ver y compartir QR' : 'Generar medalla QR'}</button></section>
     <ClinicAccess pet={pet} />
     <PetMessages pet={pet} />

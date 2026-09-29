@@ -132,6 +132,8 @@ function Animals({ ong }: { ong: Ong }) {
   const [animals, setAnimals] = useState<MiAnimal[] | null>(null)
   const [editing, setEditing] = useState<MiAnimal | 'new' | null>(null)
   const [reviewing, setReviewing] = useState<MiAnimal | null>(null)
+  const [diffusing, setDiffusing] = useState<MiAnimal | null>(null)
+  const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
   const load = useCallback(() => api<MiAnimal[]>('/ong/animales').then(a => { setAnimals(a); setError('') }).catch(e => setError(errorText(e))), [])
   useEffect(() => { void load() }, [load])
@@ -139,12 +141,30 @@ function Animals({ ong }: { ong: Ong }) {
   return <section className="page role-page"><div className="page-title"><div><p className="eyebrow">ADOPCIONES</p><h1>Mis animales</h1><p className="muted">Publica animales en el catálogo público y gestiona las solicitudes de adopción.</p></div><button className="primary" onClick={() => setEditing('new')}><CirclePlus size={17} /> Publicar animal</button></div>
     <StatusBanner ong={ong} />
     {error && <p className="form-error" role="alert">{error}</p>}
+    {notice && <p className="save-message" role="status">{notice}</p>}
     <div className="catalog-list">{animals?.map(a => <div className="catalog-item" key={a.id}><Photo src={a.foto_url} nombre={a.nombre} className="pet-photo small-photo" /><div className="catalog-item-main"><strong>{a.nombre}</strong><p>{a.especie}{a.raza ? ` · ${a.raza}` : ''}{a.edad_estimada ? ` · ${a.edad_estimada}` : ''}</p><small>{estadoLabel[a.estado]} · {a.estado === 'adoptado' ? (a.mascota_id ? 'Ficha Única creada' : 'Pendiente de vincular la Ficha Única') : a.publicado ? 'Publicado' : 'Borrador (sin publicar)'} · {a.visitas_7d} visitas en 7 días · {a.solicitudes_abiertas} solicitudes abiertas</small></div>
-      <div className="qr-actions"><button className="secondary" onClick={() => setReviewing(a)}>{a.estado === 'adoptado' && !a.mascota_id ? 'Vincular ficha' : 'Solicitudes'}</button>{a.estado !== 'adoptado' && <><button className="secondary" onClick={() => setEditing(a)}>Editar</button><button className="text-button" onClick={() => setEstado(a, a.estado === 'disponible' ? 'en_proceso' : 'disponible')}>{a.estado === 'disponible' ? 'Marcar no disponible' : 'Marcar disponible'}</button></>}</div></div>)}
+      <div className="qr-actions"><button className="secondary" onClick={() => setReviewing(a)}>{a.estado === 'adoptado' && !a.mascota_id ? 'Vincular ficha' : 'Solicitudes'}</button>{a.publicado && a.estado === 'disponible' && <button className="secondary" onClick={() => { setNotice(''); setDiffusing(a) }}>Difundir en el muro</button>}{a.estado !== 'adoptado' && <><button className="secondary" onClick={() => setEditing(a)}>Editar</button><button className="text-button" onClick={() => setEstado(a, a.estado === 'disponible' ? 'en_proceso' : 'disponible')}>{a.estado === 'disponible' ? 'Marcar no disponible' : 'Marcar disponible'}</button></>}</div></div>)}
       {animals && animals.length === 0 && <div className="empty-results">Aún no has publicado animales.</div>}</div>
     {editing && <AnimalForm animal={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onSaved={async () => { setEditing(null); await load() }} />}
     {reviewing && <Review animal={reviewing} onClose={() => { setReviewing(null); void load() }} />}
+    {diffusing && <DiffuseModal animal={diffusing} onClose={() => setDiffusing(null)} onDone={() => { setNotice(`${diffusing.nombre} ya aparece en el muro comunal de ${ong.comuna}.`); setDiffusing(null) }} />}
   </section>
+}
+
+// Publica el animal en el muro de la comuna de la ONG, con su foto y un acceso al catálogo de adopción.
+function DiffuseModal({ animal, onClose, onDone }: { animal: MiAnimal; onClose: () => void; onDone: () => void }) {
+  const [texto, setTexto] = useState(`${animal.nombre} busca un hogar${animal.edad_estimada ? ` (${animal.edad_estimada})` : ''}. ${animal.estado_salud ? `${animal.estado_salud}. ` : ''}Si puedes darle una familia, envía tu solicitud desde Adopciones.`)
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (texto.trim().length < 15) { setError('Escribe al menos 15 caracteres'); return }
+    setBusy(true)
+    try { await api('/muro', { method: 'POST', body: { tipo: 'adopcion', animal_id: animal.id, texto: texto.trim() } }); onDone() } catch (e) { setError(errorText(e)); setBusy(false) }
+  }
+  return <div className="modal-backdrop"><form className="modal" onSubmit={submit} noValidate><button type="button" className="close" aria-label="Cerrar" onClick={onClose}><X size={20} /></button><p className="eyebrow">MURO COMUNAL</p><h2>Difundir a {animal.nombre}</h2><p className="muted">La publicación aparece en el muro de tu comuna con la foto de {animal.nombre}. Los tutores postulan desde Adopciones; nunca se publica tu contacto en el muro.</p>
+    <label className="composer-label">Texto de la publicación<textarea rows={5} maxLength={1000} value={texto} onChange={e => { setTexto(e.target.value); setError('') }} /></label>
+    {error && <div className="form-error" role="alert">{error}</div>}<div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Cancelar</button><button className="primary" disabled={busy}>{busy ? 'Publicando...' : 'Publicar en el muro'}</button></div></form></div>
 }
 
 function AnimalForm({ animal, onClose, onSaved }: { animal: MiAnimal | null; onClose: () => void; onSaved: () => Promise<void> }) {

@@ -39,12 +39,15 @@ export const errorText = (e: unknown) => e instanceof Error ? e.message : 'Ocurr
 // --- Tipos del API ---
 export type Comuna = { id: number; nombre: string }
 
+// Autoría de un registro del historial: la clínica que lo hizo y, si corresponde, su anulación (nunca se borra).
+export type RegistroMeta = { registrado_por?: string; clinica?: string; anulado?: { motivo: string; en: string } }
+
 export type FichaDatos = {
   condiciones: string[]; medicamentos: string[]; notaEmergencia: string
-  vacunas: { id?: string; nombre: string; fecha: string; proxima?: string; notas?: string }[]
+  vacunas: ({ id?: string; nombre: string; fecha: string; proxima?: string; notas?: string } & RegistroMeta)[]
   alergias: { agente: string; reaccion?: string; gravedad?: 'leve' | 'moderada' | 'grave' }[]
-  tratamientos: { id?: string; descripcion: string; inicio?: string; fin?: string; notas?: string }[]
-  atenciones: { id?: string; fecha: string; motivo: string; notas?: string }[]
+  tratamientos: ({ id?: string; descripcion: string; inicio?: string; fin?: string; notas?: string } & RegistroMeta)[]
+  atenciones: ({ id?: string; fecha: string; motivo: string; notas?: string } & RegistroMeta)[]
   alertasCriticas: string[]
 }
 
@@ -57,8 +60,14 @@ export type Mascota = {
 
 export type PublicaEmergencia = { nombre: string; especie: string; raza: string | null; foto_url: string | null; alergias: { agente: string; gravedad?: string }[]; alertasCriticas: string[]; condiciones: string[]; notaEmergencia: string }
 
-export type PymeResumen = { id: string; nombre_comercial: string; rubro: string; descripcion: string | null; comuna: string; direccion: string | null; latitud: string | null; longitud: string | null; telefono: string | null; whatsapp: string | null; horario: Record<string, string> }
-export type ItemCatalogo = { id: string; tipo: 'producto' | 'servicio'; nombre: string; descripcion: string | null; precio_referencial_clp: number | null; disponible?: boolean }
+export type PymeResumen = { id: string; nombre_comercial: string; rubro: string; descripcion: string | null; comuna: string; direccion: string | null; latitud: string | null; longitud: string | null; telefono: string | null; whatsapp: string | null; horario: Record<string, string>; servicios?: string[]; ofertas?: number }
+// Oferta referencial por un rango de fechas (AAAA-MM-DD). No hay cobros dentro de la app.
+export type Oferta = { precio_clp: number; desde: string; hasta: string }
+export type ItemCatalogo = { id: string; tipo: 'producto' | 'servicio'; nombre: string; descripcion: string | null; precio_referencial_clp: number | null; disponible?: boolean; categoria?: string | null; sin_stock?: boolean; oferta?: Oferta | null }
+
+export const hoy = () => new Date().toISOString().slice(0, 10)
+export const ofertaVigente = (o?: Oferta | null) => !!o && o.desde <= hoy() && o.hasta >= hoy()
+export const fechaCorta = (iso: string) => new Date(iso.length === 10 ? `${iso}T12:00:00` : iso).toLocaleDateString('es-CL', { day: 'numeric', month: 'short' })
 export type PymePerfil = PymeResumen & { catalogo: ItemCatalogo[] }
 
 export const clp = (n: number | null | undefined) => n == null ? 'Consultar precio' : `$${n.toLocaleString('es-CL')}`
