@@ -1,6 +1,6 @@
 // Base de datos simulada del modo demo: estado inicial (seed) y persistencia en localStorage.
 // Las claves se guardan sin cifrar solo porque es una demostración; el API real usa bcrypt.
-import type { ApiRole, FichaDatos } from '../api'
+import type { ApiRole, FichaDatos, Oferta } from '../api'
 
 export type Rubro = 'veterinaria' | 'tienda' | 'peluqueria' | 'otro'
 export type Verificacion = 'pendiente' | 'aprobada' | 'rechazada' | 'suspendida'
@@ -19,10 +19,16 @@ export type EventoPyme = { id: string; pyme_id: string; item_id: string | null; 
 export type Plan = { id: number; nombre: string; precio_mensual_clp: number; max_items_catalogo: number }
 export type Suscripcion = { id: string; pyme_id: string; plan_id: number; inicio: string; fin: string; estado: 'pendiente' | 'activa' | 'vencida' | 'cancelada' }
 export type Pago = { id: string; suscripcion_id: string; monto_clp: number; referencia: string | null; estado: 'pendiente' | 'confirmado' | 'rechazado'; pagado_en: string }
-export type Publicacion = { id: string; autor_id: string; comuna_id: number; mascota_id: string | null; tipo: 'extravio' | 'encuentro' | 'recomendacion'; texto: string; estado: 'publicada' | 'oculta'; creado_en: string }
-export type Comentario = { id: string; autor_id: string; publicacion_id: string; texto: string; creado_en: string }
+export type TipoPublicacion = 'extravio' | 'encuentro' | 'recomendacion' | 'alerta' | 'evento' | 'adopcion'
+export type Publicacion = {
+  id: string; autor_id: string; comuna_id: number; mascota_id: string | null; animal_id: string | null; tipo: TipoPublicacion; texto: string
+  sector: string | null; foto_url: string | null; fecha_evento: string | null; resuelto_en: string | null; editado_en: string | null
+  estado: 'publicada' | 'oculta' | 'eliminada'; creado_en: string
+}
+export type Comentario = { id: string; autor_id: string; publicacion_id: string; texto: string; estado: 'visible' | 'oculto' | 'eliminado'; editado_en: string | null; creado_en: string }
 export type Reaccion = { publicacion_id: string; usuario_id: string }
-export type Reporte = { id: string; reportante_id: string; objeto_tipo: 'publicacion'; objeto_id: string; motivo: string; estado: 'abierto' | 'resuelto_ocultado' | 'resuelto_mantenido'; creado_en: string }
+export type Guardado = { publicacion_id: string; usuario_id: string }
+export type Reporte = { id: string; reportante_id: string; objeto_tipo: 'publicacion' | 'comentario'; objeto_id: string; motivo: string; estado: 'abierto' | 'resuelto_ocultado' | 'resuelto_mantenido'; creado_en: string }
 export type Ong = { id: string; propietario_id: string; nombre: string; tipo: 'refugio' | 'rescatista_independiente' | 'agrupacion'; descripcion: string | null; comuna_id: number; contacto: string | null; redes_sociales: string | null; estado_verificacion: 'pendiente' | 'aprobada' | 'rechazada'; creado_en: string }
 export type Animal = { id: string; ong_id: string; nombre: string; especie: string; raza: string | null; edad_estimada: string | null; estado_salud: string | null; historia: string | null; historial_salud: FichaDatos; foto_url: string | null; estado: 'disponible' | 'en_proceso' | 'adoptado'; mascota_id: string | null; publicado_en: string }
 export type Solicitud = { id: string; animal_id: string; solicitante_nombre: string | null; solicitante_contacto: string | null; mensaje: string; estado: 'nueva' | 'en_conversacion' | 'concretada' | 'cerrada'; creado_en: string }
@@ -47,6 +53,7 @@ export type Db = {
   publicaciones: Publicacion[]
   comentarios: Comentario[]
   reacciones: Reaccion[]
+  guardados: Guardado[]
   reportes: Reporte[]
   ongs: Ong[]
   animales: Animal[]
@@ -54,7 +61,9 @@ export type Db = {
   eventos_adopcion: EventoAdopcion[]
 }
 
-const KEY = 'petsuite-mock-db-v1'
+// v2: catálogo con categorías y ofertas, perfil con servicios, muro con nuevos tipos. Los datos v1 se descartan.
+const KEY = 'petsuite-mock-db-v2'
+try { localStorage.removeItem('petsuite-mock-db-v1') } catch { /* sin almacenamiento */ }
 export const CLAVE_DEMO = 'petsuite123'
 
 export const uid = () => crypto.randomUUID()
@@ -82,10 +91,10 @@ function seed(): Db {
   const tienda = user('tienda@petsuite.cl', 'pyme', 'Huellitas Osorno', 1)
   user('admin@petsuite.cl', 'admin', 'Equipo PetSuite', 1)
 
-  const pyme = (owner: string, nombre: string, rut: string, rubro: Rubro, comuna: number, direccion: string, lat: number, lng: number) => {
+  const pyme = (owner: string, nombre: string, rut: string, rubro: Rubro, comuna: number, direccion: string, lat: number, lng: number, servicios: string[]) => {
     const p: Pyme = {
       id: uid(), propietario_id: owner, nombre_comercial: nombre, rut_empresa: rut, rubro, descripcion: `${nombre}: atención cercana para tu mascota.`, comuna_id: comuna,
-      direccion, latitud: String(lat), longitud: String(lng), telefono: null, whatsapp: null, horario: { 'lun-vie': '09:00-18:00', sab: '10:00-14:00' }, estado_verificacion: 'aprobada', creado_en: t,
+      direccion, latitud: String(lat), longitud: String(lng), telefono: null, whatsapp: null, horario: { 'lun-vie': '09:00-18:00', sab: '10:00-14:00' }, servicios, estado_verificacion: 'aprobada', creado_en: t,
     }
     db.pymes.push(p)
     const s: Suscripcion = { id: uid(), pyme_id: p.id, plan_id: 1, inicio: dayOffset(0), fin: dayOffset(30), estado: 'activa' }
@@ -93,16 +102,16 @@ function seed(): Db {
     db.pagos.push({ id: uid(), suscripcion_id: s.id, monto_clp: 15000, referencia: 'TRF-DEMO', estado: 'confirmado', pagado_en: t })
     return p.id
   }
-  pyme(clinico, 'Clínica Veterinaria Sur', '76111222-3', 'veterinaria', 1, 'Mackenna 1020, Osorno', -40.5735, -73.1335)
-  const shop = pyme(tienda, 'Huellitas Osorno', '76333444-5', 'tienda', 1, 'Ramírez 550, Osorno', -40.5745, -73.1350)
-  pyme(tienda, 'Peluquería Canina Patagonia', '76555666-7', 'peluqueria', 2, 'Varas 300, Puerto Montt', -41.4689, -72.9411)
+  pyme(clinico, 'Clínica Veterinaria Sur', '76111222-3', 'veterinaria', 1, 'Mackenna 1020, Osorno', -40.5735, -73.1335, ['Consulta general', 'Vacunación', 'Cirugía menor', 'Urgencias'])
+  const shop = pyme(tienda, 'Huellitas Osorno', '76333444-5', 'tienda', 1, 'Ramírez 550, Osorno', -40.5745, -73.1350, ['Despacho a domicilio', 'Asesoría en alimentación'])
+  pyme(tienda, 'Peluquería Canina Patagonia', '76555666-7', 'peluqueria', 2, 'Varas 300, Puerto Montt', -41.4689, -72.9411, ['Baño', 'Corte de raza', 'Corte de uñas'])
 
-  for (const [nombre, descripcion, precio, tipo] of [
-    ['Alimento adulto 15 kg', 'Alimento seco para perros adultos', 42990, 'producto'],
-    ['Arnés ajustable', 'Arnés acolchado talla M', 12990, 'producto'],
-    ['Shampoo hipoalergénico', 'Para pieles sensibles', 7990, 'producto'],
-    ['Baño y corte', 'Servicio de peluquería', 18000, 'servicio'],
-  ] as const) db.catalogo.push({ id: uid(), pyme_id: shop, tipo, nombre, descripcion, precio_referencial_clp: precio, disponible: true, creado_en: t })
+  for (const [nombre, descripcion, precio, tipo, categoria, oferta] of [
+    ['Alimento adulto 15 kg', 'Alimento seco para perros adultos', 42990, 'producto', 'Alimentos', null],
+    ['Arnés ajustable', 'Arnés acolchado talla M', 12990, 'producto', 'Accesorios', { precio_clp: 10990, desde: dayOffset(0), hasta: dayOffset(14) }],
+    ['Shampoo hipoalergénico', 'Para pieles sensibles', 7990, 'producto', 'Higiene', null],
+    ['Baño y corte', 'Servicio de peluquería', 18000, 'servicio', 'Servicios', null],
+  ] as const) db.catalogo.push({ id: uid(), pyme_id: shop, tipo, nombre, descripcion, precio_referencial_clp: precio, disponible: true, categoria, sin_stock: false, oferta: oferta ? { ...oferta } : null, creado_en: t })
 
   const luna: MascotaRow = {
     id: uid(), tutor_id: tutor, nombre: 'Luna', especie: 'perro', raza: 'Labrador', sexo: 'hembra', fecha_nacimiento: null, foto_url: '/img/perro-retrato.jpg', ficha_version: 1, creado_en: t,
@@ -115,11 +124,6 @@ function seed(): Db {
   }
   db.mascotas.push(luna)
   db.medallas.push({ id: uid(), mascota_id: luna.id, token: uid().replace(/-/g, ''), estado: 'activa', emitida_en: t })
-
-  db.publicaciones.push(
-    { id: uid(), autor_id: tutor2, comuna_id: 2, mascota_id: null, tipo: 'encuentro', texto: 'Encontré un gato gris cerca del terminal.', estado: 'publicada', creado_en: t },
-    { id: uid(), autor_id: tutor, comuna_id: 1, mascota_id: null, tipo: 'recomendacion', texto: 'Recomiendo la clínica de Mackenna, muy buena atención.', estado: 'publicada', creado_en: t },
-  )
 
   const ong = (correo: string, nombre: string, tipo: Ong['tipo'], comuna: number, estado: Ong['estado_verificacion']) => {
     const o: Ong = { id: uid(), propietario_id: user(correo, 'ong', nombre, comuna), nombre, tipo, descripcion: `${nombre}: rescatamos y damos en adopción responsable a perros y gatos de la zona.`, comuna_id: comuna, contacto: correo, redes_sociales: null, estado_verificacion: estado, creado_en: t }
@@ -138,6 +142,19 @@ function seed(): Db {
     animal(patitas, 'Miel', 'perro', 'Cachorra mestiza', '3 meses', 'Vacunada y desparasitada', 'Nació en un rescate. Juguetona y sociable con niños.', '/img/cachorro.jpg'),
     animal(patitas, 'Nube', 'gato', 'Mestizo', '2 años', 'Sano y esterilizado', 'Encontrada en una feria. Cariñosa, le gusta dormir en el regazo.', '/img/gato-3777622.jpg'),
     animal(nueva, 'Borrador', 'perro', 'Mestizo', '3 años', null, 'Aún sin publicar: la ONG no está verificada.', null, ficha()),
+  )
+
+  // Muro: una publicación de cada tipo, con horas escalonadas para que el orden sea estable.
+  const hace = (min: number) => new Date(Date.now() - min * 60_000).toISOString()
+  const post = (autor_id: string, comuna_id: number, tipo: Publicacion['tipo'], texto: string, min: number, extra: Partial<Publicacion> = {}): Publicacion =>
+    ({ id: uid(), autor_id, comuna_id, mascota_id: null, animal_id: null, tipo, texto, sector: null, foto_url: null, fecha_evento: null, resuelto_en: null, editado_en: null, estado: 'publicada', creado_en: hace(min), ...extra })
+  const canela = db.animales.find(a => a.nombre === 'Canela')!
+  db.publicaciones.push(
+    post(tutor2, 2, 'encuentro', 'Encontré un gato gris cerca del terminal.', 300, { sector: 'Terminal de buses' }),
+    post(tutor, 1, 'recomendacion', 'Recomiendo la clínica de Mackenna, muy buena atención.', 240),
+    post(db.ongs.find(o => o.id === patitas)!.propietario_id, 1, 'adopcion', 'Canela busca un hogar: es cariñosa, está esterilizada y se lleva bien con otros perros.', 180, { animal_id: canela.id, foto_url: canela.foto_url }),
+    post(tutor, 1, 'evento', 'Operativo de vacunación antirrábica gratuito para perros y gatos. Lleven a sus mascotas con correa o transportadora.', 120, { sector: 'Plaza de Armas', fecha_evento: dayOffset(5) }),
+    post(tutor, 1, 'alerta', 'Vecinos reportan cebos sospechosos en el sector del parque. Eviten que sus mascotas coman cosas del suelo.', 60, { sector: 'Parque Chuyaca' }),
   )
   return db
 }

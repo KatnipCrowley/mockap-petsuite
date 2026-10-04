@@ -7,7 +7,7 @@ type OngPendiente = { id: string; nombre: string; tipo: string; descripcion: str
 type Resumen = { ong_pendientes?: number; animales_disponibles?: number; usuarios: number; suspendidos: number; pymes_activas: number; pymes_pendientes: number; reportes_abiertos: number; escaneos: number; ingresos_30d: number }
 type Usuario = AccountSummary & { correo: string; rol: string; estado: 'activo' | 'suspendido' | 'eliminado' }
 type Reporte = { id: string; objeto_tipo: string; objeto_id: string; motivo: string; creado_en: string; reportante: string; contenido: string | null; autor: string | null; autor_id: string | null }
-type PymePendiente = { id: string; nombre_comercial: string; rut_empresa: string; rubro: string; comuna: string; estado_verificacion: string; referencia: string | null; monto_clp: number | null }
+type PymePendiente = { id: string; nombre_comercial: string; rut_empresa: string; rubro: string; comuna: string; estado_verificacion: string; solicitud?: 'alta' | 'renovacion'; plan?: string | null; referencia: string | null; monto_clp: number | null }
 
 const rolLabel: Record<string, string> = { tutor: 'Tutor', pyme: 'Pyme', clinico: 'Clínico', admin: 'Administrador', ong: 'ONG' }
 
@@ -80,8 +80,10 @@ function Pymes() {
   return <section className="page admin-page"><div className="page-title"><div><p className="eyebrow">ADMINISTRACIÓN</p><h1>Pymes y suscripciones</h1><p className="muted">Verifica el negocio y el pago por transferencia antes de publicar su perfil.</p></div></div>
     <div className="user-filters">{(['pendiente', 'aprobada', 'rechazada', 'suspendida'] as const).map(v => <button key={v} className={state === v ? 'category-tab active' : 'category-tab'} onClick={() => setState(v)}>{v[0].toUpperCase() + v.slice(1)}s</button>)}</div>
     {error && <p className="form-error" role="alert">{error}</p>}
-    <div className="admin-table-card user-table">{rows?.map(p => <div className="user-row" key={p.id}><div className="avatar">{iniciales(p.nombre_comercial)}</div><div className="user-identity"><strong>{p.nombre_comercial}</strong><small>{p.rut_empresa} · {p.rubro} · {p.comuna}</small><small>Pago: {clp(p.monto_clp)}{p.referencia ? ` · ref. ${p.referencia}` : ' · sin referencia'}</small></div><span className={`user-status ${p.estado_verificacion === 'aprobada' ? 'activo' : 'suspendido'}`}>{p.estado_verificacion}</span>
-      <div>{p.estado_verificacion !== 'aprobada' && <button className="primary" onClick={() => decide(p, 'aprobar')}>Aprobar y activar</button>}{p.estado_verificacion === 'pendiente' && <button className="secondary" onClick={() => decide(p, 'rechazar')}>Rechazar</button>}{p.estado_verificacion === 'aprobada' && <button className="secondary" onClick={() => decide(p, 'suspender')}>Suspender</button>}</div></div>)}
+    <div className="admin-table-card user-table">{rows?.map(p => <div className="user-row" key={p.id}><div className="avatar">{iniciales(p.nombre_comercial)}</div><div className="user-identity"><strong>{p.nombre_comercial}</strong><small>{p.rut_empresa} · {p.rubro} · {p.comuna}</small><small>{p.solicitud === 'renovacion' ? 'Renovación o cambio de plan' : 'Pago'}{p.plan ? ` · plan ${p.plan}` : ''}: {clp(p.monto_clp)}{p.referencia ? ` · ref. ${p.referencia}` : ' · sin referencia'}</small></div><span className={`user-status ${p.estado_verificacion === 'aprobada' ? 'activo' : 'suspendido'}`}>{p.solicitud === 'renovacion' && state === 'pendiente' ? 'pago en revisión' : p.estado_verificacion}</span>
+      {p.solicitud === 'renovacion' && state === 'pendiente'
+        ? <div><button className="primary" onClick={() => decide(p, 'aprobar')}>Confirmar pago</button><button className="secondary" onClick={() => decide(p, 'rechazar')}>Rechazar pago</button></div>
+        : <div>{p.estado_verificacion !== 'aprobada' && <button className="primary" onClick={() => decide(p, 'aprobar')}>Aprobar y activar</button>}{p.estado_verificacion === 'pendiente' && <button className="secondary" onClick={() => decide(p, 'rechazar')}>Rechazar</button>}{p.estado_verificacion === 'aprobada' && <button className="secondary" onClick={() => decide(p, 'suspender')}>Suspender</button>}</div>}</div>)}
       {rows && rows.length === 0 && <div className="empty-results">No hay Pymes en este estado.</div>}</div></section>
 }
 

@@ -51,12 +51,15 @@ export const errorText = (e: unknown) => e instanceof Error ? e.message : 'Ocurr
 // --- Tipos del API ---
 export type Comuna = { id: number; nombre: string }
 
+// Autoría de un registro del historial: la clínica que lo hizo y, si corresponde, su anulación (nunca se borra).
+export type RegistroMeta = { registrado_por?: string; clinica?: string; anulado?: { motivo: string; en: string } }
+
 export type FichaDatos = {
   condiciones: string[]; medicamentos: string[]; notaEmergencia: string
-  vacunas: { id?: string; nombre: string; fecha: string; proxima?: string; notas?: string }[]
+  vacunas: ({ id?: string; nombre: string; fecha: string; proxima?: string; notas?: string } & RegistroMeta)[]
   alergias: { agente: string; reaccion?: string; gravedad?: 'leve' | 'moderada' | 'grave' }[]
-  tratamientos: { id?: string; descripcion: string; inicio?: string; fin?: string; notas?: string }[]
-  atenciones: { id?: string; fecha: string; motivo: string; notas?: string }[]
+  tratamientos: ({ id?: string; descripcion: string; inicio?: string; fin?: string; notas?: string } & RegistroMeta)[]
+  atenciones: ({ id?: string; fecha: string; motivo: string; notas?: string } & RegistroMeta)[]
   alertasCriticas: string[]
 }
 

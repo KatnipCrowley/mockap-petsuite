@@ -23,7 +23,7 @@ const navIcons: Record<string, typeof House> = {
   home: House, pets: PawPrint, directory: Store, community: Users, settings: Settings,
   'business-home': House, 'business-profile': Store, catalog: Package, contacts: MessageCircle, metrics: ChartColumn, subscription: CreditCard,
   'clinical-home': House, patients: Stethoscope, 'admin-home': House, users: Users, moderation: ShieldCheck, subscriptions: CreditCard,
-  adoption: Heart, 'ong-home': House, animals: PawPrint, ongs: ShieldCheck,
+  adoption: Heart, 'ong-home': House, animals: PawPrint, ongs: ShieldCheck, 'business-profile': Store, 'clinic-profile': Store,
 }
 
 
@@ -93,7 +93,7 @@ function App() {
       <aside className="sidebar">
         <div className="brand"><span className="brand-mark"><LogoMark /></span><span>Pet<span>Suite</span></span></div>
         <div className="profile-mini"><div className="avatar">{user.nombre.slice(0, 2).toUpperCase()}</div><div><strong>{user.nombre}</strong><small>{roleLabels[user.rol]}</small></div></div>
-        <nav aria-label="Navegación principal">{roleMenus[user.rol].map(([label, id]) => { const Icon = navIcons[id]; return <button className={active === id ? 'nav-item active' : 'nav-item'} aria-current={active === id ? 'page' : undefined} onClick={() => setActive(id)} key={id}><Icon className="nav-icon" size={19} strokeWidth={1.8} /><span>{label}</span></button> })}</nav>
+        <nav aria-label="Navegación principal">{roleMenus[user.rol].map(([label, id]) => { const Icon = navIcons[id]; return <button className={active === id ? 'nav-item active' : 'nav-item'} aria-current={active === id ? 'page' : undefined} aria-label={label} title={label} onClick={() => setActive(id)} key={id}><Icon className="nav-icon" size={19} strokeWidth={1.8} /><span>{label}</span></button> })}</nav>
         <div className="sidebar-bottom" />
       </aside>
       <main className="main-content">
