@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ChartColumn, Check, CreditCard, Heart, House, Package, PawPrint, Settings, ShieldCheck, Stethoscope, Store, Users } from 'lucide-react'
+import { ChartColumn, Check, CreditCard, Heart, House, MessageCircle, Package, PawPrint, Settings, ShieldCheck, Stethoscope, Store, Users } from 'lucide-react'
 import { LogoMark } from './media'
 import { api, getSession, setSession, type ApiRole, type Session } from './api'
 import { Login } from './Login'
@@ -13,15 +13,15 @@ import { resetDemo } from './mock/db'
 const roleMenus: Record<ApiRole, readonly (readonly [string, string])[]> = {
   tutor: [['Inicio', 'home'], ['Mis mascotas', 'pets'], ['Directorio', 'directory'], ['Adopciones', 'adoption'], ['Muro comunal', 'community'], ['Configuración', 'settings']],
   ong: [['Inicio', 'ong-home'], ['Mis animales', 'animals'], ['Configuración', 'settings']],
-  pyme: [['Inicio', 'business-home'], ['Catálogo', 'catalog'], ['Perfil del negocio', 'business-profile'], ['Métricas', 'metrics'], ['Suscripción', 'subscription'], ['Configuración', 'settings']],
-  clinico: [['Inicio', 'clinical-home'], ['Pacientes', 'patients'], ['Perfil de la clínica', 'clinic-profile'], ['Configuración', 'settings']],
+  pyme: [['Inicio', 'business-home'], ['Perfil del negocio', 'business-profile'], ['Catálogo', 'catalog'], ['Contactos', 'contacts'], ['Métricas', 'metrics'], ['Suscripción', 'subscription'], ['Configuración', 'settings']],
+  clinico: [['Inicio', 'clinical-home'], ['Pacientes', 'patients'], ['Configuración', 'settings']],
   admin: [['Inicio', 'admin-home'], ['Usuarios', 'users'], ['Moderación', 'moderation'], ['Pymes y suscripciones', 'subscriptions'], ['Verificar ONG', 'ongs'], ['Configuración', 'settings']],
 }
 const firstView: Record<ApiRole, string> = { tutor: 'home', pyme: 'business-home', clinico: 'clinical-home', admin: 'admin-home', ong: 'ong-home' }
 
 const navIcons: Record<string, typeof House> = {
   home: House, pets: PawPrint, directory: Store, community: Users, settings: Settings,
-  'business-home': House, catalog: Package, metrics: ChartColumn, subscription: CreditCard,
+  'business-home': House, 'business-profile': Store, catalog: Package, contacts: MessageCircle, metrics: ChartColumn, subscription: CreditCard,
   'clinical-home': House, patients: Stethoscope, 'admin-home': House, users: Users, moderation: ShieldCheck, subscriptions: CreditCard,
   adoption: Heart, 'ong-home': House, animals: PawPrint, ongs: ShieldCheck, 'business-profile': Store, 'clinic-profile': Store,
 }

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Bookmark, BookmarkCheck, CalendarDays, Check, CirclePlus, Heart, MapPin, MessageCircle, Pencil, Search, Trash2, Users, X } from 'lucide-react'
-import { api, errorText, fechaCorta, getSession, hoy, iniciales, type Comuna, type Mascota } from './api'
-import { Loading, Photo } from './media'
-import { moderationMessageSchema } from './validators'
+import { CirclePlus, Heart, MessageCircle, Users, X } from 'lucide-react'
+import { api, errorText, getSession, iniciales, type Comuna, type Mascota } from './api'
+import { Loading } from './media'
+import { communityCommentSchema, moderationMessageSchema, wallPostSchema } from './validators'
 
 type Tipo = 'extravio' | 'encuentro' | 'recomendacion' | 'alerta' | 'evento' | 'adopcion'
 type Comentario = { id: string; autor: string; texto: string; es_mio: boolean; editado: boolean }
@@ -95,23 +95,12 @@ type CardProps = {
 
 function PostCard({ post, showComment, comunaAjena, onReact, onSave, onComment, onReport, onEdit, onDelete, onResolve, onAdoption, onAddComment, onEditComment, onDeleteComment }: CardProps) {
   const [text, setText] = useState('')
-  const [editing, setEditing] = useState<{ id: string; text: string } | null>(null)
-  const submit = async (event: React.FormEvent) => { event.preventDefault(); if (text.trim().length < 3) return; await onAddComment(text.trim()); setText('') }
-  const saveComment = async (event: React.FormEvent, c: Comentario) => { event.preventDefault(); if (!editing || editing.text.trim().length < 3) return; await onEditComment(c, editing.text.trim()); setEditing(null) }
-  const cerrable = post.tipo === 'extravio' || post.tipo === 'encuentro'
-  const nombreFoto = post.mascota || post.animal?.nombre || tipoLabel[post.tipo]
-  return <article className={`community-post${post.urgente && !post.resuelto ? ' is-urgent' : ''}${post.resuelto ? ' is-resolved' : ''}`}><div className="post-top"><div className="post-avatar">{iniciales(post.autor)}</div><div><strong>{post.autor}</strong><small>{ago(post.creado_en)}{post.editado ? ' · editado' : ''}{comunaAjena ? ` · ${comunaAjena}` : ''}</small></div></div>
-    <div className="chip-row"><span className={`post-type ${tipoClass[post.tipo]}`}>{tipoLabel[post.tipo].toUpperCase()}</span>{post.urgente && !post.resuelto && <span className="chip chip-alert">Urgente</span>}{post.resuelto && <span className="chip chip-ok"><Check size={13} /> {post.tipo === 'extravio' ? 'Mascota encontrada' : 'Resuelto'}</span>}</div>
-    {post.foto_url && <Photo src={post.foto_url} nombre={nombreFoto} className="post-photo" />}
-    <p>{post.texto}</p>
-    {(post.sector || post.fecha_evento || post.mascota) && <div className="post-meta">{post.mascota && <span>Mascota: {post.mascota}</span>}{post.sector && <span><MapPin size={14} /> {post.sector}</span>}{post.fecha_evento && <span className={post.fecha_evento < hoy() ? 'is-past' : ''}><CalendarDays size={14} /> {post.fecha_evento < hoy() ? 'Fue el' : 'Fecha:'} {fechaCorta(post.fecha_evento)}</span>}</div>}
-    {post.tipo === 'adopcion' && <div className="post-adoption">{post.animal ? <><span>Conoce a <strong>{post.animal.nombre}</strong> · {post.animal.ong}</span>{onAdoption && <button className="secondary" onClick={onAdoption}>Ver en Adopciones</button>}</> : <span>Este animal ya encontró un hogar o no está disponible.</span>}</div>}
-    <div className="post-actions"><button className={post.reaccione ? 'reacted' : ''} onClick={onReact} aria-pressed={post.reaccione}><Heart size={16} fill={post.reaccione ? 'currentColor' : 'none'} /> {post.reacciones}</button><button onClick={onComment}><MessageCircle size={16} /> {post.comentarios.length} comentarios</button><button onClick={onSave} aria-pressed={post.guardado}>{post.guardado ? <BookmarkCheck size={16} /> : <Bookmark size={16} />} {post.guardado ? 'Guardada' : 'Guardar'}</button>{!post.es_mio && <button onClick={() => onReport({ tipo: 'publicacion', id: post.id, autor: post.autor })}>Reportar</button>}</div>
-    {post.es_mio && <div className="post-owner-actions">{cerrable && <button className="text-button" onClick={onResolve}><Check size={15} /> {post.resuelto ? 'Reabrir' : post.tipo === 'extravio' ? 'Marcar como encontrada' : 'Marcar como resuelto'}</button>}<button className="text-button" onClick={onEdit}><Pencil size={15} /> Editar</button><button className="text-button danger-text" onClick={onDelete}><Trash2 size={15} /> Eliminar</button></div>}
-    {post.comentarios.length > 0 && <div className="comments">{post.comentarios.map(c => <div className="comment" key={c.id}><strong>{c.autor}</strong>
-      {editing?.id === c.id ? <form className="comment-form" onSubmit={e => saveComment(e, c)}><input aria-label="Editar comentario" maxLength={1000} value={editing.text} onChange={e => setEditing({ id: c.id, text: e.target.value })} /><button className="primary">Guardar comentario</button><button type="button" className="secondary" onClick={() => setEditing(null)}>Cancelar</button></form> : <span>{c.texto}{c.editado ? ' (editado)' : ''}</span>}
-      {editing?.id !== c.id && <span className="comment-actions">{c.es_mio ? <><button className="text-button" onClick={() => setEditing({ id: c.id, text: c.texto })}>Editar</button><button className="text-button danger-text" onClick={() => onDeleteComment(c)}>Eliminar</button></> : <button className="text-button" onClick={() => onReport({ tipo: 'comentario', id: c.id, autor: c.autor })}>Reportar</button>}</span>}</div>)}</div>}
-    {showComment && <form className="comment-form" onSubmit={submit}><input aria-label="Comentario" maxLength={1000} value={text} onChange={e => setText(e.target.value)} placeholder="Escribe un comentario..." /><button className="primary">Enviar</button></form>}
+  const [error, setError] = useState('')
+  const submit = async (event: React.FormEvent) => { event.preventDefault(); const parsed = communityCommentSchema.safeParse({ text }); if (!parsed.success) { setError(parsed.error.issues[0]?.message || 'Revisa el comentario'); return }; await onAddComment(parsed.data.text); setText(''); setError('') }
+  return <article className="community-post"><div className="post-top"><div className="post-avatar">{iniciales(post.autor)}</div><div><strong>{post.autor}</strong><small>{ago(post.creado_en)}</small></div></div><span className={`post-type ${tipoClass[post.tipo]}`}>{tipoLabel[post.tipo].toUpperCase()}</span><p>{post.texto}</p>
+    <div className="post-actions"><button className={post.reaccione ? 'reacted' : ''} onClick={onReact}><Heart size={16} fill={post.reaccione ? 'currentColor' : 'none'} /> {post.reacciones}</button><button onClick={onComment}><MessageCircle size={16} /> {post.comentarios.length} comentarios</button><button onClick={onReport}>Reportar</button></div>
+    {post.comentarios.length > 0 && <div className="comments">{post.comentarios.map(c => <div className="comment" key={c.id}><strong>{c.autor}</strong><span>{c.texto}</span></div>)}</div>}
+    {showComment && <form className="comment-form" onSubmit={submit}><input aria-label="Comentario" maxLength={1000} value={text} onChange={e => { setText(e.target.value); setError('') }} placeholder="Escribe un comentario..." /><button className="primary">Enviar</button>{error && <p className="form-error" role="alert">{error}</p>}</form>}
   </article>
 }
 
@@ -124,15 +113,10 @@ function Composer({ post, onClose, onSaved }: { post: Post | null; onClose: () =
   const conSector = form.tipo !== 'recomendacion' && form.tipo !== 'adopcion'
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
-    if (form.texto.trim().length < 15) { setError('Cuéntanos un poco más para ayudar a la comunidad (mínimo 15 caracteres)'); return }
-    if (form.tipo === 'evento' && !form.fecha_evento) { setError('Indica la fecha del evento'); return }
+    const parsed = wallPostSchema.safeParse(form)
+    if (!parsed.success) { setError(parsed.error.issues[0]?.message || 'Revisa la publicación'); return }
     setBusy(true)
-    const campos = { texto: form.texto.trim(), ...(conSector && form.sector.trim() && { sector: form.sector.trim() }), ...(form.tipo === 'evento' && { fecha_evento: form.fecha_evento }) }
-    try {
-      if (post) await api(`/muro/${post.id}`, { method: 'PATCH', body: campos })
-      else await api('/muro', { method: 'POST', body: { tipo: form.tipo, ...campos, ...(form.mascota_id && form.tipo === 'extravio' ? { mascota_id: form.mascota_id } : {}) } })
-      await onSaved()
-    } catch (e) { setError(errorText(e)); setBusy(false) }
+    try { await api('/muro', { method: 'POST', body: { tipo: parsed.data.tipo, texto: parsed.data.texto, ...(form.mascota_id && parsed.data.tipo === 'extravio' ? { mascota_id: form.mascota_id } : {}) } }); await onSaved() } catch (e) { setError(errorText(e)); setBusy(false) }
   }
   return <div className="modal-backdrop"><form className="modal" onSubmit={submit} noValidate><button type="button" className="close" aria-label="Cerrar" onClick={onClose}><X size={20} /></button><p className="eyebrow">{post ? 'EDITAR PUBLICACIÓN' : 'NUEVA PUBLICACIÓN'}</p><h2>{post ? 'Corrige tu publicación' : 'Comparte con tu comunidad'}</h2><p className="muted">{ayuda[form.tipo] || 'Se publicará en el muro de tu comuna. No se permiten enlaces externos.'}</p>
     <div className="form-grid"><label>Tipo<select value={form.tipo} disabled={!!post} onChange={e => setForm({ ...form, tipo: e.target.value as Tipo })}>{(post ? [post.tipo] : tiposTutor).map(t => <option key={t} value={t}>{tipoLabel[t]}</option>)}</select></label>

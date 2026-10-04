@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Check, Search, ShieldAlert, ShieldCheck } from 'lucide-react'
 import { api, clp, errorText, iniciales } from './api'
+import { SuspensionReview, type AccountSummary } from './admin-suspension'
 
 type OngPendiente = { id: string; nombre: string; tipo: string; descripcion: string | null; contacto: string | null; comuna: string; estado_verificacion: string; animales: number }
 type Resumen = { ong_pendientes?: number; animales_disponibles?: number; usuarios: number; suspendidos: number; pymes_activas: number; pymes_pendientes: number; reportes_abiertos: number; escaneos: number; ingresos_30d: number }
-type Usuario = { id: string; correo: string; rol: string; nombre_visible: string; estado: 'activo' | 'suspendido' | 'eliminado' }
+type Usuario = AccountSummary & { correo: string; rol: string; estado: 'activo' | 'suspendido' | 'eliminado' }
 type Reporte = { id: string; objeto_tipo: string; objeto_id: string; motivo: string; creado_en: string; reportante: string; contenido: string | null; autor: string | null; autor_id: string | null }
 type PymePendiente = { id: string; nombre_comercial: string; rut_empresa: string; rubro: string; comuna: string; estado_verificacion: string; solicitud?: 'alta' | 'renovacion'; plan?: string | null; referencia: string | null; monto_clp: number | null }
 
@@ -33,41 +34,39 @@ function Overview() {
 
 function Users() {
   const [users, setUsers] = useState<Usuario[] | null>(null)
+  const [selected, setSelected] = useState<{ user: Usuario; view: 'reports' | 'suspend' } | null>(null)
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<'Todos' | 'Activos' | 'Suspendidos'>('Todos')
   const [error, setError] = useState('')
   const load = useCallback(() => api<Usuario[]>(`/admin/usuarios${query.trim() ? `?q=${encodeURIComponent(query.trim())}` : ''}`).then(u => { setUsers(u); setError('') }).catch(e => setError(errorText(e))), [query])
   useEffect(() => { const t = setTimeout(() => { void load() }, 250); return () => clearTimeout(t) }, [load])
-  const set = async (u: Usuario, estado: 'activo' | 'suspendido') => { try { await api(`/admin/usuarios/${u.id}`, { method: 'PATCH', body: { estado } }); await load() } catch (e) { setError(errorText(e)) } }
+  const reactivate = async (u: Usuario) => { try { await api(`/admin/usuarios/${u.id}`, { method: 'PATCH', body: { estado: 'activo' } }); await load() } catch (e) { setError(errorText(e)) } }
   const shown = (users || []).filter(u => filter === 'Todos' || (filter === 'Activos' ? u.estado === 'activo' : u.estado === 'suspendido'))
   return <section className="page admin-page"><div className="page-title"><div><p className="eyebrow">ADMINISTRACIÓN</p><h1>Gestión de usuarios</h1><p className="muted">Busca, filtra y administra las cuentas de PetSuite.</p></div><span className="admin-total">{users?.length ?? 0} cuentas</span></div>
     <div className="user-toolbar"><div className="search-field"><span>⌕</span><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar por nombre o correo" /></div></div>
     <div className="user-filters">{(['Todos', 'Activos', 'Suspendidos'] as const).map(v => <button key={v} className={filter === v ? 'category-tab active' : 'category-tab'} onClick={() => setFilter(v)}>{v}</button>)}</div>
     {error && <p className="form-error" role="alert">{error}</p>}
     <div className="admin-table-card user-table polished-user-table"><div className="user-table-head"><span>USUARIO</span><span>ROL</span><span>ESTADO</span><span>ACCIÓN</span></div>
-      {shown.map(u => <div className="user-row" key={u.id}><div className="avatar">{iniciales(u.nombre_visible || u.correo)}</div><div className="user-identity"><strong>{u.nombre_visible}</strong><small>{u.correo}</small></div><span className="user-role">{rolLabel[u.rol] || u.rol}</span><span className={`user-status ${u.estado}`}>{u.estado === 'activo' ? 'Activo' : 'Suspendido'}</span>{u.rol === 'admin' ? <span /> : <button className={u.estado === 'activo' ? 'secondary' : 'primary'} onClick={() => set(u, u.estado === 'activo' ? 'suspendido' : 'activo')}>{u.estado === 'activo' ? 'Suspender' : 'Reactivar'}</button>}</div>)}
-      {users && shown.length === 0 && <div className="empty-results">No encontramos usuarios con estos filtros.</div>}</div></section>
+      {shown.map(u => <div className="user-row" key={u.id}><div className="avatar">{iniciales(u.nombre_visible || u.correo)}</div><div className="user-identity"><strong>{u.nombre_visible}</strong><small>{u.correo}</small><button type="button" className="text-button user-reports-link" onClick={() => setSelected({ user: u, view: 'reports' })}>Ver denuncias</button>{u.suspension && <small>{u.suspension.tipo === 'temporal' ? `Hasta ${new Date(u.suspension.hasta!).toLocaleDateString('es-CL')}` : 'Suspensión permanente'} · {u.suspension.motivo.replaceAll('_', ' ')}</small>}</div><span className="user-role">{rolLabel[u.rol] || u.rol}</span><span className={`user-status ${u.estado}`}>{u.estado === 'activo' ? 'Activo' : 'Suspendido'}</span>{u.rol === 'admin' ? <span /> : <button className={u.estado === 'activo' ? 'secondary' : 'primary'} onClick={() => u.estado === 'activo' ? setSelected({ user: u, view: 'suspend' }) : void reactivate(u)}>{u.estado === 'activo' ? 'Suspender' : 'Reactivar'}</button>}</div>)}
+      {users && shown.length === 0 && <div className="empty-results">No encontramos usuarios con estos filtros.</div>}</div>{selected && <SuspensionReview key={`${selected.user.id}-${selected.view}`} user={selected.user} initialView={selected.view} onClose={() => setSelected(null)} onConfirmed={load} />}</section>
 }
 
 // UC-20 · Cola de reportes, más antiguos primero. Ocultar o mantener; reincidencia → suspender al autor (UC-21).
 function Moderation() {
   const [reports, setReports] = useState<Reporte[] | null>(null)
+  const [selected, setSelected] = useState<Reporte | null>(null)
   const [query, setQuery] = useState('')
   const [error, setError] = useState('')
   const load = useCallback(() => api<Reporte[]>('/admin/reportes').then(setReports).catch(e => setError(errorText(e))), [])
   useEffect(() => { void load() }, [load])
   const decide = async (r: Reporte, decision: 'ocultar' | 'mantener') => { try { await api(`/admin/reportes/${r.id}`, { method: 'PATCH', body: { decision } }); await load() } catch (e) { setError(errorText(e)) } }
-  const suspend = async (r: Reporte) => {
-    if (!r.autor_id || !window.confirm(`¿Suspender la cuenta de ${r.autor}? Perderá el acceso hasta que la reactives.`)) return
-    try { await api(`/admin/usuarios/${r.autor_id}`, { method: 'PATCH', body: { estado: 'suspendido' } }); await decide(r, 'ocultar') } catch (e) { setError(errorText(e)) }
-  }
   const shown = (reports || []).filter(r => `${r.autor} ${r.contenido} ${r.motivo}`.toLocaleLowerCase('es').includes(query.trim().toLocaleLowerCase('es')))
   const n = reports?.length ?? 0
   return <section className="page admin-page moderation-page"><div className="page-title"><div><p className="eyebrow">MODERACIÓN DEL MURO</p><h1>Reportes de contenido</h1><p className="muted">Revisa cada reporte contra las normas de la comunidad y decide.</p></div><span className="moderation-title-count">{n} {n === 1 ? 'pendiente' : 'pendientes'}</span></div>
     <section className="moderation-panel" aria-label="Cola de reportes"><div className="moderation-panel-header"><div><p className="eyebrow">CASOS ABIERTOS</p><h2>Cola de revisión</h2><p className="muted">{n ? 'Ordenados del más antiguo al más reciente.' : 'Todos los reportes han sido revisados.'}</p></div><label className="moderation-search"><Search size={18} aria-hidden="true" /><span className="sr-only">Buscar reporte</span><input type="search" placeholder="Buscar autor o contenido" value={query} onChange={e => setQuery(e.target.value)} /></label></div>
       {error && <p className="form-error" role="alert">{error}</p>}
-      {shown.length ? <div className="moderation-list">{shown.map(r => <article className="moderation-row" key={r.id}><div className="moderation-identity"><div className="avatar moderation-avatar">{iniciales(r.autor || '??')}</div><div><h3>{r.autor || 'Autor desconocido'}</h3><p>“{r.contenido || 'Contenido no disponible'}”</p><p><small>{r.objeto_tipo === 'comentario' ? 'Comentario · ' : ''}Motivo: {r.motivo} · Reportó {r.reportante} · {new Date(r.creado_en).toLocaleString('es-CL')}</small></p></div></div><div className="moderation-actions"><button type="button" className="secondary" onClick={() => decide(r, 'mantener')}><Check size={16} /> Mantener</button><button type="button" className="secondary" onClick={() => decide(r, 'ocultar')}><ShieldAlert size={16} /> Ocultar</button><button type="button" className="primary" onClick={() => suspend(r)}><ShieldAlert size={16} /> Ocultar y suspender</button></div></article>)}</div> : <div className="moderation-empty"><ShieldCheck size={30} strokeWidth={1.5} /><h3>{query ? 'Sin resultados' : 'Todo al día'}</h3><p>{query ? 'Prueba con otra búsqueda.' : 'No hay reportes por revisar.'}</p></div>}
-    </section></section>
+      {shown.length ? <div className="moderation-list">{shown.map(r => <article className="moderation-row" key={r.id}><div className="moderation-identity"><div className="avatar moderation-avatar">{iniciales(r.autor || '??')}</div><div><h3>{r.autor || 'Autor desconocido'}</h3><p>“{r.contenido || 'Contenido no disponible'}”</p><p><small>Motivo: {r.motivo} · Reportó {r.reportante} · {new Date(r.creado_en).toLocaleString('es-CL')}</small></p></div></div><div className="moderation-actions"><button type="button" className="secondary" onClick={() => decide(r, 'mantener')}><Check size={16} /> Mantener</button><button type="button" className="secondary" onClick={() => decide(r, 'ocultar')}><ShieldAlert size={16} /> Ocultar</button><button type="button" className="primary" disabled={!r.autor_id} onClick={() => setSelected(r)}><ShieldAlert size={16} /> Ocultar y suspender</button></div></article>)}</div> : <div className="moderation-empty"><ShieldCheck size={30} strokeWidth={1.5} /><h3>{query ? 'Sin resultados' : 'Todo al día'}</h3><p>{query ? 'Prueba con otra búsqueda.' : 'No hay reportes por revisar.'}</p></div>}
+    </section>{selected?.autor_id && <SuspensionReview key={selected.id} user={{ id: selected.autor_id, nombre_visible: selected.autor || 'Autor desconocido' }} relatedReportId={selected.id} onClose={() => setSelected(null)} onConfirmed={load} />}</section>
 }
 
 // UC-19 · Verificación de Pymes y pago por transferencia (SP3.2).

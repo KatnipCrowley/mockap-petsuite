@@ -1,9 +1,9 @@
 // API simulado de PetSuite: mismas rutas, validaciones y reglas que el servidor real (server/src/routes),
 // resueltas en el navegador sobre mock/db.ts. Los mensajes de error se mantienen en español.
 import { z } from 'zod'
-import { ApiError, type FichaDatos, type Session } from '../api'
-import { db, ficha, now, refresh, save, uid, dayOffset, type Animal, type Item, type MascotaRow, type Publicacion, type Pyme, type Usuario } from './db'
-import type { Oferta } from '../api'
+import { ApiError, type Session } from '../api'
+import { db, ficha, now, refresh, save, uid, dayOffset, type Animal, type MascotaRow, type Pyme, type Usuario } from './db'
+import { businessContactSchema, businessProfileSchema, businessReplySchema, userSuspensionSchema } from '../validators'
 
 z.config(z.locales.es())
 
@@ -28,9 +28,18 @@ function auth(req: Req, ...roles: Usuario['rol'][]): Usuario {
   const id = db.sesiones[req.session.token]
   const user = id ? db.usuarios.find(u => u.id === id) : undefined
   if (!user) return fail(401, 'Sesión inválida')
+  refreshSuspension(user)
   if (user.estado !== 'activo') return fail(403, 'Tu cuenta está suspendida')
   if (roles.length && !roles.includes(user.rol)) return fail(403, 'Sin permiso')
   return user
+}
+
+function refreshSuspension(user: Usuario) {
+  if (user.estado === 'suspendido' && user.suspension?.tipo === 'temporal' && user.suspension.hasta && user.suspension.hasta <= now()) {
+    user.estado = 'activo'
+    user.suspension = null
+    save()
+  }
 }
 
 const vigente = (a: { revocado_en: string | null; vigente_hasta: string }) => !a.revocado_en && a.vigente_hasta > now()
@@ -53,8 +62,7 @@ const itemsPublicos = (pymeId: string) => db.catalogo.filter(i => i.pyme_id === 
 
 const pymeResumen = (p: Pyme) => ({
   id: p.id, nombre_comercial: p.nombre_comercial, rubro: p.rubro, descripcion: p.descripcion, comuna_id: p.comuna_id, comuna: comunaNombre(p.comuna_id),
-  direccion: p.direccion, latitud: p.latitud, longitud: p.longitud, telefono: p.telefono, whatsapp: p.whatsapp, horario: p.horario,
-  servicios: p.servicios ?? [], ofertas: itemsPublicos(p.id).filter(i => ofertaVigente(i.oferta)).length,
+  direccion: p.direccion, latitud: p.latitud, longitud: p.longitud, telefono: p.telefono, whatsapp: p.whatsapp, horario: p.horario, foto_portada: p.foto_portada ?? null,
 })
 
 // ---------- Esquemas ----------
@@ -91,6 +99,7 @@ on('POST', '/auth/login', req => {
   const d = parse(z.object({ correo: z.string().trim().email('Correo inválido'), clave: z.string().min(1, 'Ingresa tu contraseña') }), req.body)
   const u = db.usuarios.find(x => x.correo === d.correo.toLowerCase())
   if (!u || u.clave !== d.clave) return fail(401, 'Credenciales incorrectas')
+  refreshSuspension(u)
   if (u.estado !== 'activo') return fail(403, 'Tu cuenta está suspendida')
   const token = uid()
   db.sesiones[token] = u.id
@@ -432,19 +441,6 @@ function miPyme(req: Req): Pyme {
   return p
 }
 
-// Perfil público del negocio. Nombre, RUT y rubro quedan fuera porque los verifica el equipo PetSuite.
-const horarioSchema = z.string().trim().max(40)
-const perfilSchema = z.object({
-  descripcion: z.string().trim().max(1000).refine(sinEnlaces, 'No se permiten enlaces externos en la descripción'),
-  direccion: z.string().trim().max(200),
-  telefono: z.string().trim().max(20).regex(/^[\d+\s()-]*$/, 'Teléfono inválido'),
-  whatsapp: z.string().trim().max(20).regex(/^[\d+\s]*$/, 'WhatsApp inválido: usa solo números (ej. 56912345678)'),
-  horario: z.object({ 'lun-vie': horarioSchema, sab: horarioSchema, dom: horarioSchema }),
-  servicios: z.array(z.string().trim().min(2).max(40)).max(12, 'Puedes destacar hasta 12 servicios'),
-  latitud: z.number().min(-90).max(90).nullable(),
-  longitud: z.number().min(-180).max(180).nullable(),
-})
-
 on('GET', '/pymes/:id/perfil', req => {
   const p = miPyme(req)
   return { ...pymeResumen(p), rut_empresa: p.rut_empresa, estado_verificacion: p.estado_verificacion }
@@ -452,17 +448,57 @@ on('GET', '/pymes/:id/perfil', req => {
 
 on('PATCH', '/pymes/:id/perfil', req => {
   const p = miPyme(req)
-  const d = parse(perfilSchema, req.body)
+  const d = parse(businessProfileSchema, req.body)
+  if (!db.comunas.some(c => c.id === d.comuna_id)) return fail(400, 'Comuna no válida')
   Object.assign(p, {
-    descripcion: d.descripcion || null, direccion: d.direccion || null, telefono: d.telefono || null, whatsapp: d.whatsapp.replace(/\D/g, '') || null,
-    horario: Object.fromEntries(Object.entries(d.horario).filter(([, h]) => h)), servicios: [...new Set(d.servicios)],
-    latitud: d.latitud != null ? String(d.latitud) : null, longitud: d.longitud != null ? String(d.longitud) : null,
+    nombre_comercial: d.nombre_comercial, descripcion: d.descripcion || null, comuna_id: d.comuna_id,
+    direccion: d.direccion || null, telefono: d.telefono || null, whatsapp: d.whatsapp || null,
+    latitud: d.latitud === null ? null : String(d.latitud), longitud: d.longitud === null ? null : String(d.longitud),
+    horario: d.horario, foto_portada: d.foto_portada,
   })
-  return { ok: true }
+  return { ...pymeResumen(p), rut_empresa: p.rut_empresa, estado_verificacion: p.estado_verificacion }
 })
 
-const ofertaSchema = z.object({ precio_clp: z.number().int().min(0).max(100_000_000), desde: fecha, hasta: fecha })
-  .refine(o => o.hasta >= o.desde, 'La oferta debe terminar después de comenzar')
+on('POST', '/pymes/:id/contactos', req => {
+  const u = auth(req, 'tutor')
+  const p = db.pymes.find(x => x.id === req.params.id && x.estado_verificacion === 'aprobada' && suscripcionActiva(x.id))
+  if (!p) return fail(404, 'Negocio no disponible')
+  const d = parse(businessContactSchema, req.body)
+  const contact = { id: uid(), pyme_id: p.id, remitente_id: u.id, remitente_nombre: u.nombre_visible, remitente_contacto: d.contacto || null, mensaje: d.mensaje, estado: 'nuevo' as const, respuesta: null, creado_en: now(), respondido_en: null }
+  db.contactos_pymes.push(contact)
+  return { id: contact.id }
+})
+
+on('GET', '/pymes/:id/contactos', req => {
+  const p = miPyme(req)
+  return db.contactos_pymes.filter(c => c.pyme_id === p.id).sort((a, b) => b.creado_en.localeCompare(a.creado_en))
+})
+
+on('PATCH', '/pymes/:id/contactos/:contactId', req => {
+  const p = miPyme(req)
+  const contact = db.contactos_pymes.find(c => c.id === req.params.contactId && c.pyme_id === p.id)
+  if (!contact) return fail(404, 'Contacto no encontrado')
+  const d = parse(z.discriminatedUnion('estado', [
+    z.object({ estado: z.literal('leido') }),
+    z.object({ estado: z.literal('respondido'), respuesta: businessReplySchema.shape.respuesta }),
+  ]), req.body)
+  if (d.estado === 'leido') {
+    if (contact.estado !== 'nuevo') return fail(409, 'Este mensaje ya fue revisado')
+    contact.estado = 'leido'
+  } else {
+    contact.estado = 'respondido'
+    contact.respuesta = d.respuesta
+    contact.respondido_en = now()
+  }
+  return { ...contact }
+})
+
+on('GET', '/mis-contactos-pyme', req => {
+  const u = auth(req, 'tutor')
+  return db.contactos_pymes.filter(c => c.remitente_id === u.id).sort((a, b) => b.creado_en.localeCompare(a.creado_en))
+    .map(c => ({ id: c.id, negocio: db.pymes.find(p => p.id === c.pyme_id)?.nombre_comercial || 'Negocio', mensaje: c.mensaje, respuesta: c.respuesta, estado: c.estado, creado_en: c.creado_en }))
+})
+
 const itemSchema = z.object({
   tipo: z.enum(['producto', 'servicio']),
   nombre: z.string().trim().min(2, 'El nombre debe tener al menos 2 caracteres').max(120),
@@ -910,6 +946,7 @@ on('POST', '/ong/animales/:id/vincular', req => {
 // Administración
 on('GET', '/admin/resumen', req => {
   auth(req, 'admin')
+  db.usuarios.forEach(refreshSuspension)
   const desde = hace(30)
   return {
     usuarios: db.usuarios.length,
@@ -926,20 +963,44 @@ on('GET', '/admin/resumen', req => {
 
 on('GET', '/admin/usuarios', req => {
   auth(req, 'admin')
+  db.usuarios.forEach(refreshSuspension)
   const q = (req.query.get('q') || '').toLowerCase()
   return db.usuarios.filter(u => !q || u.nombre_visible.toLowerCase().includes(q) || u.correo.includes(q)).sort((a, b) => b.creado_en.localeCompare(a.creado_en)).slice(0, 100)
-    .map(u => ({ id: u.id, correo: u.correo, rol: u.rol, nombre_visible: u.nombre_visible, estado: u.estado, creado_en: u.creado_en }))
+    .map(u => ({ id: u.id, correo: u.correo, rol: u.rol, nombre_visible: u.nombre_visible, estado: u.estado, suspension: u.suspension ?? null, creado_en: u.creado_en }))
+})
+
+on('GET', '/admin/usuarios/:id/denuncias', req => {
+  auth(req, 'admin')
+  const user = db.usuarios.find(u => u.id === req.params.id)
+  if (!user) return fail(404, 'Usuario no encontrado')
+  return db.reportes.filter(r => db.publicaciones.some(p => p.id === r.objeto_id && p.autor_id === user.id))
+    .sort((a, b) => b.creado_en.localeCompare(a.creado_en))
+    .map(r => ({ id: r.id, motivo: r.motivo, estado: r.estado, creado_en: r.creado_en,
+      reportante: nombreUsuario(r.reportante_id), contenido: db.publicaciones.find(p => p.id === r.objeto_id)?.texto ?? null }))
 })
 
 on('PATCH', '/admin/usuarios/:id', req => {
   const admin = auth(req, 'admin')
-  const d = parse(z.object({ estado: z.enum(['activo', 'suspendido']) }), req.body)
+  const d = parse(z.discriminatedUnion('estado', [
+    z.object({ estado: z.literal('activo') }),
+    z.object({ estado: z.literal('suspendido'), suspension: userSuspensionSchema, reporte_id: z.string().optional() }),
+  ]), req.body)
   if (req.params.id === admin.id) return fail(400, 'No puedes suspender tu propia cuenta')
   const u = db.usuarios.find(x => x.id === req.params.id)
   if (!u) return fail(404, 'Usuario no encontrado')
   if (u.rol === 'admin') return fail(403, 'No se puede suspender a un administrador')
+  const report = d.estado === 'suspendido' && d.reporte_id ? db.reportes.find(r => r.id === d.reporte_id && r.estado === 'abierto') : null
+  const post = report && db.publicaciones.find(p => p.id === report.objeto_id && p.autor_id === u.id)
+  if (d.estado === 'suspendido' && d.reporte_id && !post) return fail(400, 'La denuncia no pertenece a este usuario')
   u.estado = d.estado
-  if (d.estado === 'suspendido') for (const [token, id] of Object.entries(db.sesiones)) if (id === u.id) delete db.sesiones[token]
+  if (d.estado === 'suspendido') {
+    u.suspension = { ...d.suspension, hasta: d.suspension.tipo === 'temporal' ? new Date(Date.now() + d.suspension.dias! * 86_400_000).toISOString() : null, aplicada_en: now() }
+    for (const [token, id] of Object.entries(db.sesiones)) if (id === u.id) delete db.sesiones[token]
+    if (post) {
+      post.estado = 'oculta'
+      for (const r of db.reportes) if (r.objeto_id === post.id && r.estado === 'abierto') r.estado = 'resuelto_ocultado'
+    }
+  } else u.suspension = null
   return { ok: true }
 })
 

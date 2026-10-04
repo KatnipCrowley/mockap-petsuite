@@ -2,6 +2,9 @@ import { useCallback, useEffect, useState } from 'react'
 import { Pencil, ShoppingBag, Tag, X } from 'lucide-react'
 import { api, clp, errorText, fechaCorta, hoy, ofertaVigente, type Comuna, type ItemCatalogo, type PymeResumen } from './api'
 import { Loading } from './media'
+import { BusinessProfile } from './business-profile'
+import { BusinessContacts } from './business-contacts'
+import { catalogItemFormSchema, registerPymeSchema } from './validators'
 
 export type MiPyme = { id: string; nombre_comercial: string; rubro: string; estado_verificacion: 'pendiente' | 'aprobada' | 'rechazada' | 'suspendida'; comuna_id: number; solicitud_pendiente?: boolean; suscripcion: { estado: string; fin: string; plan: string; plan_id: number; precio: number; max_items: number } | null }
 type Planes = { id: number; nombre: string; precio_mensual_clp: number; max_items_catalogo: number }[]
@@ -42,11 +45,12 @@ export function RegisterPyme({ veterinaria, onDone }: { veterinaria?: boolean; o
   const set = (key: string, value: string | number) => setForm({ ...form, [key]: value })
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
-    if (form.nombre_comercial.trim().length < 2) { setError('Ingresa el nombre de tu negocio'); return }
-    const lat = form.latitud ? Number(form.latitud) : undefined, lng = form.longitud ? Number(form.longitud) : undefined
+    const parsed = registerPymeSchema.safeParse({ ...form, latitud: form.latitud.trim() ? Number(form.latitud) : null, longitud: form.longitud.trim() ? Number(form.longitud) : null })
+    if (!parsed.success) { setError(parsed.error.issues[0]?.message || 'Revisa los datos del negocio'); return }
+    const d = parsed.data
     setBusy(true); setError('')
     try {
-      await api('/pymes', { method: 'POST', body: { nombre_comercial: form.nombre_comercial.trim(), rut_empresa: form.rut_empresa.trim(), rubro: form.rubro, comuna_id: form.comuna_id, plan_id: form.plan_id, ...(form.direccion && { direccion: form.direccion }), ...(form.telefono && { telefono: form.telefono }), ...(form.whatsapp && { whatsapp: form.whatsapp }), ...(form.descripcion && { descripcion: form.descripcion }), ...(form.referencia_pago && { referencia_pago: form.referencia_pago }), ...(lat !== undefined && !Number.isNaN(lat) && { latitud: lat }), ...(lng !== undefined && !Number.isNaN(lng) && { longitud: lng }) } })
+      await api('/pymes', { method: 'POST', body: { nombre_comercial: d.nombre_comercial, rut_empresa: d.rut_empresa, rubro: d.rubro, comuna_id: d.comuna_id, plan_id: d.plan_id, ...(d.direccion && { direccion: d.direccion }), ...(d.telefono && { telefono: d.telefono }), ...(d.whatsapp && { whatsapp: d.whatsapp }), ...(d.descripcion && { descripcion: d.descripcion }), ...(d.referencia_pago && { referencia_pago: d.referencia_pago }), ...(d.latitud !== null && { latitud: d.latitud }), ...(d.longitud !== null && { longitud: d.longitud }) } })
       onDone()
     } catch (e) { setError(errorText(e)); setBusy(false) }
   }
@@ -77,8 +81,9 @@ export function BusinessArea({ active }: { active: string }) {
   const { pyme, loading, error, reload } = usePyme()
   if (loading) return <section className="page">{error ? <p className="muted">{error}</p> : <Loading />}</section>
   if (!pyme) return <RegisterPyme onDone={reload} />
+  if (active === 'business-profile') return <BusinessProfile pyme={pyme} onSaved={reload} />
   if (active === 'catalog') return <Catalog pyme={pyme} />
-  if (active === 'business-profile') return <BusinessProfile pyme={pyme} />
+  if (active === 'contacts') return <BusinessContacts pyme={pyme} />
   if (active === 'metrics') return <MetricsView pyme={pyme} />
   if (active === 'subscription') return <Subscription pyme={pyme} onChange={reload} />
   return <Overview pyme={pyme} />
@@ -105,63 +110,29 @@ const estadoOferta = (item: ItemCatalogo) => {
 
 function Catalog({ pyme }: { pyme: MiPyme }) {
   const [items, setItems] = useState<ItemCatalogo[] | null>(null)
-  const [draft, setDraft] = useState({ tipo: 'producto' as 'producto' | 'servicio', nombre: '', categoria: '', precio: '' })
-  const [categoria, setCategoria] = useState('Todas')
+  const [draft, setDraft] = useState({ tipo: 'producto' as 'producto' | 'servicio', nombre: '', descripcion: '', precio: '' })
   const [editing, setEditing] = useState<ItemCatalogo | null>(null)
   const [error, setError] = useState('')
   const load = useCallback(() => api<ItemCatalogo[]>(`/pymes/${pyme.id}/catalogo`).then(setItems).catch(e => setError(errorText(e))), [pyme.id])
   useEffect(() => { void load() }, [load])
-  const categorias = [...new Set((items || []).map(i => i.categoria).filter((c): c is string => !!c))].sort()
-  const add = async (event: React.FormEvent) => {
-    event.preventDefault(); setError('')
-    if (draft.nombre.trim().length < 2) { setError('Ingresa el nombre del ítem'); return }
-    const precio = draft.precio.trim() ? Number(draft.precio.replace(/\D/g, '')) : undefined
-    try { await api(`/pymes/${pyme.id}/catalogo`, { method: 'POST', body: { tipo: draft.tipo, nombre: draft.nombre.trim(), ...(draft.categoria.trim() && { categoria: draft.categoria.trim() }), ...(precio !== undefined && { precio_referencial_clp: precio }) } }); setDraft({ ...draft, nombre: '', precio: '' }); await load() } catch (e) { setError(errorText(e)) }
-  }
-  // PUT conserva los campos omitidos: basta con enviar lo que cambia.
-  const update = async (item: ItemCatalogo, changes: Partial<ItemCatalogo>) => { try { await api(`/pymes/${pyme.id}/catalogo/${item.id}`, { method: 'PUT', body: { tipo: item.tipo, nombre: item.nombre, ...changes } }); await load() } catch (e) { setError(errorText(e)) } }
-  const remove = async (item: ItemCatalogo) => { if (!window.confirm(`¿Eliminar «${item.nombre}» del catálogo?`)) return; try { await api(`/pymes/${pyme.id}/catalogo/${item.id}`, { method: 'DELETE' }); await load() } catch (e) { setError(errorText(e)) } }
-  const shown = (items || []).filter(i => categoria === 'Todas' || (categoria === 'Sin categoría' ? !i.categoria : i.categoria === categoria))
-  return <section className="page role-page"><div className="page-title"><div><p className="eyebrow">GESTIÓN B2B</p><h1>Catálogo</h1><p className="muted">Productos y servicios con precio referencial, visibles en tu perfil del directorio.{pyme.suscripcion ? ` Tu plan permite hasta ${pyme.suscripcion.max_items} ítems (usas ${items?.length ?? 0}).` : ''}</p></div></div>
-    <StatusBanner pyme={pyme} />
-    <form className="catalog-form" onSubmit={add} noValidate><select aria-label="Tipo" value={draft.tipo} onChange={e => setDraft({ ...draft, tipo: e.target.value as 'producto' | 'servicio' })}><option value="producto">Producto</option><option value="servicio">Servicio</option></select><input aria-label="Nombre" value={draft.nombre} onChange={e => setDraft({ ...draft, nombre: e.target.value })} placeholder="Nombre del producto o servicio" /><input aria-label="Categoría" list="catalog-categories" value={draft.categoria} onChange={e => setDraft({ ...draft, categoria: e.target.value })} placeholder="Categoría (ej. Alimentos)" /><input aria-label="Precio referencial" inputMode="numeric" value={draft.precio} onChange={e => setDraft({ ...draft, precio: e.target.value })} placeholder="Precio referencial" /><button className="primary">Agregar</button></form>
-    <datalist id="catalog-categories">{categorias.map(c => <option key={c} value={c} />)}</datalist>
-    {error && <p className="form-error" role="alert">{error}</p>}
-    {categorias.length > 0 && <div className="category-tabs">{['Todas', ...categorias, ...((items || []).some(i => !i.categoria) ? ['Sin categoría'] : [])].map(c => <button key={c} className={categoria === c ? 'category-tab active' : 'category-tab'} onClick={() => setCategoria(c)}>{c}</button>)}</div>}
-    {!items && !error && <Loading />}
-    <div className="catalog-list">{shown.map(item => <div className="catalog-item" key={item.id}><div className="catalog-item-main"><strong>{item.nombre}</strong><p>{item.tipo === 'servicio' ? 'Servicio' : 'Producto'}{item.categoria ? ` · ${item.categoria}` : ''}{item.descripcion ? ` · ${item.descripcion}` : ''}</p><b>{clp(item.precio_referencial_clp)}</b><div className="chip-row">{!item.disponible && <span className="chip">Oculto</span>}{item.sin_stock && <span className="chip chip-alert">Sin stock</span>}{estadoOferta(item)}</div></div>
-      <div className="catalog-item-actions"><button className={item.disponible ? 'toggle on' : 'toggle'} aria-label={`Mostrar u ocultar ${item.nombre}`} title={item.disponible ? 'Visible en el directorio' : 'Oculto'} onClick={() => update(item, { disponible: !item.disponible })} /><button className="secondary" onClick={() => setEditing(item)}><Pencil size={15} /> Editar</button><button className="text-button" onClick={() => remove(item)}>Eliminar</button></div></div>)}
-      {items && shown.length === 0 && <div className="empty-results">{items.length ? 'No hay ítems en esta categoría.' : 'Todavía no tienes ítems en tu catálogo.'}</div>}</div>
-    {editing && <ItemModal item={editing} categorias={categorias} onClose={() => setEditing(null)} onSave={async changes => { await api(`/pymes/${pyme.id}/catalogo/${editing.id}`, { method: 'PUT', body: changes }); setEditing(null); await load() }} />}
-  </section>
-}
-
-function ItemModal({ item, categorias, onClose, onSave }: { item: ItemCatalogo; categorias: string[]; onClose: () => void; onSave: (changes: Record<string, unknown>) => Promise<void> }) {
-  const [form, setForm] = useState({
-    tipo: item.tipo, nombre: item.nombre, descripcion: item.descripcion || '', categoria: item.categoria || '', precio: item.precio_referencial_clp != null ? String(item.precio_referencial_clp) : '',
-    sin_stock: !!item.sin_stock, en_oferta: !!item.oferta, oferta_precio: item.oferta ? String(item.oferta.precio_clp) : '', desde: item.oferta?.desde || hoy(), hasta: item.oferta?.hasta || '',
-  })
-  const [error, setError] = useState('')
-  const [busy, setBusy] = useState(false)
-  const num = (v: string) => v.trim() ? Number(v.replace(/\D/g, '')) : null
   const submit = async (event: React.FormEvent) => {
-    event.preventDefault()
-    if (form.nombre.trim().length < 2) { setError('El nombre debe tener al menos 2 caracteres'); return }
-    const precio = num(form.precio), ofertaPrecio = num(form.oferta_precio)
-    if (form.en_oferta && (ofertaPrecio == null || !form.hasta)) { setError('Completa el precio y la fecha de término de la oferta'); return }
-    setBusy(true); setError('')
+    event.preventDefault(); setError('')
+    const parsed = catalogItemFormSchema.safeParse(draft)
+    if (!parsed.success) { setError(parsed.error.issues[0]?.message || 'Revisa el ítem'); return }
+    const precio = parsed.data.precio ? Number(parsed.data.precio) : undefined
     try {
-      await onSave({ tipo: form.tipo, nombre: form.nombre.trim(), descripcion: form.descripcion.trim() || null, categoria: form.categoria.trim() || null, precio_referencial_clp: precio, sin_stock: form.sin_stock, oferta: form.en_oferta ? { precio_clp: ofertaPrecio, desde: form.desde, hasta: form.hasta } : null })
-    } catch (e) { setError(errorText(e)); setBusy(false) }
+      await api(`/pymes/${pyme.id}/catalogo${editing ? `/${editing.id}` : ''}`, { method: editing ? 'PUT' : 'POST', body: { tipo: parsed.data.tipo, nombre: parsed.data.nombre, descripcion: parsed.data.descripcion, ...(precio !== undefined && { precio_referencial_clp: precio }), ...(editing && { disponible: editing.disponible }) } })
+      setDraft({ tipo: 'producto', nombre: '', descripcion: '', precio: '' }); setEditing(null); await load()
+    } catch (e) { setError(errorText(e)) }
   }
-  return <div className="modal-backdrop"><form className="modal" onSubmit={submit} noValidate><button type="button" className="close" aria-label="Cerrar" onClick={onClose}><X size={20} /></button><p className="eyebrow">CATÁLOGO</p><h2>Editar ítem</h2><p className="muted">Los precios son referenciales: la compra se coordina directamente con tu negocio.</p>
-    <div className="form-grid"><label>Tipo<select value={form.tipo} onChange={e => setForm({ ...form, tipo: e.target.value as 'producto' | 'servicio' })}><option value="producto">Producto</option><option value="servicio">Servicio</option></select></label><label>Nombre<input value={form.nombre} onChange={e => setForm({ ...form, nombre: e.target.value })} /></label><label>Categoría<input list="item-categories" value={form.categoria} onChange={e => setForm({ ...form, categoria: e.target.value })} /></label><label>Precio referencial<input inputMode="numeric" value={form.precio} onChange={e => setForm({ ...form, precio: e.target.value })} /></label></div>
-    <datalist id="item-categories">{categorias.map(c => <option key={c} value={c} />)}</datalist>
-    <label className="composer-label">Descripción<textarea rows={3} maxLength={1000} value={form.descripcion} onChange={e => setForm({ ...form, descripcion: e.target.value })} /></label>
-    <label className="check-row"><input type="checkbox" checked={form.sin_stock} onChange={e => setForm({ ...form, sin_stock: e.target.checked })} /> Sin stock por ahora (se muestra en el directorio, marcado)</label>
-    <label className="check-row"><input type="checkbox" checked={form.en_oferta} onChange={e => setForm({ ...form, en_oferta: e.target.checked })} /> Publicar como oferta destacada</label>
-    {form.en_oferta && <div className="form-grid"><label>Precio de oferta<input inputMode="numeric" value={form.oferta_precio} onChange={e => setForm({ ...form, oferta_precio: e.target.value })} /></label><label>Desde<input type="date" value={form.desde} onChange={e => setForm({ ...form, desde: e.target.value })} /></label><label>Hasta<input type="date" min={form.desde} value={form.hasta} onChange={e => setForm({ ...form, hasta: e.target.value })} /></label></div>}
-    {error && <div className="form-error" role="alert">{error}</div>}<div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Cancelar</button><button className="primary" disabled={busy}>{busy ? 'Guardando...' : 'Guardar cambios'}</button></div></form></div>
+  const edit = (item: ItemCatalogo) => { setEditing(item); setDraft({ tipo: item.tipo, nombre: item.nombre, descripcion: item.descripcion || '', precio: item.precio_referencial_clp == null ? '' : String(item.precio_referencial_clp) }); setError('') }
+  const toggle = async (item: ItemCatalogo) => { try { await api(`/pymes/${pyme.id}/catalogo/${item.id}`, { method: 'PUT', body: { tipo: item.tipo, nombre: item.nombre, descripcion: item.descripcion ?? undefined, precio_referencial_clp: item.precio_referencial_clp ?? undefined, disponible: !item.disponible } }); await load() } catch (e) { setError(errorText(e)) } }
+  const remove = async (item: ItemCatalogo) => { if (!window.confirm(`¿Eliminar «${item.nombre}» del catálogo?`)) return; try { await api(`/pymes/${pyme.id}/catalogo/${item.id}`, { method: 'DELETE' }); if (editing?.id === item.id) setEditing(null); await load() } catch (e) { setError(errorText(e)) } }
+  return <section className="page role-page"><div className="page-title"><div><p className="eyebrow">GESTIÓN B2B</p><h1>Catálogo</h1><p className="muted">Productos y servicios con precio referencial, visibles en tu perfil del directorio.{pyme.suscripcion ? ` Tu plan permite hasta ${pyme.suscripcion.max_items} ítems.` : ''}</p></div></div>
+    <StatusBanner pyme={pyme} />
+    <form className="catalog-form business-catalog-form" onSubmit={submit} noValidate><select aria-label="Tipo" value={draft.tipo} onChange={e => setDraft({ ...draft, tipo: e.target.value as 'producto' | 'servicio' })}><option value="producto">Producto</option><option value="servicio">Servicio</option></select><input aria-label="Nombre" value={draft.nombre} onChange={e => setDraft({ ...draft, nombre: e.target.value })} placeholder="Nombre del producto o servicio" /><input aria-label="Descripción" value={draft.descripcion} onChange={e => setDraft({ ...draft, descripcion: e.target.value })} placeholder="Descripción" /><input aria-label="Precio referencial" inputMode="numeric" value={draft.precio} onChange={e => setDraft({ ...draft, precio: e.target.value })} placeholder="Precio en pesos" /><div className="business-catalog-actions"><button className="primary">{editing ? 'Guardar' : 'Agregar'}</button>{editing && <button type="button" className="secondary" onClick={() => { setEditing(null); setDraft({ tipo: 'producto', nombre: '', descripcion: '', precio: '' }); setError('') }}>Cancelar</button>}</div></form>
+    {error && <p className="form-error" role="alert">{error}</p>}
+    <div className="catalog-list">{items?.map(item => <div className="catalog-item" key={item.id}><div className="catalog-item-main"><strong>{item.nombre}</strong><p>{item.tipo === 'servicio' ? 'Servicio' : 'Producto'}{item.descripcion ? ` · ${item.descripcion}` : ''}</p><b>{clp(item.precio_referencial_clp)}</b></div><div className="business-catalog-row-actions"><button className={item.disponible ? 'toggle on' : 'toggle'} aria-label={`Mostrar u ocultar ${item.nombre}`} onClick={() => toggle(item)} /><button className="text-button" onClick={() => edit(item)}>Editar</button><button className="text-button" onClick={() => void remove(item)}>Eliminar</button></div></div>)}{items && items.length === 0 && <div className="empty-results">Todavía no tienes ítems en tu catálogo.</div>}</div></section>
 }
 
 // ---------- Perfil del negocio (también lo usa la clínica) ----------

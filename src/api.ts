@@ -1,7 +1,5 @@
-// Cliente del API PetSuite. Por ahora NO hay servidor: cada llamada se resuelve en el navegador con mock/server.ts,
-// que imita las rutas y reglas del API real y guarda los datos en localStorage.
-// Para conectar el backend real basta con volver a `fetch('/api/v1' + path)` con el encabezado
-// `Authorization: Bearer <token>` dentro de api(); el resto de la aplicación no cambia.
+// Cliente del API PetSuite. Sin VITE_API_URL usa el mock local; con una URL configurada
+// consulta el mismo contrato por HTTP, incluido el QR público sin sesión.
 import { handle } from './mock/server'
 
 export type ApiRole = 'tutor' | 'pyme' | 'clinico' | 'admin' | 'ong'
@@ -21,16 +19,30 @@ export class ApiError extends Error {
   constructor(message: string, status: number) { super(message); this.status = status }
 }
 
+const apiUrl = import.meta.env?.VITE_API_URL?.replace(/\/+$/, '')
+
+async function remote<T>(path: string, method: string, body: unknown, session: Session | null): Promise<T> {
+  const response = await fetch(`${apiUrl}${path}`, {
+    method,
+    headers: { ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...(session ? { Authorization: `Bearer ${session.token}` } : {}) },
+    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+  })
+  if (response.status === 204) return undefined as T
+  const payload = await response.json().catch(() => null) as { message?: string; error?: string } | null
+  if (!response.ok) throw new ApiError(payload?.message || payload?.error || `No se pudo completar la solicitud (${response.status})`, response.status)
+  return payload as T
+}
+
 export async function api<T = unknown>(path: string, options: { method?: string; body?: unknown } = {}): Promise<T> {
   const session = getSession()
   try {
-    return await handle(options.method || 'GET', path, options.body, session) as T
+    return apiUrl ? await remote<T>(path, options.method || 'GET', options.body, session) : await handle(options.method || 'GET', path, options.body, session) as T
   } catch (e) {
     if (e instanceof ApiError) {
       if (e.status === 401 && session) { setSession(null); window.location.reload() }
       throw e
     }
-    throw new ApiError('Ocurrió un error inesperado', 500)
+    throw new ApiError('No se pudo conectar al servicio', 503)
   }
 }
 
@@ -60,14 +72,8 @@ export type Mascota = {
 
 export type PublicaEmergencia = { nombre: string; especie: string; raza: string | null; foto_url: string | null; alergias: { agente: string; gravedad?: string }[]; alertasCriticas: string[]; condiciones: string[]; notaEmergencia: string }
 
-export type PymeResumen = { id: string; nombre_comercial: string; rubro: string; descripcion: string | null; comuna: string; direccion: string | null; latitud: string | null; longitud: string | null; telefono: string | null; whatsapp: string | null; horario: Record<string, string>; servicios?: string[]; ofertas?: number }
-// Oferta referencial por un rango de fechas (AAAA-MM-DD). No hay cobros dentro de la app.
-export type Oferta = { precio_clp: number; desde: string; hasta: string }
-export type ItemCatalogo = { id: string; tipo: 'producto' | 'servicio'; nombre: string; descripcion: string | null; precio_referencial_clp: number | null; disponible?: boolean; categoria?: string | null; sin_stock?: boolean; oferta?: Oferta | null }
-
-export const hoy = () => new Date().toISOString().slice(0, 10)
-export const ofertaVigente = (o?: Oferta | null) => !!o && o.desde <= hoy() && o.hasta >= hoy()
-export const fechaCorta = (iso: string) => new Date(iso.length === 10 ? `${iso}T12:00:00` : iso).toLocaleDateString('es-CL', { day: 'numeric', month: 'short' })
+export type PymeResumen = { id: string; nombre_comercial: string; rubro: string; descripcion: string | null; comuna: string; direccion: string | null; latitud: string | null; longitud: string | null; telefono: string | null; whatsapp: string | null; horario: Record<string, string>; foto_portada?: string | null }
+export type ItemCatalogo = { id: string; tipo: 'producto' | 'servicio'; nombre: string; descripcion: string | null; precio_referencial_clp: number | null; disponible?: boolean }
 export type PymePerfil = PymeResumen & { catalogo: ItemCatalogo[] }
 
 export const clp = (n: number | null | undefined) => n == null ? 'Consultar precio' : `$${n.toLocaleString('es-CL')}`
