@@ -2,11 +2,12 @@ import { useCallback, useEffect, useState } from 'react'
 import { AlertCircle, ArrowRight, CalendarDays, Check, ChevronRight, CirclePlus, Copy, Download, MessageCircle, PawPrint, Pencil, Printer, QrCode, ShieldCheck, TriangleAlert, X } from 'lucide-react'
 import QRCode from 'qrcode'
 import { LogoMark, Loading, Photo } from './media'
-import { api, edadDesde, emptyFicha, errorText, iniciales, type FichaDatos, type Mascota, type PublicaEmergencia, type PymeResumen } from './api'
+import { api, edadDesde, emptyFicha, errorText, iniciales, type FichaDatos, type Mascota, type PublicaEmergencia, type PymeResumen, type RegistroMeta } from './api'
 import { emergencyContactSchema, medicalEntrySchema, petDetailsSchema, petHealthSchema } from './validators'
 import { AdoptionCatalog } from './adoption'
 import { CommunityView } from './community'
 import { DirectoryView } from './directory'
+import { BannerStrip } from './promotions'
 
 // meta conserva lo que el formulario del tutor no edita (próxima dosis, autoría de la clínica, anulación).
 type Entry = { id: string; type: 'Vacuna' | 'Atención' | 'Tratamiento'; date: string; title: string; notes: string; meta?: RegistroMeta & { proxima?: string; fin?: string } }
@@ -50,16 +51,18 @@ export function TutorArea({ active, setActive, name }: { active: string; setActi
   const [showAdd, setShowAdd] = useState(false)
   const [editing, setEditing] = useState<Mascota | null>(null)
   const [qrPet, setQrPet] = useState<Mascota | null>(null)
+  const [openPyme, setOpenPyme] = useState<string | null>(null)
+  const consumed = useCallback(() => setOpenPyme(null), [])
 
   if (active === 'adoption') return <AdoptionCatalog />
-  if (active === 'directory') return <DirectoryView />
-  if (active === 'community') return <CommunityView onAdoption={() => setActive('adoption')} />
+  if (active === 'directory') return <DirectoryView initialPyme={openPyme} onOpened={consumed} />
+  if (active === 'community') return <CommunityView onAdoption={() => setActive('adoption')} onPyme={id => { setOpenPyme(id); setActive('directory') }} />
   if (!pets) return <section className="page">{error ? <p className="muted">{error}</p> : <Loading />}</section>
   const selected = pets.find(p => p.id === selectedId) || pets[0] || null
   const pick = (pet: Mascota) => { setSelectedId(pet.id); setActive('pets') }
 
   return <>
-    {active === 'home' && <Dashboard pets={pets} name={name} onSelect={pick} onPets={() => setActive('pets')} onCommunity={() => setActive('community')} onAdd={() => setShowAdd(true)} />}
+    {active === 'home' && <Dashboard pets={pets} name={name} banner={<BannerStrip ubicacion="inicio" onPyme={id => { setOpenPyme(id); setActive('directory') }} />} onSelect={pick} onPets={() => setActive('pets')} onCommunity={() => setActive('community')} onAdd={() => setShowAdd(true)} />}
     {active === 'pets' && <PetsView pets={pets} selected={selected} onSelect={pet => setSelectedId(pet.id)} onAdd={() => setShowAdd(true)} onQr={setQrPet} onEdit={setEditing} onChanged={load} />}
     {showAdd && <PetFormModal onClose={() => setShowAdd(false)} onSaved={async id => { await load(); setSelectedId(id); setShowAdd(false); setActive('pets') }} />}
     {editing && <PetFormModal pet={editing} onClose={() => setEditing(null)} onSaved={async () => { await load(); setEditing(null) }} />}
@@ -88,12 +91,13 @@ function PetHero({ pet, onOpen }: { pet: Mascota; onOpen: () => void }) {
   </article>
 }
 
-function Dashboard({ pets, name, onSelect, onPets, onCommunity, onAdd }: { pets: Mascota[]; name: string; onSelect: (pet: Mascota) => void; onPets: () => void; onCommunity: () => void; onAdd: () => void }) {
+function Dashboard({ pets, name, banner, onSelect, onPets, onCommunity, onAdd }: { pets: Mascota[]; name: string; banner?: React.ReactNode; onSelect: (pet: Mascota) => void; onPets: () => void; onCommunity: () => void; onAdd: () => void }) {
   const [latest, setLatest] = useState<{ autor: string; tipo: string; texto: string } | null>(null)
   useEffect(() => { api<{ autor: string; tipo: string; texto: string }[]>('/muro').then(p => setLatest(p[0] || null)).catch(() => setLatest(null)) }, [])
   const sinQr = pets.filter(p => !p.token_activo).length
   return <section className="page home-page">
     <div className="welcome"><div><p className="eyebrow">TU ESPACIO PETSUITE</p><h1>Hola, {name.split(' ')[0]}</h1><p className="muted">Todo lo importante para tus mascotas, en un solo lugar.</p></div><button className="primary" onClick={onAdd}><CirclePlus size={17} /> Agregar mascota</button></div>
+    {banner}
     {pets[0] && <PetHero pet={pets[0]} onOpen={() => onSelect(pets[0])} />}
     <div className="alert-card"><div className="alert-icon"><QrCode size={22} /></div><div><strong>{sinQr ? `${sinQr} ${sinQr === 1 ? 'mascota sin' : 'mascotas sin'} medalla QR activa` : 'Su ficha de emergencia, siempre lista'}</strong><p>{sinQr ? 'Activa su QR para que quien la encuentre pueda avisarte sin ver tus datos personales.' : 'Revisa los datos de tus mascotas y accede a su QR cuando lo necesites.'}</p></div><button className="text-button" onClick={onPets}>Ver fichas <ArrowRight size={16} /></button></div>
     <section className="content-panel"><div className="section-heading"><div><p className="eyebrow">MIS MASCOTAS</p><h2>Sus fichas</h2></div><button className="text-button" onClick={onPets}>Ver todas <ArrowRight size={16} /></button></div>

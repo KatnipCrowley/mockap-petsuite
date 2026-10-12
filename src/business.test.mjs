@@ -18,7 +18,7 @@ globalThis.localStorage = {
 }
 
 const { handle } = await import('./mock/server.ts')
-const { resetDemo } = await import('./mock/db.ts')
+const { resetDemo, STORAGE_KEY } = await import('./mock/db.ts')
 
 async function login(correo, rol) {
   const result = await handle('POST', '/auth/login', { correo, clave: 'petsuite123' }, null)
@@ -66,10 +66,10 @@ test('a tutor enquiry stays private to its business and the tutor can read the r
 
 test('existing demo databases without a contact inbox are migrated on read', async () => {
   resetDemo()
-  const legacy = JSON.parse(localStorage.getItem('petsuite-mock-db-v1'))
+  const legacy = JSON.parse(localStorage.getItem(STORAGE_KEY))
   delete legacy.contactos_pymes
-  localStorage.setItem('petsuite-mock-db-v1', JSON.stringify(legacy))
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(legacy))
   const tutor = await login('tutor@petsuite.cl', 'tutor')
   assert.deepEqual(await handle('GET', '/mis-contactos-pyme', undefined, tutor), [])
-  assert.deepEqual(JSON.parse(localStorage.getItem('petsuite-mock-db-v1')).contactos_pymes, [])
+  assert.deepEqual(JSON.parse(localStorage.getItem(STORAGE_KEY)).contactos_pymes, [])
 })

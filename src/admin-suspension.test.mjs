@@ -16,7 +16,7 @@ globalThis.localStorage = {
 }
 
 const { handle } = await import('./mock/server.ts')
-const { resetDemo } = await import('./mock/db.ts')
+const { resetDemo, STORAGE_KEY } = await import('./mock/db.ts')
 
 async function login(correo, rol) {
   const { token, usuario } = await handle('POST', '/auth/login', { correo, clave: 'petsuite123' }, null)
@@ -50,9 +50,9 @@ test('denuncias are restricted to admins; a temporary suspension requires days a
   assert.ok(new Date(affected.suspension.hasta).getTime() > Date.now())
   await assert.rejects(() => login('tutor@petsuite.cl', 'tutor'), e => e.status === 403)
 
-  const saved = JSON.parse(localStorage.getItem('petsuite-mock-db-v1'))
+  const saved = JSON.parse(localStorage.getItem(STORAGE_KEY))
   saved.usuarios.find(user => user.id === ana.id).suspension.hasta = new Date(Date.now() - 1000).toISOString()
-  localStorage.setItem('petsuite-mock-db-v1', JSON.stringify(saved))
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(saved))
   await login('tutor@petsuite.cl', 'tutor')
   const revived = (await handle('GET', '/admin/usuarios', undefined, admin)).find(user => user.id === ana.id)
   assert.equal(revived.estado, 'activo')
