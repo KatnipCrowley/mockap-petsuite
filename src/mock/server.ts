@@ -1,9 +1,14 @@
 // API simulado de PetSuite: mismas rutas, validaciones y reglas que el servidor real (server/src/routes),
 // resueltas en el navegador sobre mock/db.ts. Los mensajes de error se mantienen en español.
 import { z } from 'zod'
-import { ApiError, type Session } from '../api'
-import { db, ficha, now, refresh, save, uid, dayOffset, type Animal, type MascotaRow, type Pyme, type Usuario } from './db'
+import { ApiError, type FichaDatos, type Session } from '../api'
+import { db, ficha, now, refresh, save, uid, dayOffset, consentimientosBase, type Animal, type Item, type MascotaRow, type Miembro, type Publicacion, type Pyme, type Usuario } from './db'
+import type { Oferta } from '../api'
 import { businessContactSchema, businessProfileSchema, businessReplySchema, userSuspensionSchema } from '../validators'
+import { DIAS_GRACIA, DIAS_PERIODO, PLANES, PLAN_GRATIS, dentroDelLimite, etiquetasLimite, limiteTexto, planPorId, type Limites, type Plan } from '../plans'
+import { PERMISOS_ADMIN, PERMISOS_ASESOR, PERMISOS_DUENO, type ModuloPyme } from '../permissions'
+import { crearCobro } from './orcob'
+import { enviarCorreo, registerSuiteRoutes } from './suite'
 
 z.config(z.locales.es())
 
@@ -43,7 +48,8 @@ function refreshSuspension(user: Usuario) {
 }
 
 const vigente = (a: { revocado_en: string | null; vigente_hasta: string }) => !a.revocado_en && a.vigente_hasta > now()
-const suscripcionActiva = (pymeId: string) => db.suscripciones.some(s => s.pyme_id === pymeId && s.estado === 'activa' && s.fin >= dayOffset(0))
+// Un negocio verificado siempre aparece en el directorio: sin plan pagado vigente rige el plan Gratis.
+const suscripcionActiva = (pymeId: string) => db.pymes.some(p => p.id === pymeId && p.estado_verificacion === 'aprobada')
 // Suscripción que rige hoy: la activa ya iniciada; una renovación pendiente o futura no reemplaza a la actual.
 const ultimaSuscripcion = (pymeId: string) => {
   const subs = db.suscripciones.filter(s => s.pyme_id === pymeId).sort((a, b) => b.inicio.localeCompare(a.inicio))
@@ -53,17 +59,90 @@ const pagoPendiente = (pymeId: string) => {
   const ids = new Set(db.suscripciones.filter(s => s.pyme_id === pymeId).map(s => s.id))
   return db.pagos.find(p => ids.has(p.suscripcion_id) && p.estado === 'pendiente')
 }
+const diasEntre = (desde: string, hasta: string) => Math.round((new Date(`${hasta}T12:00:00Z`).getTime() - new Date(`${desde}T12:00:00Z`).getTime()) / 86_400_000)
+
+// RN-SUS: el plan pagado rige hasta su fin y durante los días de gracia; después la Pyme baja a Gratis
+// (no se borra nada: lo que excede el plan Gratis deja de publicarse hasta que renueve).
+export function estadoPlan(pymeId: string): { plan: Plan; en_gracia: boolean; dias_mora: number; fin: string | null } {
+  const s = ultimaSuscripcion(pymeId)
+  if (!s || s.estado !== 'activa' || s.inicio > dayOffset(0)) return { plan: PLAN_GRATIS, en_gracia: false, dias_mora: 0, fin: null }
+  const mora = Math.max(0, diasEntre(s.fin, dayOffset(0)))
+  if (mora === 0) return { plan: planPorId(s.plan_id), en_gracia: false, dias_mora: 0, fin: s.fin }
+  return mora <= DIAS_GRACIA ? { plan: planPorId(s.plan_id), en_gracia: true, dias_mora: mora, fin: s.fin } : { plan: PLAN_GRATIS, en_gracia: false, dias_mora: mora, fin: s.fin }
+}
+const planDe = (pymeId: string) => estadoPlan(pymeId).plan
+
+export function usoPyme(pymeId: string): Record<keyof Limites, number> {
+  return {
+    items: db.catalogo.filter(i => i.pyme_id === pymeId).length,
+    sucursales: 1 + db.sucursales.filter(s => s.pyme_id === pymeId).length,
+    usuarios: db.miembros.filter(m => m.pyme_id === pymeId).length,
+    ofertas: db.catalogo.filter(i => i.pyme_id === pymeId && ofertaVigente(i.oferta)).length,
+    banners: db.banners.filter(b => b.autor_tipo === 'pyme' && b.autor_id === pymeId && (b.estado === 'pendiente' || b.estado === 'aprobado') && b.hasta >= dayOffset(0)).length,
+    convenios: db.convenios.filter(c => c.pyme_id === pymeId && c.estado !== 'rechazado' && c.estado !== 'finalizado').length,
+  }
+}
+
+// Falla con 422 y una invitación a mejorar el plan cuando crear algo más superaría el límite.
+export function exigirCupo(pymeId: string, clave: keyof Limites, extra = 1) {
+  const plan = planDe(pymeId), usados = usoPyme(pymeId)[clave] + extra - 1
+  if (!dentroDelLimite(usados, plan.limites[clave])) {
+    const sig = PLANES.find(p => p.precio_mensual_clp > plan.precio_mensual_clp && dentroDelLimite(usados, p.limites[clave]))
+    fail(422, `Tu plan ${plan.nombre} ${plan.limites[clave] === 0 ? 'no incluye' : `permite ${limiteTexto(plan.limites[clave])}`} ${etiquetasLimite[clave].toLowerCase()}.${sig ? ` Con el plan ${sig.nombre} puedes tener más.` : ''}`)
+  }
+}
+
+// Multitenant: el dueño gestiona todos los módulos de su Pyme; el equipo, solo los que el dueño le asignó.
+const membresiasDe = (u: Usuario) => db.miembros.filter(m => m.usuario_id === u.id)
+export function permisosEnPyme(u: Usuario, p: Pyme): { permisos: ModuloPyme[]; miembro: Miembro | null } | null {
+  if (p.propietario_id === u.id && u.rol === 'pyme') return { permisos: PERMISOS_DUENO, miembro: null }
+  const m = db.miembros.find(x => x.pyme_id === p.id && x.usuario_id === u.id)
+  return m ? { permisos: m.permisos, miembro: m } : null
+}
+export function permisosDe(u: Usuario): string[] {
+  if (u.rol === 'admin') return PERMISOS_ADMIN
+  if (u.rol === 'asesor') return PERMISOS_ASESOR
+  if (u.rol === 'pyme') return PERMISOS_DUENO
+  if (u.rol === 'jefe_local' || u.rol === 'clinico') return [...new Set(membresiasDe(u).flatMap(m => m.permisos))]
+  return []
+}
+// Veterinarias donde el usuario es personal clínico con el módulo Pacientes.
+const clinicasDe = (u: Usuario) => db.pymes.filter(p => permisosEnPyme(u, p)?.permisos.includes('pacientes'))
 const comunaNombre = (id: number) => db.comunas.find(c => c.id === id)?.nombre ?? ''
 const nombreUsuario = (id: string) => db.usuarios.find(u => u.id === id)?.nombre_visible ?? 'Usuario'
 const hace = (dias: number) => new Date(Date.now() - dias * 86_400_000).toISOString()
 
-const ofertaVigente = (o: Oferta | null | undefined) => !!o && o.desde <= dayOffset(0) && o.hasta >= dayOffset(0)
-const itemsPublicos = (pymeId: string) => db.catalogo.filter(i => i.pyme_id === pymeId && i.disponible)
+function ofertaVigente(o: Oferta | null | undefined) { return !!o && o.desde <= dayOffset(0) && o.hasta >= dayOffset(0) }
+// Se publican los primeros ítems hasta el límite del plan (los más antiguos), y solo tantas ofertas como permita.
+function itemsPublicos(pymeId: string) {
+  const { limites } = planDe(pymeId)
+  const items = db.catalogo.filter(i => i.pyme_id === pymeId && i.disponible).sort((a, b) => a.creado_en.localeCompare(b.creado_en)).slice(0, limites.items ?? undefined)
+  let ofertas = 0
+  return items.map(i => ofertaVigente(i.oferta) && (limites.ofertas === null || ofertas++ < limites.ofertas) ? i : { ...i, oferta: null })
+}
+// Sucursales visibles según el plan. Sin «perfil por sucursal», cada sucursal muestra la descripción y servicios de la empresa.
+function sucursalesPublicas(p: Pyme) {
+  const plan = planDe(p.id)
+  return db.sucursales.filter(s => s.pyme_id === p.id).sort((a, b) => a.creado_en.localeCompare(b.creado_en)).slice(0, Math.max(0, (plan.limites.sucursales ?? Infinity) - 1)).map(s => ({
+    id: s.id, nombre: s.nombre, comuna: comunaNombre(s.comuna_id), direccion: s.direccion, latitud: s.latitud, longitud: s.longitud, telefono: s.telefono, whatsapp: s.whatsapp, horario: s.horario,
+    descripcion: plan.beneficios.perfil_sucursal ? s.descripcion : null, servicios: plan.beneficios.perfil_sucursal && s.servicios.length ? s.servicios : p.servicios ?? [],
+  }))
+}
+const cuponesDe = (filtro: (c: { pyme_id: string; ong_id: string }) => boolean) => db.convenios.filter(c => c.estado === 'activo' && c.desde <= dayOffset(0) && c.hasta >= dayOffset(0) && filtro(c)).map(c => ({
+  codigo: c.codigo, titulo: c.titulo, descuento_pct: c.descuento_pct, condiciones: c.condiciones, hasta: c.hasta, ong: db.ongs.find(o => o.id === c.ong_id)?.nombre ?? 'ONG', ong_id: c.ong_id,
+  negocio: db.pymes.find(p => p.id === c.pyme_id)?.nombre_comercial ?? 'Negocio', pyme_id: c.pyme_id,
+}))
 
-const pymeResumen = (p: Pyme) => ({
-  id: p.id, nombre_comercial: p.nombre_comercial, rubro: p.rubro, descripcion: p.descripcion, comuna_id: p.comuna_id, comuna: comunaNombre(p.comuna_id),
-  direccion: p.direccion, latitud: p.latitud, longitud: p.longitud, telefono: p.telefono, whatsapp: p.whatsapp, horario: p.horario, foto_portada: p.foto_portada ?? null,
-})
+const pymeResumen = (p: Pyme) => {
+  const plan = planDe(p.id)
+  return {
+    id: p.id, nombre_comercial: p.nombre_comercial, rubro: p.rubro, descripcion: p.descripcion, comuna_id: p.comuna_id, comuna: comunaNombre(p.comuna_id),
+    direccion: p.direccion, latitud: p.latitud, longitud: p.longitud, telefono: p.telefono, whatsapp: p.whatsapp, horario: p.horario,
+    foto_portada: plan.beneficios.portada ? p.foto_portada ?? null : null,
+    servicios: p.servicios ?? [], ofertas: itemsPublicos(p.id).filter(i => ofertaVigente(i.oferta)).length, destacado: plan.beneficios.destacado,
+    sucursales: sucursalesPublicas(p), cupones: cuponesDe(c => c.pyme_id === p.id),
+  }
+}
 
 // ---------- Esquemas ----------
 // Autoría de los registros clínicos: se conserva al guardar la ficha completa.
@@ -103,9 +182,10 @@ on('POST', '/auth/login', req => {
   if (u.estado !== 'activo') return fail(403, 'Tu cuenta está suspendida')
   const token = uid()
   db.sesiones[token] = u.id
-  return { token, usuario: { id: u.id, rol: u.rol, nombre_visible: u.nombre_visible, comuna_id: u.comuna_id } }
+  return { token, usuario: { id: u.id, rol: u.rol, nombre_visible: u.nombre_visible, comuna_id: u.comuna_id, permisos: permisosDe(u) } }
 })
 
+// Ley 21.719: el consentimiento para tratar datos es explícito y separado de los términos; las comunicaciones comerciales son opcionales.
 on('POST', '/auth/registro', req => {
   const d = parse(z.object({
     correo: z.string().trim().email('Correo inválido').max(254),
@@ -113,21 +193,24 @@ on('POST', '/auth/registro', req => {
     nombre_visible: z.string().trim().min(2, 'Ingresa tu nombre').max(80),
     comuna_id: z.number().int().positive(),
     rol: z.enum(['tutor', 'pyme', 'ong']).default('tutor'),
-    acepta_terminos: z.literal(true, { message: 'Debes aceptar los términos y el aviso de privacidad' }),
+    acepta_terminos: z.literal(true, { message: 'Debes aceptar los términos de uso' }),
+    acepta_privacidad: z.literal(true, { message: 'Debes autorizar el tratamiento de tus datos según el aviso de privacidad' }),
+    acepta_comunicaciones: z.boolean().default(false),
   }), req.body)
   const correo = d.correo.toLowerCase()
   if (db.usuarios.some(u => u.correo === correo)) return fail(409, 'Ese correo ya está registrado')
   if (!db.comunas.some(c => c.id === d.comuna_id)) return fail(400, 'Comuna no válida')
-  const u: Usuario = { id: uid(), correo, clave: d.clave, rol: d.rol, nombre_visible: d.nombre_visible, comuna_id: d.comuna_id, estado: 'activo', creado_en: now() }
+  const u: Usuario = { id: uid(), correo, clave: d.clave, rol: d.rol, nombre_visible: d.nombre_visible, comuna_id: d.comuna_id, estado: 'activo', consentimientos: consentimientosBase(d.acepta_comunicaciones), creado_en: now() }
   db.usuarios.push(u)
+  enviarCorreo(correo, 'Bienvenida a PetSuite', `Hola, ${u.nombre_visible}:\n\nTu cuenta está lista.${d.rol === 'pyme' ? ' Registra tu negocio y elige un plan: el plan Gratis te publica en el directorio sin costo.' : d.rol === 'ong' ? ' Registra tu organización: participar es gratis.' : ' Crea la Ficha Única de tu mascota y activa su QR de emergencia.'}\n\nPuedes revisar o retirar tus consentimientos en Configuración > Privacidad.\n\nEquipo PetSuite`, 'bienvenida')
   const token = uid()
   db.sesiones[token] = u.id
-  return { token, usuario: { id: u.id, rol: u.rol, nombre_visible: u.nombre_visible, comuna_id: u.comuna_id } }
+  return { token, usuario: { id: u.id, rol: u.rol, nombre_visible: u.nombre_visible, comuna_id: u.comuna_id, permisos: permisosDe(u) } }
 })
 
-on('GET', '/auth/yo', req => { const u = auth(req); return { id: u.id, rol: u.rol, nombre_visible: u.nombre_visible, correo: u.correo, comuna_id: u.comuna_id } })
+on('GET', '/auth/yo', req => { const u = auth(req); return { id: u.id, rol: u.rol, nombre_visible: u.nombre_visible, correo: u.correo, comuna_id: u.comuna_id, permisos: permisosDe(u) } })
 on('GET', '/comunas', () => [...db.comunas].sort((a, b) => a.nombre.localeCompare(b.nombre)))
-on('GET', '/planes', () => db.planes)
+on('GET', '/planes', () => PLANES)
 
 // Tutor: mascotas y Ficha Única
 const tokenActivo = (mascotaId: string) => db.medallas.find(m => m.mascota_id === mascotaId && m.estado === 'activa')?.token ?? null
@@ -147,7 +230,7 @@ on('GET', '/mascotas', req => {
 
 on('GET', '/mascotas/accesibles', req => {
   const u = auth(req, 'clinico')
-  const mias = new Set(db.pymes.filter(p => p.propietario_id === u.id).map(p => p.id))
+  const mias = new Set(clinicasDe(u).map(p => p.id))
   return db.accesos.filter(a => mias.has(a.pyme_id) && vigente(a)).flatMap(a => {
     const m = db.mascotas.find(x => x.id === a.mascota_id)
     return m ? [{ id: m.id, nombre: m.nombre, especie: m.especie, raza: m.raza, foto_url: m.foto_url, tutor: nombreUsuario(m.tutor_id), permiso: a.permiso, vigente_hasta: a.vigente_hasta, alertas: m.datos_clinicos.alertasCriticas }] : []
@@ -176,7 +259,7 @@ function accesoFicha(req: Req): [Usuario, MascotaRow, 'lectura' | 'escritura'] {
   if (!m) return fail(404, 'Mascota no encontrada')
   if (u.rol === 'tutor' && m.tutor_id === u.id) return [u, m, 'escritura']
   if (u.rol === 'clinico') {
-    const mias = new Set(db.pymes.filter(p => p.propietario_id === u.id).map(p => p.id))
+    const mias = new Set(clinicasDe(u).map(p => p.id))
     const a = db.accesos.filter(x => x.mascota_id === m.id && mias.has(x.pyme_id) && vigente(x)).sort((x, y) => y.vigente_hasta.localeCompare(x.vigente_hasta))
     if (a.some(x => x.permiso === 'escritura')) return [u, m, 'escritura']
     if (a[0]) return [u, m, 'lectura']
@@ -216,7 +299,7 @@ function protegerRegistrosClinicos(prev: FichaDatos, next: FichaDatos) {
 function clinicaConEscritura(req: Req): [MascotaRow, Pyme] {
   const [u, m, permiso] = accesoFicha(req)
   if (u.rol !== 'clinico' || permiso !== 'escritura') return fail(403, 'Necesitas acceso de registro a esta ficha')
-  const mias = db.pymes.filter(p => p.propietario_id === u.id)
+  const mias = clinicasDe(u)
   const acceso = db.accesos.find(a => a.mascota_id === m.id && a.permiso === 'escritura' && vigente(a) && mias.some(p => p.id === a.pyme_id))
   return [m, mias.find(p => p.id === acceso?.pyme_id)!]
 }
@@ -371,22 +454,32 @@ on('POST', '/qr/:token/mensajes', req => {
 })
 
 // Directorio y Pymes
+// La comuna coincide con la casa matriz o con cualquier sucursal visible. Oro primero, luego Plata, luego el resto.
 on('GET', '/pymes', req => {
   const comuna = req.query.get('comuna'), rubro = req.query.get('rubro')
-  return db.pymes.filter(p => p.estado_verificacion === 'aprobada' && suscripcionActiva(p.id) && (!comuna || comunaNombre(p.comuna_id) === comuna) && (!rubro || p.rubro === rubro))
-    .sort((a, b) => a.nombre_comercial.localeCompare(b.nombre_comercial)).map(pymeResumen)
+  return db.pymes.filter(p => p.estado_verificacion === 'aprobada' && (!rubro || p.rubro === rubro)).map(pymeResumen)
+    .filter(r => !comuna || r.comuna === comuna || r.sucursales.some(s => s.comuna === comuna))
+    .sort((a, b) => b.destacado - a.destacado || a.nombre_comercial.localeCompare(b.nombre_comercial))
 })
 
 on('GET', '/pymes/mias', req => {
-  const u = auth(req, 'pyme', 'clinico')
-  return db.pymes.filter(p => p.propietario_id === u.id).map(p => {
-    const s = ultimaSuscripcion(p.id), plan = s && db.planes.find(x => x.id === s.plan_id)
-    return { id: p.id, nombre_comercial: p.nombre_comercial, rubro: p.rubro, estado_verificacion: p.estado_verificacion, comuna_id: p.comuna_id, solicitud_pendiente: !!pagoPendiente(p.id), suscripcion: s && plan ? { estado: s.estado, fin: s.fin, plan: plan.nombre, plan_id: plan.id, precio: plan.precio_mensual_clp, max_items: plan.max_items_catalogo } : null }
+  const u = auth(req, 'pyme', 'jefe_local', 'clinico')
+  return db.pymes.flatMap(p => {
+    const acceso = permisosEnPyme(u, p)
+    if (!acceso) return []
+    const s = ultimaSuscripcion(p.id), estado = estadoPlan(p.id), pagado = s && s.estado !== 'pendiente' && s.estado !== 'cancelada' ? planPorId(s.plan_id) : null
+    const sucursal = acceso.miembro?.sucursal_id ? db.sucursales.find(x => x.id === acceso.miembro!.sucursal_id) : null
+    return [{
+      id: p.id, nombre_comercial: p.nombre_comercial, rubro: p.rubro, estado_verificacion: p.estado_verificacion, comuna_id: p.comuna_id, solicitud_pendiente: !!pagoPendiente(p.id),
+      rol_interno: acceso.miembro?.rol ?? 'dueno', sucursal: sucursal ? { id: sucursal.id, nombre: sucursal.nombre } : null, permisos: acceso.permisos,
+      plan: estado.plan, en_gracia: estado.en_gracia, dias_mora: estado.dias_mora, uso: usoPyme(p.id),
+      suscripcion: s && pagado ? { estado: s.estado, fin: s.fin, plan: pagado.nombre, plan_id: pagado.id, precio: pagado.precio_mensual_clp, max_items: estado.plan.limites.items } : null,
+    }]
   })
 })
 
 on('POST', '/pymes', req => {
-  const u = auth(req, 'pyme', 'clinico')
+  const u = auth(req, 'pyme')
   const d = parse(z.object({
     nombre_comercial: z.string().trim().min(2, 'Ingresa el nombre comercial').max(100),
     rut_empresa: z.string().trim().regex(/^\d{7,8}-[\dkK]$/, 'RUT de empresa inválido (ej. 76123456-7)'),
@@ -398,11 +491,12 @@ on('POST', '/pymes', req => {
     longitud: z.number().min(-180).max(180).optional(),
     telefono: z.string().max(20).optional(),
     whatsapp: z.string().max(20).optional(),
-    plan_id: z.number().int().positive().default(1),
+    plan_id: z.number().int().positive().default(PLAN_GRATIS.id),
+    canal_pago: z.enum(['transferencia', 'orcob']).default('transferencia'),
     referencia_pago: z.string().max(60).optional(),
   }), req.body)
   if (db.pymes.some(p => p.rut_empresa.toLowerCase() === d.rut_empresa.toLowerCase())) return fail(409, 'Ese RUT de empresa ya está registrado')
-  const plan = db.planes.find(p => p.id === d.plan_id)
+  const plan = PLANES.find(p => p.id === d.plan_id)
   if (!plan) return fail(400, 'Plan no disponible')
   const p: Pyme = {
     id: uid(), propietario_id: u.id, nombre_comercial: d.nombre_comercial, rut_empresa: d.rut_empresa, rubro: d.rubro, descripcion: d.descripcion ?? null, comuna_id: d.comuna_id,
@@ -410,17 +504,27 @@ on('POST', '/pymes', req => {
     telefono: d.telefono ?? null, whatsapp: d.whatsapp ?? null, horario: {}, servicios: [], estado_verificacion: 'pendiente', creado_en: now(),
   }
   db.pymes.push(p)
-  const s = { id: uid(), pyme_id: p.id, plan_id: plan.id, inicio: dayOffset(0), fin: dayOffset(30), estado: 'pendiente' as const }
-  db.suscripciones.push(s)
-  db.pagos.push({ id: uid(), suscripcion_id: s.id, monto_clp: plan.precio_mensual_clp, referencia: d.referencia_pago ?? null, estado: 'pendiente', pagado_en: now() })
-  return { id: p.id, estado_verificacion: p.estado_verificacion }
+  // Gratis no genera cobro: la Pyme queda en plan Gratis al aprobarse. Un plan pagado espera la verificación del pago.
+  const cobro = plan.precio_mensual_clp > 0 ? registrarPago(p, plan, dayOffset(0), d.canal_pago, d.referencia_pago ?? null) : null
+  return { id: p.id, estado_verificacion: p.estado_verificacion, codigo_orcob: cobro?.codigo_orcob ?? null }
 })
+
+// Crea el periodo pendiente y su pago. Por Orcob se emite un código de recaudación; por transferencia se registra la referencia.
+function registrarPago(p: Pyme, plan: Plan, inicio: string, canal: 'transferencia' | 'orcob', referencia: string | null) {
+  const fin = new Date(`${inicio}T12:00:00Z`); fin.setUTCDate(fin.getUTCDate() + DIAS_PERIODO)
+  const s = { id: uid(), pyme_id: p.id, plan_id: plan.id, inicio, fin: fin.toISOString().slice(0, 10), estado: 'pendiente' as const }
+  db.suscripciones.push(s)
+  const orcob = canal === 'orcob' ? crearCobro({ rut_empresa: p.rut_empresa, monto_clp: plan.precio_mensual_clp, glosa: `PetSuite plan ${plan.nombre} ${s.inicio}` }) : null
+  const pago = { id: uid(), suscripcion_id: s.id, monto_clp: plan.precio_mensual_clp, canal, referencia: orcob ? orcob.id_cobro : referencia, codigo_orcob: orcob?.codigo_pago ?? null, estado: 'pendiente' as const, pagado_en: now() }
+  db.pagos.push(pago)
+  return { suscripcion: s, ...pago }
+}
 
 on('GET', '/pymes/:id', req => {
   const p = db.pymes.find(x => x.id === req.params.id && x.estado_verificacion === 'aprobada')
   if (!p) return fail(404, 'No encontrada')
   db.eventos.push({ id: uid(), pyme_id: p.id, item_id: null, tipo: 'visita_perfil', ocurrido_en: now() })
-  // Las ofertas se muestran solo mientras están vigentes, y primero.
+  // Las ofertas se muestran solo mientras están vigentes (y dentro del cupo del plan), y primero.
   const catalogo = itemsPublicos(p.id)
     .map(i => ({ id: i.id, tipo: i.tipo, nombre: i.nombre, descripcion: i.descripcion, precio_referencial_clp: i.precio_referencial_clp, categoria: i.categoria, sin_stock: i.sin_stock, oferta: ofertaVigente(i.oferta) ? i.oferta : null }))
     .sort((a, b) => Number(!!b.oferta) - Number(!!a.oferta) || (a.categoria ?? '').localeCompare(b.categoria ?? '') || a.nombre.localeCompare(b.nombre))
@@ -433,30 +537,33 @@ on('POST', '/pymes/:id/eventos', req => {
   return { ok: true }
 })
 
-function miPyme(req: Req): Pyme {
-  const u = auth(req, 'pyme', 'clinico')
+// RBAC por módulo dentro del tenant: 403 si la cuenta no pertenece a la Pyme o no tiene ese módulo.
+function miPyme(req: Req, modulo: ModuloPyme): Pyme {
+  const u = auth(req, 'pyme', 'jefe_local', 'clinico')
   const p = db.pymes.find(x => x.id === req.params.id)
   if (!p) return fail(404, 'Pyme no encontrada')
-  if (p.propietario_id !== u.id) return fail(403, 'Sin permiso')
+  if (!permisosEnPyme(u, p)?.permisos.includes(modulo)) return fail(403, 'Sin permiso')
   return p
 }
 
 on('GET', '/pymes/:id/perfil', req => {
-  const p = miPyme(req)
-  return { ...pymeResumen(p), rut_empresa: p.rut_empresa, estado_verificacion: p.estado_verificacion }
+  const p = miPyme(req, 'perfil')
+  return { ...pymeResumen(p), foto_portada: p.foto_portada ?? null, rut_empresa: p.rut_empresa, estado_verificacion: p.estado_verificacion }
 })
 
 on('PATCH', '/pymes/:id/perfil', req => {
-  const p = miPyme(req)
+  const p = miPyme(req, 'perfil')
   const d = parse(businessProfileSchema, req.body)
   if (!db.comunas.some(c => c.id === d.comuna_id)) return fail(400, 'Comuna no válida')
+  if (d.foto_portada && d.foto_portada !== p.foto_portada && !planDe(p.id).beneficios.portada) return fail(422, 'La portada propia está disponible desde el plan Bronce')
   Object.assign(p, {
     nombre_comercial: d.nombre_comercial, descripcion: d.descripcion || null, comuna_id: d.comuna_id,
     direccion: d.direccion || null, telefono: d.telefono || null, whatsapp: d.whatsapp || null,
     latitud: d.latitud === null ? null : String(d.latitud), longitud: d.longitud === null ? null : String(d.longitud),
-    horario: d.horario, foto_portada: d.foto_portada,
+    // Los días vacíos se omiten: el directorio los muestra como cerrados.
+    horario: Object.fromEntries(Object.entries(d.horario).filter(([, h]) => h)), servicios: [...new Set(d.servicios)], foto_portada: d.foto_portada,
   })
-  return { ...pymeResumen(p), rut_empresa: p.rut_empresa, estado_verificacion: p.estado_verificacion }
+  return { ...pymeResumen(p), foto_portada: p.foto_portada ?? null, rut_empresa: p.rut_empresa, estado_verificacion: p.estado_verificacion }
 })
 
 on('POST', '/pymes/:id/contactos', req => {
@@ -470,12 +577,12 @@ on('POST', '/pymes/:id/contactos', req => {
 })
 
 on('GET', '/pymes/:id/contactos', req => {
-  const p = miPyme(req)
+  const p = miPyme(req, 'contactos')
   return db.contactos_pymes.filter(c => c.pyme_id === p.id).sort((a, b) => b.creado_en.localeCompare(a.creado_en))
 })
 
 on('PATCH', '/pymes/:id/contactos/:contactId', req => {
-  const p = miPyme(req)
+  const p = miPyme(req, 'contactos')
   const contact = db.contactos_pymes.find(c => c.id === req.params.contactId && c.pyme_id === p.id)
   if (!contact) return fail(404, 'Contacto no encontrado')
   const d = parse(z.discriminatedUnion('estado', [
@@ -499,6 +606,8 @@ on('GET', '/mis-contactos-pyme', req => {
     .map(c => ({ id: c.id, negocio: db.pymes.find(p => p.id === c.pyme_id)?.nombre_comercial || 'Negocio', mensaje: c.mensaje, respuesta: c.respuesta, estado: c.estado, creado_en: c.creado_en }))
 })
 
+const ofertaSchema = z.object({ precio_clp: z.number().int().min(0).max(100_000_000), desde: fecha, hasta: fecha })
+  .refine(o => o.hasta >= o.desde, 'La oferta debe terminar después de comenzar')
 const itemSchema = z.object({
   tipo: z.enum(['producto', 'servicio']),
   nombre: z.string().trim().min(2, 'El nombre debe tener al menos 2 caracteres').max(120),
@@ -517,15 +626,15 @@ function validarOferta(precio: number | null, oferta: Oferta | null | undefined)
   if (precio != null && oferta.precio_clp >= precio) fail(400, 'El precio de oferta debe ser menor que el precio referencial')
 }
 
-on('GET', '/pymes/:id/catalogo', req => { const p = miPyme(req); return db.catalogo.filter(i => i.pyme_id === p.id).sort((a, b) => b.creado_en.localeCompare(a.creado_en)) })
+on('GET', '/pymes/:id/catalogo', req => { const p = miPyme(req, 'catalogo'); return db.catalogo.filter(i => i.pyme_id === p.id).sort((a, b) => b.creado_en.localeCompare(a.creado_en)) })
 
 on('POST', '/pymes/:id/catalogo', req => {
-  const p = miPyme(req)
+  const p = miPyme(req, 'catalogo')
   const d = parse(itemSchema, req.body)
-  const s = ultimaSuscripcion(p.id), plan = s && db.planes.find(x => x.id === s.plan_id)
-  if (plan && db.catalogo.filter(i => i.pyme_id === p.id).length >= plan.max_items_catalogo) return fail(422, `Tu plan permite hasta ${plan.max_items_catalogo} ítems`)
+  exigirCupo(p.id, 'items')
   validarOferta(d.precio_referencial_clp ?? null, d.oferta)
-  // Sin suscripción vigente el ítem se guarda, pero no se publica.
+  if (ofertaVigente(d.oferta)) exigirCupo(p.id, 'ofertas')
+  // Si la Pyme aún no está verificada el ítem se guarda, pero no se publica.
   const item: Item = {
     id: uid(), pyme_id: p.id, tipo: d.tipo, nombre: d.nombre, descripcion: d.descripcion || null, precio_referencial_clp: d.precio_referencial_clp ?? null,
     disponible: (d.disponible ?? true) && suscripcionActiva(p.id), categoria: d.categoria || null, sin_stock: d.sin_stock ?? false, oferta: d.oferta ?? null, creado_en: now(),
@@ -536,10 +645,11 @@ on('POST', '/pymes/:id/catalogo', req => {
 
 // Los campos omitidos se conservan; null los borra (por ejemplo, oferta: null quita la oferta).
 on('PUT', '/pymes/:id/catalogo/:itemId', req => {
-  const p = miPyme(req)
+  const p = miPyme(req, 'catalogo')
   const d = parse(itemSchema, req.body)
   const item = db.catalogo.find(i => i.id === req.params.itemId && i.pyme_id === p.id)
   if (!item) return fail(404, 'Ítem no encontrado')
+  if (d.oferta && ofertaVigente(d.oferta) && !ofertaVigente(item.oferta)) exigirCupo(p.id, 'ofertas')
   const next = {
     tipo: d.tipo, nombre: d.nombre,
     descripcion: d.descripcion === undefined ? item.descripcion : d.descripcion || null,
@@ -555,15 +665,17 @@ on('PUT', '/pymes/:id/catalogo/:itemId', req => {
 })
 
 on('DELETE', '/pymes/:id/catalogo/:itemId', req => {
-  const p = miPyme(req)
+  const p = miPyme(req, 'catalogo')
   const i = db.catalogo.findIndex(x => x.id === req.params.itemId && x.pyme_id === p.id)
   if (i < 0) return fail(404, 'Ítem no encontrado')
   db.catalogo.splice(i, 1)
   return undefined
 })
 
+// El nivel de detalle depende del plan: Gratis y Bronce ven totales; Plata suma canales e ítems; Oro, también sucursales y convenios.
 on('GET', '/pymes/:id/metricas', req => {
-  const p = miPyme(req)
+  const p = miPyme(req, 'metricas')
+  const nivel = planDe(p.id).beneficios.metricas
   const desde = hace(30), previo = hace(60)
   const eventos = db.eventos.filter(e => e.pyme_id === p.id && e.ocurrido_en > desde)
   // Mismo conteo para los 30 días anteriores, para comparar.
@@ -578,43 +690,68 @@ on('GET', '/pymes/:id/metricas', req => {
     const item = e.tipo === 'vista_item' && db.catalogo.find(i => i.id === e.item_id)
     if (item) vistas.set(item.nombre, (vistas.get(item.nombre) ?? 0) + 1)
   }
+  const conveniosIds = new Set(db.convenios.filter(c => c.pyme_id === p.id).map(c => c.id))
+  const canjes30 = db.canjes.filter(c => conveniosIds.has(c.convenio_id) && c.ocurrido_en > desde)
   return {
+    nivel,
     totales,
     anteriores,
     ofertas_vigentes: itemsPublicos(p.id).filter(i => ofertaVigente(i.oferta)).length,
     por_dia: [...dias].sort(([a], [b]) => a.localeCompare(b)).map(([dia, n]) => ({ dia, eventos: n })),
-    items_mas_vistos: [...vistas].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([nombre, n]) => ({ nombre, vistas: n })),
+    items_mas_vistos: nivel === 'basicas' ? [] : [...vistas].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([nombre, n]) => ({ nombre, vistas: n })),
+    canjes_30d: canjes30.length,
+    por_sucursal: nivel !== 'avanzadas' ? [] : [{ id: null, nombre: 'Casa matriz' }, ...db.sucursales.filter(s => s.pyme_id === p.id)].map(s => ({ nombre: s.nombre, canjes: canjes30.filter(c => c.sucursal_id === s.id).length })),
   }
 })
 
 on('GET', '/pymes/:id/suscripcion', req => {
-  const p = miPyme(req)
+  const p = miPyme(req, 'suscripcion')
   return db.suscripciones.filter(s => s.pyme_id === p.id).sort((a, b) => b.inicio.localeCompare(a.inicio)).map(s => {
-    const plan = db.planes.find(x => x.id === s.plan_id)
+    const plan = planPorId(s.plan_id)
     return {
-      id: s.id, estado: s.estado, inicio: s.inicio, fin: s.fin, plan: plan?.nombre ?? '', precio_mensual_clp: plan?.precio_mensual_clp ?? 0, max_items_catalogo: plan?.max_items_catalogo ?? 0,
-      pagos: db.pagos.filter(pg => pg.suscripcion_id === s.id).map(pg => ({ id: pg.id, monto_clp: pg.monto_clp, estado: pg.estado, referencia: pg.referencia })),
+      id: s.id, estado: s.estado, inicio: s.inicio, fin: s.fin, plan: plan.nombre, plan_codigo: plan.codigo, precio_mensual_clp: plan.precio_mensual_clp, max_items_catalogo: plan.limites.items,
+      pagos: db.pagos.filter(pg => pg.suscripcion_id === s.id).map(pg => ({ id: pg.id, monto_clp: pg.monto_clp, estado: pg.estado, canal: pg.canal, referencia: pg.referencia, codigo_orcob: pg.codigo_orcob ?? null })),
     }
   })
 })
 
-// Renovar o cambiar de plan: queda pendiente hasta que el equipo confirme la transferencia.
+// Contratar, renovar o cambiar de plan. Transferencia: la confirma un asesor. Orcob: se confirma al recibir el aviso de pago.
 // El nuevo periodo empieza cuando termina el vigente, así no se pierden días ya pagados.
 on('POST', '/pymes/:id/suscripcion', req => {
-  const p = miPyme(req)
-  const d = parse(z.object({ plan_id: z.number().int().positive(), referencia_pago: z.string().trim().min(3, 'Ingresa la referencia de la transferencia').max(60) }), req.body)
+  const p = miPyme(req, 'suscripcion')
+  const d = parse(z.object({
+    plan_id: z.number().int().positive(),
+    canal: z.enum(['transferencia', 'orcob']).default('transferencia'),
+    referencia_pago: z.string().trim().max(60).optional(),
+  }).refine(x => x.canal === 'orcob' || (x.referencia_pago ?? '').length >= 3, { message: 'Ingresa la referencia de la transferencia', path: ['referencia_pago'] }), req.body)
   if (p.estado_verificacion !== 'aprobada') return fail(422, 'Tu negocio debe estar verificado para renovar o cambiar de plan')
   if (pagoPendiente(p.id)) return fail(409, 'Ya tienes una solicitud de pago en revisión')
-  const plan = db.planes.find(x => x.id === d.plan_id)
+  const plan = PLANES.find(x => x.id === d.plan_id)
   if (!plan) return fail(400, 'Plan no disponible')
+  if (plan.precio_mensual_clp === 0) return fail(422, 'El plan Gratis no requiere pago: rige automáticamente cuando termina tu periodo pagado')
   const actual = db.suscripciones.filter(s => s.pyme_id === p.id && s.estado === 'activa').sort((a, b) => b.fin.localeCompare(a.fin))[0]
   const inicio = actual && actual.fin > dayOffset(0) ? actual.fin : dayOffset(0)
-  const fin = new Date(`${inicio}T12:00:00Z`); fin.setUTCDate(fin.getUTCDate() + 30)
-  const s = { id: uid(), pyme_id: p.id, plan_id: plan.id, inicio, fin: fin.toISOString().slice(0, 10), estado: 'pendiente' as const }
-  db.suscripciones.push(s)
-  db.pagos.push({ id: uid(), suscripcion_id: s.id, monto_clp: plan.precio_mensual_clp, referencia: d.referencia_pago, estado: 'pendiente', pagado_en: now() })
-  return { id: s.id, inicio: s.inicio, fin: s.fin }
+  const r = registrarPago(p, plan, inicio, d.canal, d.referencia_pago ?? null)
+  return { id: r.suscripcion.id, inicio: r.suscripcion.inicio, fin: r.suscripcion.fin, pago_id: r.id, codigo_orcob: r.codigo_orcob }
 })
+
+// Demostración del aviso (webhook) de Orcob: confirma el pago y activa el periodo sin intervención del asesor.
+on('POST', '/pymes/:id/pagos/:pagoId/orcob-confirmado', req => {
+  const p = miPyme(req, 'suscripcion')
+  const pago = db.pagos.find(x => x.id === req.params.pagoId && x.canal === 'orcob' && x.estado === 'pendiente')
+  const s = pago && db.suscripciones.find(x => x.id === pago.suscripcion_id && x.pyme_id === p.id)
+  if (!pago || !s) return fail(404, 'No hay un cobro Orcob pendiente con ese identificador')
+  activarPeriodo(p, s)
+  Object.assign(pago, { estado: 'confirmado', pagado_en: now() })
+  enviarCorreo(db.usuarios.find(u => u.id === p.propietario_id)?.correo ?? '', `Pago recibido: plan ${planPorId(s.plan_id).nombre}`, `Orcob informó el pago de ${pago.monto_clp.toLocaleString('es-CL')} CLP (cobro ${pago.referencia}).\nTu plan rige del ${s.inicio} al ${s.fin}.\n\nEquipo PetSuite`, 'aprobacion')
+  return { ok: true, inicio: s.inicio, fin: s.fin }
+})
+
+// Una renovación respeta el periodo pedido; un alta o reactivación vencida parte hoy.
+function activarPeriodo(p: Pyme, s: { inicio: string; fin: string; estado: string }) {
+  if (s.inicio < dayOffset(0) || p.estado_verificacion !== 'aprobada') Object.assign(s, { inicio: dayOffset(0), fin: dayOffset(DIAS_PERIODO) })
+  s.estado = 'activa'
+}
 
 // Muro comunal
 const textoMuro = (min: number) => z.string().trim().min(min, `Escribe al menos ${min} caracteres`).max(1000).refine(sinEnlaces, 'No se permiten enlaces externos')
@@ -799,7 +936,7 @@ on('GET', '/adopciones/:id', req => {
   db.eventos_adopcion.push({ id: uid(), animal_id: a.id, ocurrido_en: now() })
   return {
     id: a.id, nombre: a.nombre, especie: a.especie, raza: a.raza, edad_estimada: a.edad_estimada, estado_salud: a.estado_salud, historia: a.historia, foto_url: a.foto_url, publicado_en: a.publicado_en,
-    vacunas: a.historial_salud.vacunas, ong: o.nombre, ong_tipo: o.tipo, ong_descripcion: o.descripcion, ong_contacto: o.contacto, ong_redes: o.redes_sociales, comuna: comunaNombre(o.comuna_id),
+    vacunas: a.historial_salud.vacunas, ong_id: o.id, ong: o.nombre, ong_tipo: o.tipo, ong_descripcion: o.descripcion, ong_contacto: o.contacto, ong_redes: o.redes_sociales, comuna: comunaNombre(o.comuna_id),
   }
 })
 
@@ -840,7 +977,7 @@ on('POST', '/ong', req => {
   }), req.body)
   if (db.ongs.some(o => o.propietario_id === u.id)) return fail(409, 'Tu cuenta ya tiene una organización registrada')
   if (!db.comunas.some(c => c.id === d.comuna_id)) return fail(400, 'Comuna no válida')
-  const o = { id: uid(), propietario_id: u.id, nombre: d.nombre, tipo: d.tipo, descripcion: d.descripcion ?? null, comuna_id: d.comuna_id, contacto: d.contacto ?? null, redes_sociales: d.redes_sociales ?? null, estado_verificacion: 'pendiente' as const, creado_en: now() }
+  const o = { id: uid(), propietario_id: u.id, nombre: d.nombre, tipo: d.tipo, descripcion: d.descripcion ?? null, comuna_id: d.comuna_id, contacto: d.contacto ?? null, redes_sociales: d.redes_sociales ?? null, estado_verificacion: 'pendiente' as const, perfil_publicado: null, perfil_borrador: null, perfil_estado: 'sin_enviar' as const, perfil_motivo: null, creado_en: now() }
   db.ongs.push(o)
   return { id: o.id, estado_verificacion: o.estado_verificacion }
 })
@@ -945,10 +1082,19 @@ on('POST', '/ong/animales/:id/vincular', req => {
 
 // Administración
 on('GET', '/admin/resumen', req => {
-  auth(req, 'admin')
+  auth(req, 'admin', 'asesor')
   db.usuarios.forEach(refreshSuspension)
   const desde = hace(30)
+  // Ingreso mensual recurrente: suma de la tarifa del plan que rige hoy en cada Pyme verificada.
+  const planes = db.pymes.filter(p => p.estado_verificacion === 'aprobada').map(p => estadoPlan(p.id))
   return {
+    por_plan: PLANES.map(pl => ({ codigo: pl.codigo, nombre: pl.nombre, pymes: planes.filter(e => e.plan.id === pl.id).length })),
+    mrr: planes.reduce((n, e) => n + e.plan.precio_mensual_clp, 0),
+    en_gracia: planes.filter(e => e.en_gracia).length,
+    banners_pendientes: db.banners.filter(b => b.estado === 'pendiente').length,
+    convenios_pendientes: db.convenios.filter(c => c.estado === 'pendiente_asesor').length,
+    perfiles_pendientes: db.ongs.filter(o => o.perfil_estado === 'en_revision').length,
+    privacidad_pendientes: db.solicitudes_privacidad.filter(s => s.estado === 'recibida' || s.estado === 'en_proceso').length,
     usuarios: db.usuarios.length,
     suspendidos: db.usuarios.filter(u => u.estado === 'suspendido').length,
     pymes_activas: db.pymes.filter(p => p.estado_verificacion === 'aprobada').length,
@@ -1028,7 +1174,7 @@ on('PATCH', '/admin/reportes/:id', req => {
 })
 
 on('GET', '/admin/pymes', req => {
-  auth(req, 'admin')
+  auth(req, 'admin', 'asesor')
   const estado = req.query.get('estado') || 'pendiente'
   // Pendientes incluye las renovaciones o cambios de plan de Pymes ya verificadas que esperan confirmar su pago.
   return db.pymes.filter(p => p.estado_verificacion === estado || (estado === 'pendiente' && p.estado_verificacion === 'aprobada' && pagoPendiente(p.id)))
@@ -1038,14 +1184,15 @@ on('GET', '/admin/pymes', req => {
       const sub = pago && db.suscripciones.find(x => x.id === pago.suscripcion_id)
       return {
         id: p.id, nombre_comercial: p.nombre_comercial, rut_empresa: p.rut_empresa, rubro: p.rubro, comuna: comunaNombre(p.comuna_id), estado_verificacion: p.estado_verificacion,
-        solicitud: p.estado_verificacion === 'aprobada' && pend ? 'renovacion' : 'alta', plan: db.planes.find(x => x.id === sub?.plan_id)?.nombre ?? null,
-        referencia: pago?.referencia ?? null, monto_clp: pago?.monto_clp ?? null,
+        solicitud: p.estado_verificacion === 'aprobada' && pend ? 'renovacion' : 'alta', plan: sub ? planPorId(sub.plan_id).nombre : PLAN_GRATIS.nombre,
+        plan_vigente: estadoPlan(p.id).plan.nombre, canal: pago?.canal ?? null, referencia: pago?.referencia ?? null, monto_clp: pago?.monto_clp ?? 0,
+        sucursales: usoPyme(p.id).sucursales, equipo: usoPyme(p.id).usuarios,
       }
     })
 })
 
 on('PATCH', '/admin/pymes/:id/verificacion', req => {
-  auth(req, 'admin')
+  auth(req, 'admin', 'asesor')
   const d = parse(z.object({ decision: z.enum(['aprobar', 'rechazar', 'suspender']) }), req.body)
   const p = db.pymes.find(x => x.id === req.params.id)
   if (!p) return fail(404, 'Pyme no encontrada')
@@ -1058,7 +1205,7 @@ on('PATCH', '/admin/pymes/:id/verificacion', req => {
     // Renovación: el periodo pedido se respeta. Alta o reactivación: parte hoy.
     const activar = pendientes.length ? pendientes : subs.slice(-1)
     for (const s of activar) {
-      if (!renovacion || s.inicio < dayOffset(0)) Object.assign(s, { inicio: dayOffset(0), fin: dayOffset(30) })
+      if (!renovacion || s.inicio < dayOffset(0)) Object.assign(s, { inicio: dayOffset(0), fin: dayOffset(DIAS_PERIODO) })
       s.estado = 'activa'
     }
     for (const pg of pagos) Object.assign(pg, { estado: 'confirmado', pagado_en: now() })
@@ -1069,11 +1216,13 @@ on('PATCH', '/admin/pymes/:id/verificacion', req => {
     // Rechazar una renovación solo rechaza ese pago; el negocio sigue verificado.
     if (!renovacion) p.estado_verificacion = d.decision === 'rechazar' ? 'rechazada' : 'suspendida'
   }
+  const texto = { aprobar: renovacion ? 'confirmamos tu pago y tu nuevo periodo quedó activo' : 'tu negocio fue verificado y ya aparece en el directorio', rechazar: renovacion ? 'no pudimos confirmar tu pago; revisa la referencia e inténtalo de nuevo' : 'no pudimos verificar tu negocio; tu asesor te contactará', suspender: 'tu negocio fue suspendido del directorio; contacta a tu asesor' }[d.decision]
+  enviarCorreo(db.usuarios.find(u => u.id === p.propietario_id)?.correo ?? '', `${p.nombre_comercial}: ${d.decision === 'aprobar' ? 'solicitud aprobada' : 'revisión de tu cuenta'}`, `Hola:\n\nTe informamos que ${texto}.\n\nEquipo PetSuite`, 'aprobacion')
   return { ok: true }
 })
 
 on('GET', '/admin/ong', req => {
-  auth(req, 'admin')
+  auth(req, 'admin', 'asesor')
   const estado = req.query.get('estado') || 'pendiente'
   return db.ongs.filter(o => o.estado_verificacion === estado).sort((a, b) => a.creado_en.localeCompare(b.creado_en)).map(o => ({
     id: o.id, nombre: o.nombre, tipo: o.tipo, descripcion: o.descripcion, contacto: o.contacto, redes_sociales: o.redes_sociales, estado_verificacion: o.estado_verificacion,
@@ -1082,13 +1231,16 @@ on('GET', '/admin/ong', req => {
 })
 
 on('PATCH', '/admin/ong/:id/verificacion', req => {
-  auth(req, 'admin')
+  auth(req, 'admin', 'asesor')
   const d = parse(z.object({ decision: z.enum(['aprobar', 'rechazar']) }), req.body)
   const o = db.ongs.find(x => x.id === req.params.id)
   if (!o) return fail(404, 'ONG no encontrada')
   o.estado_verificacion = d.decision === 'aprobar' ? 'aprobada' : 'rechazada'
+  enviarCorreo(db.usuarios.find(u => u.id === o.propietario_id)?.correo ?? '', `${o.nombre}: ${d.decision === 'aprobar' ? 'organización verificada' : 'revisión de tu organización'}`, d.decision === 'aprobar' ? 'Hola:\n\nTu organización fue verificada. Tus animales ya aparecen en el catálogo público y puedes publicar tu perfil, banners y convenios.\n\nEquipo PetSuite' : 'Hola:\n\nNo pudimos verificar tu organización. Tu asesor te contactará para revisar los antecedentes.\n\nEquipo PetSuite', 'aprobacion')
   return { ok: true }
 })
+
+registerSuiteRoutes({ on, auth, parse, fail, miPyme, planDe, estadoPlan, exigirCupo, permisosEnPyme, comunaNombre, nombreUsuario, cuponesDe, visible, sinEnlaces, fecha })
 
 // ---------- Enrutador ----------
 function match(pattern: string, path: string): Record<string, string> | null {
@@ -1115,7 +1267,7 @@ export async function handle(method: string, fullPath: string, body: unknown, se
     if (!params) continue
     // Se trabaja sobre una copia para que la respuesta nunca comparta referencias con el estado interno.
     const result = h({ params, query: new URLSearchParams(qs), body: body === undefined ? undefined : structuredClone(body), session })
-    if (method !== 'GET' || /^\/(qr|pymes|adopciones)\/[^/]+$/.test(path)) save()
+    if (method !== 'GET' || /^\/(qr|pymes|adopciones)\/[^/]+$/.test(path) || path === '/banners') save()
     return result === undefined ? undefined : structuredClone(result)
   }
   return fail(404, 'No encontrado')

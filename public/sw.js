@@ -1,4 +1,4 @@
-const CACHE_NAME = 'petsuite-shell-v4'
+const CACHE_NAME = 'petsuite-shell-v5'
 const APP_URL = self.registration.scope
 
 self.addEventListener('install', event => {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ChartColumn, Check, CreditCard, Heart, House, MessageCircle, Package, PawPrint, Settings, ShieldCheck, Stethoscope, Store, Users } from 'lucide-react'
+import { BadgePercent, Building2, ChartColumn, Check, ClipboardCheck, CreditCard, FileUser, Heart, House, Landmark, Lock, Mail, Megaphone, MessageCircle, Package, PawPrint, Settings, ShieldCheck, Stethoscope, Store, UserPlus, Users, UsersRound } from 'lucide-react'
 import { LogoMark } from './media'
 import { api, getSession, setSession, type ApiRole, type Session } from './api'
 import { Login } from './Login'
@@ -8,22 +8,32 @@ import { BusinessArea } from './business'
 import { ClinicalArea } from './clinical'
 import { AdminArea } from './admin'
 import { AdoptionCatalog, OngArea } from './adoption'
+import { PublicOngProfile } from './ong-profile'
+import { PublicPlans } from './plans-ui'
+import { MyInbox, PrivacyCenter } from './privacy'
 import { resetDemo } from './mock/db'
+import { rolLabel, type Modulo } from './permissions'
 
-const roleMenus: Record<ApiRole, readonly (readonly [string, string])[]> = {
+// [etiqueta, vista, módulo requerido]. Sin módulo, la vista es parte fija del rol.
+type MenuItem = readonly [string, string, Modulo?]
+const menuEmpresa: MenuItem[] = [['Inicio', 'business-home'], ['Perfil del negocio', 'business-profile', 'perfil'], ['Sucursales', 'branches', 'sucursales'], ['Catálogo', 'catalog', 'catalogo'], ['Consultas', 'contacts', 'contactos'], ['Equipo', 'team', 'equipo'], ['Publicidad', 'ads', 'publicidad'], ['Convenios', 'agreements', 'convenios'], ['Métricas', 'metrics', 'metricas'], ['Suscripción', 'subscription', 'suscripcion'], ['Configuración', 'settings']]
+const roleMenus: Record<ApiRole, readonly MenuItem[]> = {
   tutor: [['Inicio', 'home'], ['Mis mascotas', 'pets'], ['Directorio', 'directory'], ['Adopciones', 'adoption'], ['Muro comunal', 'community'], ['Configuración', 'settings']],
-  ong: [['Inicio', 'ong-home'], ['Mis animales', 'animals'], ['Configuración', 'settings']],
-  pyme: [['Inicio', 'business-home'], ['Perfil del negocio', 'business-profile'], ['Catálogo', 'catalog'], ['Contactos', 'contacts'], ['Métricas', 'metrics'], ['Suscripción', 'subscription'], ['Configuración', 'settings']],
-  clinico: [['Inicio', 'clinical-home'], ['Pacientes', 'patients'], ['Configuración', 'settings']],
-  admin: [['Inicio', 'admin-home'], ['Usuarios', 'users'], ['Moderación', 'moderation'], ['Pymes y suscripciones', 'subscriptions'], ['Verificar ONG', 'ongs'], ['Configuración', 'settings']],
+  ong: [['Inicio', 'ong-home'], ['Perfil público', 'ong-profile'], ['Mis animales', 'animals'], ['Convenios', 'ong-agreements'], ['Publicidad', 'ong-ads'], ['Configuración', 'settings']],
+  pyme: menuEmpresa,
+  jefe_local: menuEmpresa.map(([l, v, m]) => [v === 'business-profile' ? 'Perfil del local' : l, v, m] as const),
+  clinico: [['Inicio', 'clinical-home'], ['Pacientes', 'patients', 'pacientes'], ['Consultas', 'contacts', 'contactos'], ['Configuración', 'settings']],
+  asesor: [['Inicio', 'admin-home'], ['Pymes y suscripciones', 'subscriptions', 'cuentas'], ['ONG', 'ongs', 'cuentas'], ['Aprobaciones', 'approvals', 'aprobaciones'], ['Cobranza', 'collections', 'cobranza'], ['Crear cuentas', 'accounts', 'cuentas'], ['Correos', 'emails', 'correos'], ['Configuración', 'settings']],
+  admin: [['Inicio', 'admin-home'], ['Usuarios', 'users', 'usuarios'], ['Moderación', 'moderation', 'moderacion'], ['Pymes y suscripciones', 'subscriptions', 'cuentas'], ['ONG', 'ongs', 'cuentas'], ['Aprobaciones', 'approvals', 'aprobaciones'], ['Cobranza', 'collections', 'cobranza'], ['Privacidad', 'privacy-admin', 'privacidad'], ['Correos', 'emails', 'correos'], ['Configuración', 'settings']],
 }
-const firstView: Record<ApiRole, string> = { tutor: 'home', pyme: 'business-home', clinico: 'clinical-home', admin: 'admin-home', ong: 'ong-home' }
+const firstView: Record<ApiRole, string> = { tutor: 'home', pyme: 'business-home', jefe_local: 'business-home', clinico: 'clinical-home', asesor: 'admin-home', admin: 'admin-home', ong: 'ong-home' }
 
 const navIcons: Record<string, typeof House> = {
   home: House, pets: PawPrint, directory: Store, community: Users, settings: Settings,
-  'business-home': House, 'business-profile': Store, catalog: Package, contacts: MessageCircle, metrics: ChartColumn, subscription: CreditCard,
+  'business-home': House, 'business-profile': Store, branches: Building2, catalog: Package, contacts: MessageCircle, team: UsersRound, ads: Megaphone, agreements: BadgePercent, metrics: ChartColumn, subscription: CreditCard,
   'clinical-home': House, patients: Stethoscope, 'admin-home': House, users: Users, moderation: ShieldCheck, subscriptions: CreditCard,
-  adoption: Heart, 'ong-home': House, animals: PawPrint, ongs: ShieldCheck, 'business-profile': Store, 'clinic-profile': Store,
+  adoption: Heart, 'ong-home': House, 'ong-profile': FileUser, animals: PawPrint, 'ong-agreements': BadgePercent, 'ong-ads': Megaphone, ongs: ShieldCheck,
+  approvals: ClipboardCheck, collections: Landmark, accounts: UserPlus, emails: Mail, 'privacy-admin': Lock,
 }
 
 
@@ -48,7 +58,7 @@ function applyAppearance(theme: ThemeName, mode: ColorMode, brightness: number) 
   root.style.setProperty('--brightness-light', `${Math.max(0, brightness - 100) * 0.45}%`)
 }
 
-const roleLabels: Record<ApiRole, string> = { tutor: 'Tutor de mascotas', pyme: 'Administrador de Pyme', clinico: 'Personal clínico veterinario', admin: 'Administrador PetSuite', ong: 'ONG de rescate y adopción' }
+const roleLabels = rolLabel
 
 type Profile = { name: string; email: string; phone: string; avatar: string }
 
@@ -77,12 +87,18 @@ function App() {
     if (!user) return
     const stored = JSON.parse(localStorage.getItem(`petsuite-profile-${user.id}`) || '{}') as Partial<Profile>
     setProfile({ name: user.nombre, email: '', phone: stored.phone || '', avatar: user.nombre.slice(0, 2).toUpperCase() })
-    api<{ correo: string }>('/auth/yo').then(me => setProfile(p => ({ ...p, email: me.correo }))).catch(() => undefined)
+    // Los permisos se releen del servidor: el dueño de la Pyme pudo cambiarlos desde otra sesión.
+    api<{ correo: string; permisos: string[] }>('/auth/yo').then(me => {
+      setProfile(p => ({ ...p, email: me.correo }))
+      if (JSON.stringify(me.permisos) !== JSON.stringify(user.permisos)) { const next = { ...user, permisos: me.permisos }; setSession(next); setUser(next) }
+    }).catch(() => undefined)
   }, [user])
 
   if (hash.startsWith('#qr/')) return <EmergencyView token={hash.slice(4)} />
   if (hash.startsWith('#emergency/')) return <EmergencyView token={null} />
   if (hash.startsWith('#adopciones')) return <AdoptionCatalog standalone />
+  if (hash.startsWith('#ong/')) return <PublicOngProfile id={hash.slice(5)} />
+  if (hash.startsWith('#planes')) return <PublicPlans />
   if (!user) return <Login onLogin={session => { setUser(session); setActive(firstView[session.rol]) }} />
 
   const logout = () => { setSession(null); setUser(null) }
@@ -93,15 +109,15 @@ function App() {
       <aside className="sidebar">
         <div className="brand"><span className="brand-mark"><LogoMark /></span><span>Pet<span>Suite</span></span></div>
         <div className="profile-mini"><div className="avatar">{user.nombre.slice(0, 2).toUpperCase()}</div><div><strong>{user.nombre}</strong><small>{roleLabels[user.rol]}</small></div></div>
-        <nav aria-label="Navegación principal">{roleMenus[user.rol].map(([label, id]) => { const Icon = navIcons[id]; return <button className={active === id ? 'nav-item active' : 'nav-item'} aria-current={active === id ? 'page' : undefined} aria-label={label} title={label} onClick={() => setActive(id)} key={id}><Icon className="nav-icon" size={19} strokeWidth={1.8} /><span>{label}</span></button> })}</nav>
+        <nav aria-label="Navegación principal">{roleMenus[user.rol].filter(([, , modulo]) => !modulo || user.permisos?.includes(modulo)).map(([label, id]) => { const Icon = navIcons[id]; return <button className={active === id ? 'nav-item active' : 'nav-item'} aria-current={active === id ? 'page' : undefined} aria-label={label} title={label} onClick={() => setActive(id)} key={id}><Icon className="nav-icon" size={19} strokeWidth={1.8} /><span>{label}</span></button> })}</nav>
         <div className="sidebar-bottom" />
       </aside>
       <main className="main-content">
         <header className="topbar"><div className="mobile-brand brand"><span className="brand-mark"><LogoMark /></span><span>Pet<span>Suite</span></span></div><div className="topbar-context">{roleLabels[user.rol]}</div><div className="top-actions"><div className="avatar small" aria-label={user.nombre}>{user.nombre.slice(0, 2).toUpperCase()}</div></div></header>
         {active !== 'settings' && user.rol === 'tutor' && <TutorArea active={active} setActive={setActive} name={user.nombre} />}
-        {active !== 'settings' && user.rol === 'pyme' && <BusinessArea active={active} />}
+        {active !== 'settings' && (user.rol === 'pyme' || user.rol === 'jefe_local') && <BusinessArea active={active} />}
         {active !== 'settings' && user.rol === 'clinico' && <ClinicalArea active={active} />}
-        {active !== 'settings' && user.rol === 'admin' && <AdminArea active={active} />}
+        {active !== 'settings' && (user.rol === 'admin' || user.rol === 'asesor') && <AdminArea active={active} rol={user.rol} />}
         {active !== 'settings' && user.rol === 'ong' && <OngArea active={active} />}
         {active === 'settings' && <div className="settings-workspace"><TabbedSettingsView profile={profile} setProfile={saveProfile} theme={theme} setTheme={setTheme} mode={mode} setMode={setMode} brightness={brightness} setBrightness={setBrightness} onLogout={logout} /><section className="settings-card profile-session-card"><div><p className="eyebrow">SESIÓN</p><h2>Salir de PetSuite</h2><p className="muted">Cierra la sesión de este dispositivo.</p></div><button type="button" className="secondary" onClick={logout}>Cerrar sesión</button></section></div>}
       </main>
@@ -140,8 +156,8 @@ function TabbedSettingsView({ profile, setProfile, theme, setTheme, mode, setMod
   const saveProfile = (event: React.FormEvent) => { event.preventDefault(); setProfile({ ...draft, avatar: draft.name.split(' ').map(part => part[0]).join('').slice(0, 2).toUpperCase() }); setSaved(true); window.setTimeout(() => setSaved(false), 2200) }
   const toggle = (key: 'notifications' | 'publicProfile', value: boolean) => { if (key === 'notifications') { setNotifications(value); localStorage.setItem('petsuite-notifications', String(value)) } else { setPublicProfile(value); localStorage.setItem('petsuite-public-profile', String(value)) } }
   const confirmAppearance = () => { setTheme(draftTheme); setMode(draftMode); setBrightness(draftBrightness); setSaved(true); window.setTimeout(() => setSaved(false), 2200) }
-  const sections = [['profile', 'Perfil'], ['appearance', 'Apariencia'], ['notifications', 'Notificaciones'], ['privacy', 'Privacidad']] as const
-  return <section className="page settings-page"><div className="page-title"><div><p className="eyebrow">TU CUENTA</p><h1>Configuración</h1><p className="muted">Personaliza tu experiencia en PetSuite.</p></div></div><div className="settings-layout"><div className="settings-nav">{sections.map(([id, label]) => <button key={id} className={section === id ? 'settings-nav-item active' : 'settings-nav-item'} onClick={() => setSection(id)}>{label}</button>)}</div><div className="settings-content">{section === 'profile' && <form className="settings-card" onSubmit={saveProfile}><div className="settings-card-heading"><div><p className="eyebrow">INFORMACIÓN PERSONAL</p><h2>Perfil</h2></div><div className="profile-avatar">{draft.avatar}</div></div><div className="settings-form-grid"><label>Nombre completo<input value={draft.name} onChange={event => setDraft({ ...draft, name: event.target.value })} /></label><label>Correo electrónico<input type="email" value={draft.email} onChange={event => setDraft({ ...draft, email: event.target.value })} /></label><label>Teléfono<input value={draft.phone} onChange={event => setDraft({ ...draft, phone: event.target.value })} /></label></div><div className="settings-actions"><span className="save-message">{saved ? 'Cambios guardados' : ''}</span><button className="primary">Guardar cambios</button></div></form>}{section === 'appearance' && <div className="settings-card"><div className="settings-card-heading"><div><p className="eyebrow">PERSONALIZA LA INTERFAZ</p><h2>Apariencia</h2><p className="muted">Previsualiza y confirma tus preferencias visuales.</p></div></div><div className="theme-options">{themeOptions.map(option => <button type="button" key={option.name} className={draftTheme === option.name ? 'theme-option selected' : 'theme-option'} onClick={() => setDraftTheme(option.name)}><span className="theme-swatch" style={{ background: option.color }} /><span>{option.label}</span>{draftTheme === option.name && <Check size={16} aria-hidden="true" />}</button>)}</div><div className="mode-options"><button type="button" className={draftMode === 'light' ? 'mode-option active' : 'mode-option'} onClick={() => setDraftMode('light')}>Claro</button><button type="button" className={draftMode === 'dark' ? 'mode-option active' : 'mode-option'} onClick={() => setDraftMode('dark')}>Oscuro</button><button type="button" className={draftMode === 'system' ? 'mode-option active' : 'mode-option'} onClick={() => setDraftMode('system')}>Sistema</button></div><label className="brightness-control">Brillo de la interfaz <output>{draftBrightness}%</output><input type="range" min="70" max="115" value={draftBrightness} onChange={event => setDraftBrightness(Number(event.target.value))} /></label><div className="settings-actions"><span className="save-message">{saved ? 'Preferencias confirmadas' : ''}</span><button type="button" className="primary" onClick={confirmAppearance}>Confirmar cambios</button></div></div>}{section === 'notifications' && <div className="settings-card"><div className="settings-card-heading"><div><p className="eyebrow">PREFERENCIAS</p><h2>Notificaciones</h2><p className="muted">Controla los avisos que recibes de PetSuite.</p></div></div><SettingRow title="Avisos de la comunidad" text="Recibe novedades sobre publicaciones y contactos." value={notifications} onChange={value => toggle('notifications', value)} /></div>}{section === 'privacy' && <><div className="settings-card"><div className="settings-card-heading"><div><p className="eyebrow">VISIBILIDAD</p><h2>Privacidad</h2><p className="muted">Decide qué información pueden ver otros tutores.</p></div></div><SettingRow title="Perfil público" text="Permite que otros vean tu nombre en el muro comunal." value={publicProfile} onChange={value => toggle('publicProfile', value)} /></div><div className="settings-card"><div><p className="eyebrow">MODO DEMOSTRACIÓN</p><h2>Datos de demostración</h2><p className="muted">Sin servidor, los datos viven solo en este navegador: un QR abierto en otro teléfono mostrará «Medalla no válida». Restablecer borra lo que creaste aquí y cierra la sesión.</p></div><button type="button" className="secondary" onClick={() => { if (window.confirm('¿Restablecer los datos de demostración? Se perderán las mascotas, publicaciones y cambios hechos en este navegador.')) { resetDemo(); onLogout() } }}>Restablecer datos de demostración</button></div><div className="settings-card danger-card"><div><p className="eyebrow">SESIÓN</p><h2>Salir de PetSuite</h2><p className="muted">Cierra la sesión de este dispositivo.</p></div><button type="button" className="secondary danger-button" onClick={onLogout}>Cerrar sesión</button></div></>}</div></div></section>
+  const sections = [['profile', 'Perfil'], ['appearance', 'Apariencia'], ['notifications', 'Notificaciones'], ['privacy', 'Privacidad y datos'], ['inbox', 'Correos (demo)']] as const
+  return <section className="page settings-page"><div className="page-title"><div><p className="eyebrow">TU CUENTA</p><h1>Configuración</h1><p className="muted">Personaliza tu experiencia en PetSuite.</p></div></div><div className="settings-layout"><div className="settings-nav">{sections.map(([id, label]) => <button key={id} className={section === id ? 'settings-nav-item active' : 'settings-nav-item'} onClick={() => setSection(id)}>{label}</button>)}</div><div className="settings-content">{section === 'profile' && <form className="settings-card" onSubmit={saveProfile}><div className="settings-card-heading"><div><p className="eyebrow">INFORMACIÓN PERSONAL</p><h2>Perfil</h2></div><div className="profile-avatar">{draft.avatar}</div></div><div className="settings-form-grid"><label>Nombre completo<input value={draft.name} onChange={event => setDraft({ ...draft, name: event.target.value })} /></label><label>Correo electrónico<input type="email" value={draft.email} onChange={event => setDraft({ ...draft, email: event.target.value })} /></label><label>Teléfono<input value={draft.phone} onChange={event => setDraft({ ...draft, phone: event.target.value })} /></label></div><div className="settings-actions"><span className="save-message">{saved ? 'Cambios guardados' : ''}</span><button className="primary">Guardar cambios</button></div></form>}{section === 'appearance' && <div className="settings-card"><div className="settings-card-heading"><div><p className="eyebrow">PERSONALIZA LA INTERFAZ</p><h2>Apariencia</h2><p className="muted">Previsualiza y confirma tus preferencias visuales.</p></div></div><div className="theme-options">{themeOptions.map(option => <button type="button" key={option.name} className={draftTheme === option.name ? 'theme-option selected' : 'theme-option'} onClick={() => setDraftTheme(option.name)}><span className="theme-swatch" style={{ background: option.color }} /><span>{option.label}</span>{draftTheme === option.name && <Check size={16} aria-hidden="true" />}</button>)}</div><div className="mode-options"><button type="button" className={draftMode === 'light' ? 'mode-option active' : 'mode-option'} onClick={() => setDraftMode('light')}>Claro</button><button type="button" className={draftMode === 'dark' ? 'mode-option active' : 'mode-option'} onClick={() => setDraftMode('dark')}>Oscuro</button><button type="button" className={draftMode === 'system' ? 'mode-option active' : 'mode-option'} onClick={() => setDraftMode('system')}>Sistema</button></div><label className="brightness-control">Brillo de la interfaz <output>{draftBrightness}%</output><input type="range" min="70" max="115" value={draftBrightness} onChange={event => setDraftBrightness(Number(event.target.value))} /></label><div className="settings-actions"><span className="save-message">{saved ? 'Preferencias confirmadas' : ''}</span><button type="button" className="primary" onClick={confirmAppearance}>Confirmar cambios</button></div></div>}{section === 'notifications' && <div className="settings-card"><div className="settings-card-heading"><div><p className="eyebrow">PREFERENCIAS</p><h2>Notificaciones</h2><p className="muted">Controla los avisos que recibes de PetSuite.</p></div></div><SettingRow title="Avisos de la comunidad" text="Recibe novedades sobre publicaciones y contactos." value={notifications} onChange={value => toggle('notifications', value)} /></div>}{section === 'privacy' && <><div className="settings-card"><div className="settings-card-heading"><div><p className="eyebrow">VISIBILIDAD</p><h2>Privacidad</h2><p className="muted">Decide qué información pueden ver otros tutores.</p></div></div><SettingRow title="Perfil público" text="Permite que otros vean tu nombre en el muro comunal." value={publicProfile} onChange={value => toggle('publicProfile', value)} /></div><PrivacyCenter /><div className="settings-card"><div><p className="eyebrow">MODO DEMOSTRACIÓN</p><h2>Datos de demostración</h2><p className="muted">Sin servidor, los datos viven solo en este navegador: un QR abierto en otro teléfono mostrará «Medalla no válida». Restablecer borra lo que creaste aquí y cierra la sesión.</p></div><button type="button" className="secondary" onClick={() => { if (window.confirm('¿Restablecer los datos de demostración? Se perderán las mascotas, publicaciones y cambios hechos en este navegador.')) { resetDemo(); onLogout() } }}>Restablecer datos de demostración</button></div><div className="settings-card danger-card"><div><p className="eyebrow">SESIÓN</p><h2>Salir de PetSuite</h2><p className="muted">Cierra la sesión de este dispositivo.</p></div><button type="button" className="secondary danger-button" onClick={onLogout}>Cerrar sesión</button></div></>}{section === 'inbox' && <MyInbox />}</div></div></section>
 }
 
 function SettingRow({ title, text, value, onChange }: { title: string; text: string; value: boolean; onChange: (value: boolean) => void }) { return <div className="setting-row"><div><strong>{title}</strong><p>{text}</p></div><button type="button" aria-label={`Cambiar ${title}`} className={value ? 'toggle on' : 'toggle'} onClick={() => onChange(!value)} /></div> }

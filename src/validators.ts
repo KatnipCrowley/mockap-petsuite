@@ -81,6 +81,7 @@ export const businessProfileSchema = z.object({
   telefono: z.string().trim().max(20),
   whatsapp: z.string().trim().max(20),
   horario: z.object({ 'lun-vie': z.string().trim().max(80), sab: z.string().trim().max(80), dom: z.string().trim().max(80) }),
+  servicios: z.array(z.string().trim().min(2, 'Cada servicio debe tener al menos 2 caracteres').max(40, 'Cada servicio admite hasta 40 caracteres')).max(12, 'Puedes destacar hasta 12 servicios').default([]),
   latitud: z.number().min(-90).max(90).nullable(),
   longitud: z.number().min(-180).max(180).nullable(),
   foto_portada: z.enum(['/img/vet-2.jpg', '/img/collares.jpg', '/img/groomer-2.jpg', '/img/accesorios.jpg']).nullable(),
@@ -122,7 +123,8 @@ export const registrationSchema = z.object({
   password: z.string().min(8, 'La contraseña debe tener al menos 8 caracteres').max(72),
   name: z.string().trim().min(2, 'Ingresa tu nombre').max(80),
   comunaId: z.number().int().positive('Elige una comuna'),
-  terms: z.literal(true, { message: 'Debes aceptar los términos y el aviso de privacidad' }),
+  terms: z.literal(true, { message: 'Debes aceptar los términos de uso' }),
+  privacy: z.literal(true, { message: 'Debes autorizar el tratamiento de tus datos para crear la cuenta' }),
 })
 
 export const petDetailsSchema = z.object({

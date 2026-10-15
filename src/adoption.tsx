@@ -2,9 +2,12 @@ import { useCallback, useEffect, useState } from 'react'
 import { AlertCircle, ArrowRight, Check, CirclePlus, Heart, MapPin, PawPrint, ShieldCheck, X } from 'lucide-react'
 import { Loading, LogoMark, Photo } from './media'
 import { api, errorText, iniciales, type Comuna, type FichaDatos } from './api'
+import { OngProfileEditor } from './ong-profile'
+import { AdsManager, OngAgreements } from './promotions'
 
 type AnimalResumen = { id: string; nombre: string; especie: string; raza: string | null; edad_estimada: string | null; estado_salud: string | null; foto_url: string | null; ong: string; comuna: string }
-type AnimalDetalle = AnimalResumen & { historia: string | null; vacunas: { nombre: string; fecha: string }[] | null; ong_tipo: string; ong_descripcion: string | null; ong_contacto: string | null; ong_redes: string | null }
+type OrgResumen = { id: string; nombre: string; tipo: string; comuna: string; mision: string | null; animales: number; cupones: number }
+type AnimalDetalle = AnimalResumen & { ong_id: string; historia: string | null; vacunas: { nombre: string; fecha: string }[] | null; ong_tipo: string; ong_descripcion: string | null; ong_contacto: string | null; ong_redes: string | null }
 
 const tipoOng: Record<string, string> = { refugio: 'Refugio', rescatista_independiente: 'Rescatista independiente', agrupacion: 'Agrupación' }
 
@@ -17,7 +20,8 @@ export function AdoptionCatalog({ standalone }: { standalone?: boolean }) {
   const [selected, setSelected] = useState<string | null>(null)
   const [error, setError] = useState('')
 
-  useEffect(() => { api<Comuna[]>('/comunas').then(setComunas).catch(() => undefined) }, [])
+  const [orgs, setOrgs] = useState<OrgResumen[]>([])
+  useEffect(() => { api<Comuna[]>('/comunas').then(setComunas).catch(() => undefined); api<OrgResumen[]>('/ongs').then(setOrgs).catch(() => undefined) }, [])
   useEffect(() => {
     const qs = new URLSearchParams({ ...(comuna ? { comuna } : {}), ...(especie ? { especie } : {}) }).toString()
     api<AnimalResumen[]>(`/adopciones${qs ? `?${qs}` : ''}`).then(a => { setAnimals(a); setError('') }).catch(e => setError(errorText(e)))
@@ -30,6 +34,7 @@ export function AdoptionCatalog({ standalone }: { standalone?: boolean }) {
     <div className="pet-grid adoption-grid">{animals?.map(a => <button key={a.id} className="pet-card" onClick={() => setSelected(a.id)}><Photo src={a.foto_url} nombre={a.nombre} className="pet-photo adoption-photo" /><div className="pet-info"><strong>{a.nombre}</strong><span>{a.especie[0].toUpperCase() + a.especie.slice(1)}{a.raza ? ` · ${a.raza}` : ''}{a.edad_estimada ? ` · ${a.edad_estimada}` : ''}</span><small><MapPin size={13} /> {a.comuna} · {a.ong}</small></div></button>)}</div>
     {animals && animals.length === 0 && <div className="empty-results">No hay animales en adopción con estos filtros por ahora.</div>}
     {!animals && !error && <Loading />}
+    {!!orgs.length && <><div className="section-heading"><h3>Organizaciones verificadas</h3></div><div className="org-grid">{orgs.map(o => <a key={o.id} className="org-card" href={`#ong/${o.id}`}><strong>{o.nombre}</strong><small>{tipoOng[o.tipo] || o.tipo} · {o.comuna} · {o.animales} en adopción{o.cupones ? ` · ${o.cupones} ${o.cupones === 1 ? 'cupón' : 'cupones'} con negocios` : ''}</small>{o.mision && <span>{o.mision}</span>}</a>)}</div></>}
     {selected && <AnimalModal id={selected} onClose={() => setSelected(null)} />}
   </section>
 
@@ -59,7 +64,7 @@ function AnimalModal({ id, onClose }: { id: string; onClose: () => void }) {
     <p className="muted">{animal.especie[0].toUpperCase() + animal.especie.slice(1)}{animal.raza ? ` · ${animal.raza}` : ''}{animal.edad_estimada ? ` · ${animal.edad_estimada}` : ''}</p>
     {animal.historia && <><div className="section-heading"><h3>Su historia</h3></div><p>{animal.historia}</p></>}
     <div className="health-facts"><div><span>Estado de salud</span><strong>{animal.estado_salud || 'Consultar a la organización'}</strong></div><div><span>Vacunas registradas</span><strong>{animal.vacunas?.length ? animal.vacunas.map(v => v.nombre).join(', ') : 'Sin registro'}</strong></div></div>
-    <div className="section-heading"><h3>Organización</h3></div><p><strong>{animal.ong}</strong> · {tipoOng[animal.ong_tipo] || animal.ong_tipo}</p>{animal.ong_descripcion && <p className="muted">{animal.ong_descripcion}</p>}
+    <div className="section-heading"><h3>Organización</h3></div><p><strong>{animal.ong}</strong> · {tipoOng[animal.ong_tipo] || animal.ong_tipo}</p>{animal.ong_descripcion && <p className="muted">{animal.ong_descripcion}</p>}<p><a className="text-button" href={`#ong/${animal.ong_id}`}>Ver perfil, necesidades y cómo donar</a></p>
     {sent ? <div className="alert-card"><div className="alert-icon"><Check size={22} /></div><div><strong>Solicitud enviada</strong><p>La organización revisará tu mensaje y coordinará la entrega contigo por el medio que compartiste. Tus datos no se muestran públicamente.</p></div></div>
       : <form onSubmit={submit} noValidate><div className="section-heading"><h3>Quiero adoptar a {animal.nombre}</h3></div>
         <p className="muted">Tu mensaje llega solo a la organización. El nombre y el contacto son opcionales; sin un medio de contacto la organización no podrá responderte.</p>
@@ -85,7 +90,11 @@ export function OngArea({ active }: { active: string }) {
   useEffect(() => { void reload() }, [reload])
   if (ong === undefined) return <section className="page">{error ? <p className="muted">{error}</p> : <Loading />}</section>
   if (!ong) return <RegisterOng onDone={reload} />
-  return <>{active === 'animals' ? <Animals ong={ong} /> : <Overview ong={ong} />}</>
+  if (active === 'animals') return <Animals ong={ong} />
+  if (active === 'ong-profile') return <OngProfileEditor />
+  if (active === 'ong-agreements') return <OngAgreements />
+  if (active === 'ong-ads') return <AdsManager base="/ong" autor="ong" />
+  return <Overview ong={ong} />
 }
 
 function RegisterOng({ onDone }: { onDone: () => void }) {
@@ -122,7 +131,8 @@ function Overview({ ong }: { ong: Ong }) {
   const published = animals.filter(a => a.publicado).length
   return <section className="page business-page"><div className="business-welcome"><div><p className="eyebrow">TU ORGANIZACIÓN EN PETSUITE</p><h1>{ong.nombre}</h1><p>{tipoOng[ong.tipo] || ong.tipo} · {ong.comuna}. Tus animales atraen a nuevos tutores a toda la comunidad.</p></div><ShieldCheck size={38} strokeWidth={1.5} /></div>
     <StatusBanner ong={ong} />
-    <div className="business-stats"><Metric label="Animales publicados" value={String(published)} trend={`${animals.length} en total`} /><Metric label="Solicitudes abiertas" value={String(animals.reduce((s, a) => s + a.solicitudes_abiertas, 0))} trend="Por responder" /><Metric label="Visitas (7 días)" value={String(animals.reduce((s, a) => s + a.visitas_7d, 0))} trend="Al catálogo público" /></div></section>
+    <div className="business-stats"><Metric label="Animales publicados" value={String(published)} trend={`${animals.length} en total`} /><Metric label="Solicitudes abiertas" value={String(animals.reduce((s, a) => s + a.solicitudes_abiertas, 0))} trend="Por responder" /><Metric label="Visitas (7 días)" value={String(animals.reduce((s, a) => s + a.visitas_7d, 0))} trend="Al catálogo público" /></div>
+    <div className="business-activity"><p className="eyebrow">PARTICIPACIÓN SIN COSTO</p><h2>Tu organización en PetSuite es gratis</h2><p>Arma tu perfil público con datos para donar, difunde un banner a la vez y acepta convenios con negocios: cada compra con tu cupón mide el impacto de tu comunidad. Todo pasa por la revisión de un asesor.</p>{ong.estado_verificacion === 'aprobada' && <p><a className="text-button" href={`#ong/${ong.id}`}>Ver mi perfil público</a></p>}</div></section>
 }
 
 const parseLines = (text: string) => text.split('\n').map(l => l.trim()).filter(Boolean).map(l => { const [nombre, fecha] = l.split('|').map(s => s.trim()); return { nombre, fecha: fecha || new Date().toISOString().slice(0, 10) } })

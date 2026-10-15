@@ -9,7 +9,7 @@ import { businessProfileSchema } from './validators'
 type EditableProfile = PymeResumen & { rut_empresa: string; comuna_id: number; estado_verificacion: string }
 type Draft = {
   nombre_comercial: string; descripcion: string; comuna_id: number; direccion: string; telefono: string; whatsapp: string;
-  latitud: string; longitud: string; horario: { 'lun-vie': string; sab: string; dom: string }; foto_portada: string | null
+  latitud: string; longitud: string; horario: { 'lun-vie': string; sab: string; dom: string }; servicios: string; foto_portada: string | null
 }
 
 const photos = ['/img/vet-2.jpg', '/img/collares.jpg', '/img/groomer-2.jpg', '/img/accesorios.jpg'] as const
@@ -44,7 +44,8 @@ function LocationPicker({ lat, lng, onChange }: { lat: string; lng: string; onCh
   return <div ref={box} className="business-location-map" role="region" aria-label="Ubicación de tu negocio. Haz clic para colocar el marcador." />
 }
 
-export function BusinessProfile({ pyme, onSaved }: { pyme: MiPyme; onSaved: () => Promise<void> }) {
+// También lo usa la clínica veterinaria para su perfil del directorio.
+export function BusinessProfile({ pyme, onSaved }: { pyme: MiPyme; onSaved?: () => Promise<void> }) {
   const [profile, setProfile] = useState<EditableProfile | null>(null)
   const [comunas, setComunas] = useState<Comuna[]>([])
   const [form, setForm] = useState<Draft | null>(null)
@@ -59,7 +60,7 @@ export function BusinessProfile({ pyme, onSaved }: { pyme: MiPyme; onSaved: () =
       .then(([p, options]) => {
         if (!alive) return
         setProfile(p); setComunas(options)
-        setForm({ nombre_comercial: p.nombre_comercial, descripcion: p.descripcion || '', comuna_id: p.comuna_id, direccion: p.direccion || '', telefono: p.telefono || '', whatsapp: p.whatsapp || '', latitud: p.latitud || '', longitud: p.longitud || '', horario: { 'lun-vie': p.horario?.['lun-vie'] || '', sab: p.horario?.sab || '', dom: p.horario?.dom || '' }, foto_portada: p.foto_portada || null })
+        setForm({ nombre_comercial: p.nombre_comercial, descripcion: p.descripcion || '', comuna_id: p.comuna_id, direccion: p.direccion || '', telefono: p.telefono || '', whatsapp: p.whatsapp || '', latitud: p.latitud || '', longitud: p.longitud || '', horario: { 'lun-vie': p.horario?.['lun-vie'] || '', sab: p.horario?.sab || '', dom: p.horario?.dom || '' }, servicios: (p.servicios || []).join(', '), foto_portada: p.foto_portada || null })
         setLoading(false)
       })
       .catch(e => { if (alive) { setError(errorText(e)); setLoading(false) } })
@@ -75,6 +76,7 @@ export function BusinessProfile({ pyme, onSaved }: { pyme: MiPyme; onSaved: () =
     setError(''); setSaved(false)
     const result = businessProfileSchema.safeParse({
       ...form,
+      servicios: form.servicios.split(',').map(s => s.trim()).filter(Boolean),
       latitud: form.latitud.trim() === '' ? null : Number(form.latitud),
       longitud: form.longitud.trim() === '' ? null : Number(form.longitud),
     })
@@ -82,14 +84,14 @@ export function BusinessProfile({ pyme, onSaved }: { pyme: MiPyme; onSaved: () =
     setBusy(true)
     try {
       const updated = await api<EditableProfile>(`/pymes/${pyme.id}/perfil`, { method: 'PATCH', body: result.data })
-      setProfile(updated); await onSaved(); setSaved(true)
+      setProfile(updated); await onSaved?.(); setSaved(true)
     } catch (e) { setError(errorText(e)) } finally { setBusy(false) }
   }
 
-  return <section className="page business-profile-page"><div className="page-title"><div><p className="eyebrow">TU VITRINA PET-CARE</p><h1>Perfil del negocio</h1><p className="muted">Mantén actualizada la información que aparece en el directorio.</p></div></div>
+  return <section className="page business-profile-page"><div className="page-title"><div><p className="eyebrow">TU VITRINA PET-CARE</p><h1>{pyme.rubro === 'veterinaria' ? 'Perfil de la clínica' : 'Perfil del negocio'}</h1><p className="muted">Mantén actualizada la información que aparece en el directorio.</p></div></div>
     {loading ? <Loading rows={2} /> : !form || !profile ? <p className="form-error" role="alert">{error || 'No se pudo cargar el perfil.'}</p> : <form className="business-profile-layout" onSubmit={submit} noValidate>
       <div className="business-profile-main">
-        <section className="settings-card"><div className="settings-card-heading"><div><p className="eyebrow">DATOS DEL NEGOCIO</p><h2>Información pública</h2></div></div><div className="settings-form-grid"><label>Nombre comercial<input maxLength={100} value={form.nombre_comercial} onChange={e => set('nombre_comercial', e.target.value)} /></label><label>Comuna<select value={form.comuna_id} onChange={e => set('comuna_id', Number(e.target.value))}>{comunas.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select></label><label>Dirección<input maxLength={200} value={form.direccion} onChange={e => set('direccion', e.target.value)} placeholder="Calle y número" /></label><label>Teléfono<input maxLength={20} value={form.telefono} onChange={e => set('telefono', e.target.value)} placeholder="Ej.: +56 64 234 5678" /></label><label>WhatsApp<input maxLength={20} value={form.whatsapp} onChange={e => set('whatsapp', e.target.value)} placeholder="Ej.: 56912345678" /></label></div><label className="business-profile-description">Descripción<textarea maxLength={1000} rows={4} value={form.descripcion} onChange={e => set('descripcion', e.target.value)} placeholder="Cuéntale a la comunidad qué ofrece tu negocio" /></label></section>
+        <section className="settings-card"><div className="settings-card-heading"><div><p className="eyebrow">DATOS DEL NEGOCIO</p><h2>Información pública</h2></div></div><div className="settings-form-grid"><label>Nombre comercial<input maxLength={100} value={form.nombre_comercial} onChange={e => set('nombre_comercial', e.target.value)} /></label><label>Comuna<select value={form.comuna_id} onChange={e => set('comuna_id', Number(e.target.value))}>{comunas.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select></label><label>Dirección<input maxLength={200} value={form.direccion} onChange={e => set('direccion', e.target.value)} placeholder="Calle y número" /></label><label>Teléfono<input maxLength={20} value={form.telefono} onChange={e => set('telefono', e.target.value)} placeholder="Ej.: +56 64 234 5678" /></label><label>WhatsApp<input maxLength={20} value={form.whatsapp} onChange={e => set('whatsapp', e.target.value)} placeholder="Ej.: 56912345678" /></label></div><label className="business-profile-description">Descripción<textarea maxLength={1000} rows={4} value={form.descripcion} onChange={e => set('descripcion', e.target.value)} placeholder="Cuéntale a la comunidad qué ofrece tu negocio" /></label><label className="business-profile-description">Servicios destacados (separados por comas, máximo 12)<input value={form.servicios} onChange={e => set('servicios', e.target.value)} placeholder={pyme.rubro === 'veterinaria' ? 'Consulta general, Vacunación, Urgencias' : 'Despacho a domicilio, Asesoría'} /></label></section>
         <section className="settings-card"><div className="settings-card-heading"><div><p className="eyebrow">VISITAS Y UBICACIÓN</p><h2>Horario y mapa</h2></div></div><div className="settings-form-grid"><label>Lunes a viernes<input maxLength={80} value={form.horario['lun-vie']} onChange={e => set('horario', { ...form.horario, 'lun-vie': e.target.value })} placeholder="09:00-18:00" /></label><label>Sábado<input maxLength={80} value={form.horario.sab} onChange={e => set('horario', { ...form.horario, sab: e.target.value })} placeholder="Cerrado" /></label><label>Domingo<input maxLength={80} value={form.horario.dom} onChange={e => set('horario', { ...form.horario, dom: e.target.value })} placeholder="Cerrado" /></label></div><p className="muted business-location-hint"><MapPin size={16} /> Marca tu ubicación en el mapa o ingresa ambas coordenadas.</p><LocationPicker lat={form.latitud} lng={form.longitud} onChange={movePin} /><div className="settings-form-grid business-coordinates"><label>Latitud<input inputMode="decimal" value={form.latitud} onChange={e => set('latitud', e.target.value)} placeholder="-40.5735" /></label><label>Longitud<input inputMode="decimal" value={form.longitud} onChange={e => set('longitud', e.target.value)} placeholder="-73.1335" /></label></div></section>
       </div>
       <div className="business-profile-side"><section className="settings-card"><div className="settings-card-heading"><div><p className="eyebrow">IDENTIDAD VISUAL</p><h2>Portada</h2></div></div><Photo src={form.foto_portada || rubroFoto[profile.rubro] || rubroFoto.otro} nombre={form.nombre_comercial} className="business-profile-cover" /><p className="muted">Elige una fotografía de demostración para tu ficha en el directorio.</p><div className="business-cover-options">{photos.map(src => <button type="button" key={src} className={form.foto_portada === src ? 'business-cover-option active' : 'business-cover-option'} onClick={() => set('foto_portada', src)} aria-label={`Elegir portada ${src.split('/').pop()?.replace('.jpg', '')}`} aria-pressed={form.foto_portada === src}><Photo src={src} nombre="Portada" className="business-cover-thumb" /></button>)}</div></section>

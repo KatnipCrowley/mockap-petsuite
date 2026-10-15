@@ -1,9 +1,11 @@
 // Cliente del API PetSuite. Sin VITE_API_URL usa el mock local; con una URL configurada
 // consulta el mismo contrato por HTTP, incluido el QR público sin sesión.
 import { handle } from './mock/server'
+import type { Rol } from './permissions'
 
-export type ApiRole = 'tutor' | 'pyme' | 'clinico' | 'admin' | 'ong'
-export type Session = { token: string; id: string; rol: ApiRole; nombre: string; comunaId: number | null }
+export type ApiRole = Rol
+// permisos: módulos habilitados para la cuenta (ver src/permissions.ts); los menús se arman con ellos.
+export type Session = { token: string; id: string; rol: ApiRole; nombre: string; comunaId: number | null; permisos?: string[] }
 
 const KEY = 'petsuite-session'
 
@@ -72,8 +74,19 @@ export type Mascota = {
 
 export type PublicaEmergencia = { nombre: string; especie: string; raza: string | null; foto_url: string | null; alergias: { agente: string; gravedad?: string }[]; alertasCriticas: string[]; condiciones: string[]; notaEmergencia: string }
 
-export type PymeResumen = { id: string; nombre_comercial: string; rubro: string; descripcion: string | null; comuna: string; direccion: string | null; latitud: string | null; longitud: string | null; telefono: string | null; whatsapp: string | null; horario: Record<string, string>; foto_portada?: string | null }
-export type ItemCatalogo = { id: string; tipo: 'producto' | 'servicio'; nombre: string; descripcion: string | null; precio_referencial_clp: number | null; disponible?: boolean }
+export type PymeResumen = { id: string; nombre_comercial: string; rubro: string; descripcion: string | null; comuna: string; direccion: string | null; latitud: string | null; longitud: string | null; telefono: string | null; whatsapp: string | null; horario: Record<string, string>; foto_portada?: string | null; servicios?: string[]; ofertas?: number
+  // Planes Plata y Oro: prioridad en el buscador (2 = primero con insignia). Las sucursales y cupones alimentan la búsqueda.
+  destacado?: 0 | 1 | 2; sucursales?: SucursalPublica[]; cupones?: CuponPublico[] }
+export type SucursalPublica = { id: string; nombre: string; comuna: string; direccion: string | null; latitud: string | null; longitud: string | null; telefono: string | null; whatsapp: string | null; horario: Record<string, string>; descripcion: string | null; servicios: string[] }
+export type CuponPublico = { codigo: string; titulo: string; descuento_pct: number; condiciones: string; hasta: string; ong: string; ong_id: string; negocio?: string; pyme_id?: string }
+// Oferta referencial por un rango de fechas (AAAA-MM-DD). No hay cobros dentro de la app.
+export type Oferta = { precio_clp: number; desde: string; hasta: string }
+export type ItemCatalogo = { id: string; tipo: 'producto' | 'servicio'; nombre: string; descripcion: string | null; precio_referencial_clp: number | null; disponible?: boolean; categoria?: string | null; sin_stock?: boolean; oferta?: Oferta | null }
+
+export const hoy = () => new Date().toISOString().slice(0, 10)
+export const ofertaVigente = (o?: Oferta | null) => !!o && o.desde <= hoy() && o.hasta >= hoy()
+export const fechaLarga = (iso: string) => new Date(iso.length === 10 ? `${iso}T12:00:00` : iso).toLocaleDateString('es-CL')
+export const fechaCorta = (iso: string) => new Date(iso.length === 10 ? `${iso}T12:00:00` : iso).toLocaleDateString('es-CL', { day: 'numeric', month: 'short' })
 export type PymePerfil = PymeResumen & { catalogo: ItemCatalogo[] }
 
 export const clp = (n: number | null | undefined) => n == null ? 'Consultar precio' : `$${n.toLocaleString('es-CL')}`

@@ -211,3 +211,32 @@ Antes de finalizar cualquier cambio, se debe agregar una entrada con:
 - Cambio realizado: Suspender desde Usuarios u Ocultar y suspender desde Moderación abre una tarjeta compartida con los antecedentes de las denuncias de las publicaciones del usuario, incluidos contenido, motivo, denunciante, fecha y estado. El administrador puede elegir motivos rápidos, suspensión temporal de 1 a 3650 días o permanente, redactar un mensaje obligatorio y confirmar expresamente la medida. El mock guarda el tipo, razón, mensaje y vencimiento; revoca sesiones, reactiva las suspensiones temporales al vencer y permite reactivar manualmente las permanentes. Desde Moderación oculta y resuelve la publicación denunciada en la misma operación. «Ver denuncias» ofrece acceso independiente al historial desde Usuarios.
 - Motivo: facilitar decisiones informadas y registradas, sin suspender directamente desde la lista ni perder el contexto de los reportes.
 - Verificación ejecutada: `node --test src/admin-suspension.test.mjs src/business.test.mjs backend/server.test.mjs` (6 pruebas), `npm run build -- --base=/mockap-petsuite/` y `git diff --check` correctamente. Sin revisión visual en navegador en esta sesión.
+
+## 2026-10-12
+
+### Reparación del merge de benja-1 con main
+
+- Fecha: 2026-10-12.
+- Archivos modificados: `src/App.tsx`, `src/admin.tsx`, `src/api.ts`, `src/business.tsx`, `src/business-profile.tsx`, `src/clinical.tsx`, `src/community.tsx`, `src/design-polish.css`, `src/directory.tsx`, `src/mock/db.ts`, `src/mock/server.ts`, `src/tutor.tsx`, `src/validators.ts`, `src/business.test.mjs`, `src/admin-suspension.test.mjs`, `backend/server.mjs`.
+- Cambio realizado: el merge `d91b94b` dejó el proyecto sin compilar (55 errores TS). Se rehízo desde `fc428b8` + `8ff8940`, conservando lo del 29 de septiembre (ofertas, categorías, autoría clínica, muro completo) y lo del 28 (contactos, portada y mapa del perfil, suspensión, API HTTP). Hay un solo perfil de negocio (`business-profile.tsx`), que ahora incluye servicios destacados. Las pruebas importan `STORAGE_KEY` en vez de fijar la clave, y `backend/server.mjs` acepta cualquier versión `petsuite-mock-db-vN` (antes ignoraba la v2 y no persistía).
+- Motivo: el código heredado no compilaba ni persistía en el API HTTP.
+- Verificación ejecutada: `npx tsc -b` sin errores y las 6 pruebas existentes correctas.
+
+### Modelo de negocio: suscripciones, multitenant, asesor, CMS de ONG, publicidad, convenios, Orcob y Ley 21.719
+
+- Fecha: 2026-10-12.
+- Archivos agregados: `src/plans.ts`, `src/permissions.ts`, `src/plans-ui.tsx`, `src/team.tsx`, `src/promotions.tsx`, `src/ong-profile.tsx`, `src/advisor.tsx`, `src/privacy.tsx`, `src/design-suite.css`, `src/mock/suite.ts`, `src/mock/orcob.ts`, `src/business-rules.test.mjs`, `docs/modelo-de-negocio.md`.
+- Archivos modificados: `src/App.tsx`, `src/Login.tsx`, `src/api.ts`, `src/business.tsx`, `src/business-profile.tsx`, `src/clinical.tsx`, `src/admin.tsx`, `src/adoption.tsx`, `src/directory.tsx`, `src/tutor.tsx`, `src/community.tsx`, `src/validators.ts`, `src/main.tsx`, `src/mock/db.ts`, `src/mock/server.ts`, `public/sw.js` (caché v5), `AGENTS.md`.
+- Cambio realizado:
+  - Planes Gratis ($0), Bronce ($10.000), Plata ($15.000) y Oro ($25.000) con límites de ítems, locales, equipo, ofertas, banners y convenios, más portada, perfil por sucursal, prioridad en el buscador, nivel de métricas y soporte. El mock aplica los límites con 422 e indica qué plan los permite. Hay comparativa en el alta, en Suscripción y en la página pública `#planes`, y medidores de uso en el Inicio de la Pyme. Tras el vencimiento hay 5 días de gracia y luego se baja a Gratis sin borrar datos.
+  - Multitenant: sucursales por Pyme (pines en el mapa, búsqueda y perfil propio desde Plata) y equipo con roles internos (jefe de local y personal clínico) y permisos por módulo. Las credenciales temporales llegan por correo. Las veterinarias pasan a ser Pymes; el clínico es personal de la veterinaria y accede a las fichas por membresía.
+  - Rol asesor: verifica Pymes y ONG, confirma pagos, crea cuentas con correo de bienvenida y aprueba banners, perfiles de ONG y convenios. Gestiona la cobranza.
+  - Publicidad sin imágenes, con aprobación del asesor, en el inicio, el directorio y el muro, con impresiones y clics.
+  - Convenios Pyme–ONG con código de cupón (la ONG acepta y el asesor aprueba), registro de canjes en caja, meta mensual (100 por defecto) con premio de alimentos y métricas de impacto para la ONG.
+  - CMS de ONG: misión, necesidades, donaciones, voluntariado, emblema y color. Se publica solo tras la aprobación del asesor. Perfil público en `#ong/<id>` y listado en Adopciones.
+  - Orcob (Organización de Cobranzas Orcob Ltda.): adaptador mock con código de recaudación, aviso de pago simulado y derivación de deudas con más de 30 días de mora, enviando solo datos mínimos de la empresa.
+  - Ley 21.719: consentimientos separados y versionados en el registro, retiro inmediato de los opcionales, descarga JSON (acceso y portabilidad), solicitudes ARSOPOL con plazo de 30 días, panel de privacidad del administrador y anonimización al aceptar una supresión. Bandeja de correos simulada en Configuración.
+  - Datos demo v3 (`petsuite-mock-db-v3`) con cuentas nuevas: veterinaria, peluquería morosa, jefe de local y asesor.
+- Motivo: aplicar los cambios de la reunión de octubre: remarcar el modelo de suscripción, definir roles y reglas de negocio, empresas con varias sucursales, gestión por asesores y cumplimiento de la nueva ley de datos, manteniendo como núcleo la Ficha Única y el QR.
+- Limitaciones declaradas: los límites por plan son una propuesta (el equipo solo fijó los precios). Orcob y el correo son simulados. Las claves temporales viajan en texto en el correo demo; en producción se usaría un enlace de activación de un solo uso. El cumplimiento de la Ley 21.719 debe validarlo una asesoría legal.
+- Verificación ejecutada: `npx tsc -b` sin errores y `npm run build -- --base=/mockap-petsuite/` correcto. `node --test src/admin-suspension.test.mjs src/business.test.mjs src/business-rules.test.mjs backend/server.test.mjs`: 13 de 13 pruebas (7 nuevas de reglas de negocio). Recorrido con Playwright (Chromium) por las 9 cuentas demo y todas sus vistas a 1366 px y 390 px, más `#planes`, `#adopciones` y `#ong/<id>`: sin errores de consola ni desplazamiento horizontal. `git diff --check` correcto.

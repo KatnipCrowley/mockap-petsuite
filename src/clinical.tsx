@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Pencil, Search, X } from 'lucide-react'
 import { Loading, Photo } from './media'
-import { api, emptyFicha, errorText, iniciales, type FichaDatos } from './api'
-import { RegisterPyme, usePyme } from './business'
-import { medicalEntrySchema } from './validators'
+import { api, emptyFicha, errorText, fechaCorta, type FichaDatos, type RegistroMeta } from './api'
+import { usePyme } from './business'
+import { BusinessContacts } from './business-contacts'
 
 type Paciente = { id: string; nombre: string; especie: string; raza: string | null; foto_url?: string | null; tutor: string; permiso: 'lectura' | 'escritura'; vigente_hasta: string; alertas: string[] | null }
 type FichaResp = { id: string; datos_clinicos: FichaDatos; version: number }
@@ -31,8 +31,9 @@ export function ClinicalArea({ active }: { active: string }) {
   useEffect(() => { void loadPatients() }, [loadPatients])
 
   if (loading) return <section className="page">{error ? <p className="muted">{error}</p> : <Loading />}</section>
-  if (!pyme) return <RegisterPyme veterinaria onDone={reload} />
-  if (active === 'clinic-profile') return <BusinessProfile pyme={pyme} />
+  // El personal clínico pertenece a una veterinaria (Pyme): su dueño lo agrega desde Equipo.
+  if (!pyme) return <section className="page role-page"><div className="alert-card"><div><strong>Aún no perteneces a una veterinaria</strong><p>Pide al dueño o administrador de tu veterinaria que te agregue desde «Equipo». <button className="text-button" onClick={() => void reload()}>Volver a revisar</button></p></div></div></section>
+  if (active === 'contacts' && pyme.permisos.includes('contactos')) return <BusinessContacts pyme={pyme} />
   const list = patients || []
   const alerts = list.filter(p => p.alertas && p.alertas.length).length
   const q = query.trim().toLocaleLowerCase('es')
@@ -67,18 +68,20 @@ function FichaModal({ paciente, clinicaId, onClose }: { paciente: Paciente; clin
   // Cada escritura lleva la versión leída: si otra persona guardó antes, el API responde 409 y se recarga.
   const run = async (fn: (version: number) => Promise<unknown>) => {
     if (!ficha) return
-    const type = ({ vacuna: 'Vacuna', tratamiento: 'Tratamiento', atencion: 'Atención' } as const)[form.tipo as 'vacuna' | 'tratamiento' | 'atencion']
-    const parsed = medicalEntrySchema.safeParse({ type, date: form.fecha, title: form.titulo, notes: form.notas })
-    if (!parsed.success) { setError(parsed.error.issues[0]?.message || 'Revisa el registro'); return }
-    const d = { ...emptyFicha(), ...ficha.datos_clinicos }
-    const id = crypto.randomUUID(), notas = parsed.data.notes || undefined
-    if (parsed.data.type === 'Vacuna') d.vacunas = [...d.vacunas, { id, nombre: parsed.data.title, fecha: parsed.data.date, notas }]
-    else if (parsed.data.type === 'Tratamiento') d.tratamientos = [...d.tratamientos, { id, descripcion: parsed.data.title, inicio: parsed.data.date, notas }]
-    else d.atenciones = [...d.atenciones, { id, fecha: parsed.data.date, motivo: parsed.data.title, notas }]
-    try {
-      await api(`/mascotas/${paciente.id}/ficha`, { method: 'PUT', body: { version: ficha.version, datos_clinicos: d } })
-      setForm({ ...form, titulo: '', notas: '' }); setError(''); await load()
-    } catch (e) { setError(errorText(e)) }
+    try { await fn(ficha.version); setError(''); setForm(vacio()); setEditando(null); setAnulando(null); setMotivo(''); await load() } catch (e) { setError(errorText(e)); if ((e as { status?: number }).status === 409) await load() }
+  }
+  const submit = (event: React.FormEvent) => {
+    event.preventDefault()
+    if (form.titulo.trim().length < 3) { setError('Describe el registro'); return }
+    const body = { fecha: form.fecha, titulo: form.titulo.trim(), ...(form.notas.trim() && { notas: form.notas.trim() }), ...(form.tipo === 'vacuna' && form.proxima && { proxima: form.proxima }) }
+    void run(version => editando
+      ? api(`/mascotas/${paciente.id}/registros/${editando.id}`, { method: 'PATCH', body: { version, ...body } })
+      : api(`/mascotas/${paciente.id}/registros`, { method: 'POST', body: { version, tipo: form.tipo, ...body } }))
+  }
+  const anular = (event: React.FormEvent) => {
+    event.preventDefault()
+    if (motivo.trim().length < 5) { setError('Indica el motivo de la anulación (mínimo 5 caracteres)'); return }
+    void run(version => api(`/mascotas/${paciente.id}/registros/${anulando!.id}/anular`, { method: 'POST', body: { version, motivo: motivo.trim() } }))
   }
   const editar = (e: Evento) => { setAnulando(null); setEditando(e); setForm({ tipo: e.tipo, fecha: e.fecha, titulo: e.titulo, notas: e.notas || '', proxima: e.proxima || '' }) }
 

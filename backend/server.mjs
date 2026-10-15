@@ -13,17 +13,22 @@ registerHooks({ resolve(specifier, context, nextResolve) {
   return nextResolve(specifier, context)
 } })
 
-const KEY = 'petsuite-mock-db-v1'
+// Acepta la versión vigente de la base demo (src/mock/db.ts STORAGE_KEY); las versiones antiguas se ignoran.
+const KEY = /^petsuite-mock-db-v\d+$/
 const MAX_BODY = 1_048_576
 
 function fileStorage(file) {
+  let current = null
   return {
     getItem(key) {
-      if (key !== KEY) return null
+      if (!KEY.test(key)) return null
+      if (current && key !== current) return null
+      current = key
       try { return readFileSync(file, 'utf8') } catch (error) { if (error.code === 'ENOENT') return null; throw error }
     },
     setItem(key, value) {
-      if (key !== KEY) return
+      if (!KEY.test(key)) return
+      current = key
       mkdirSync(dirname(file), { recursive: true })
       const temp = `${file}.${process.pid}.tmp`
       writeFileSync(temp, value, { mode: 0o600 })
