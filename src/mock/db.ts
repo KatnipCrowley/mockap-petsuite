@@ -1,7 +1,8 @@
 // Base de datos simulada del modo demo: estado inicial (seed) y persistencia en localStorage.
 // Las claves se guardan sin cifrar solo porque es una demostración; el API real usa bcrypt.
-import type { ApiRole, FichaDatos, Oferta } from '../api'
-import type { ModuloPyme, RolEquipo } from '../permissions'
+import type { ApiRole, FichaDatos, Oferta } from '../shared/api'
+import type { ModuloPyme, RolEquipo } from '../shared/permissions'
+import { VERSION_PRIVACIDAD } from '../shared/legal'
 
 export type Rubro = 'veterinaria' | 'tienda' | 'peluqueria' | 'otro'
 export type Verificacion = 'pendiente' | 'aprobada' | 'rechazada' | 'suspendida'
@@ -108,10 +109,12 @@ export type Db = {
 export const STORAGE_KEY = 'petsuite-mock-db-v3'
 try { for (const old of ['petsuite-mock-db-v1', 'petsuite-mock-db-v2']) localStorage.removeItem(old) } catch { /* sin almacenamiento */ }
 export const CLAVE_DEMO = 'petsuite123'
-export const VERSION_PRIVACIDAD = '2026-10'
+export { VERSION_PRIVACIDAD }
 
 export const uid = () => crypto.randomUUID()
-export const now = () => new Date().toISOString()
+// Estrictamente creciente: dos registros de una misma operación no comparten hora, así el orden por fecha es estable.
+let ultimo = 0
+export const now = () => { ultimo = Math.max(Date.now(), ultimo + 1); return new Date(ultimo).toISOString() }
 export const dayOffset = (days: number) => { const d = new Date(); d.setDate(d.getDate() + days); return d.toISOString().slice(0, 10) }
 
 export const ficha = (d: Partial<FichaDatos> = {}): FichaDatos => ({ condiciones: [], medicamentos: [], notaEmergencia: '', vacunas: [], alergias: [], tratamientos: [], atenciones: [], alertasCriticas: [], ...d })
@@ -123,7 +126,10 @@ export const consentimientosBase = (comunicaciones = false, fecha = now()): Cons
 ]
 
 function seed(): Db {
-  const t = now()
+  // Horas consecutivas (1 ms) para que el orden de creación sea el mismo en el navegador y en PostgreSQL.
+  const t0 = Date.now()
+  let tick = 0
+  const t = () => new Date(t0 + tick++).toISOString()
   const db: Db = {
     comunas: [{ id: 1, nombre: 'Osorno' }, { id: 2, nombre: 'Puerto Montt' }, { id: 3, nombre: 'Castro' }],
     usuarios: [], sesiones: {}, mascotas: [], medallas: [], escaneos: [], mensajes: [], accesos: [], pymes: [], sucursales: [], miembros: [], catalogo: [], eventos: [], contactos_pymes: [],
@@ -131,7 +137,7 @@ function seed(): Db {
     banners: [], convenios: [], canjes: [], correos: [], solicitudes_privacidad: [],
   }
   const user = (correo: string, rol: ApiRole, nombre: string, comuna: number) => {
-    const u: Usuario = { id: uid(), correo, clave: CLAVE_DEMO, rol, nombre_visible: nombre, comuna_id: comuna, estado: 'activo', consentimientos: consentimientosBase(), creado_en: t }
+    const u: Usuario = { id: uid(), correo, clave: CLAVE_DEMO, rol, nombre_visible: nombre, comuna_id: comuna, estado: 'activo', consentimientos: consentimientosBase(), creado_en: t() }
     db.usuarios.push(u)
     return u.id
   }
@@ -149,7 +155,7 @@ function seed(): Db {
   const pyme = (owner: string, nombre: string, rut: string, rubro: Rubro, comuna: number, direccion: string, lat: number, lng: number, servicios: string[], plan: { id: number; monto: number; inicio: number; fin: number; canal: Pago['canal'] }) => {
     const p: Pyme = {
       id: uid(), propietario_id: owner, nombre_comercial: nombre, rut_empresa: rut, rubro, descripcion: `${nombre}: atención cercana para tu mascota.`, comuna_id: comuna,
-      direccion, latitud: String(lat), longitud: String(lng), telefono: null, whatsapp: null, horario: { 'lun-vie': '09:00-18:00', sab: '10:00-14:00' }, servicios, estado_verificacion: 'aprobada', creado_en: t,
+      direccion, latitud: String(lat), longitud: String(lng), telefono: null, whatsapp: null, horario: { 'lun-vie': '09:00-18:00', sab: '10:00-14:00' }, servicios, estado_verificacion: 'aprobada', creado_en: t(),
     }
     db.pymes.push(p)
     const s: Suscripcion = { id: uid(), pyme_id: p.id, plan_id: plan.id, inicio: dayOffset(plan.inicio), fin: dayOffset(plan.fin), estado: 'activa' }
@@ -163,15 +169,15 @@ function seed(): Db {
   pyme(peluqueria, 'Peluquería Canina Patagonia', '76555666-7', 'peluqueria', 2, 'Varas 300, Puerto Montt', -41.4689, -72.9411, ['Baño', 'Corte de raza', 'Corte de uñas'], { id: 2, monto: 10_000, inicio: -65, fin: -35, canal: 'transferencia' })
 
   const sucursal = (pyme_id: string, nombre: string, comuna_id: number, direccion: string, lat: number, lng: number, descripcion: string | null, servicios: string[]) => {
-    const s: Sucursal = { id: uid(), pyme_id, nombre, comuna_id, direccion, latitud: String(lat), longitud: String(lng), telefono: null, whatsapp: null, horario: { 'lun-vie': '10:00-19:00', sab: '10:00-14:00' }, descripcion, servicios, creado_en: t }
+    const s: Sucursal = { id: uid(), pyme_id, nombre, comuna_id, direccion, latitud: String(lat), longitud: String(lng), telefono: null, whatsapp: null, horario: { 'lun-vie': '10:00-19:00', sab: '10:00-14:00' }, descripcion, servicios, creado_en: t() }
     db.sucursales.push(s)
     return s.id
   }
   sucursal(vet, 'Sucursal Rahue', 1, 'Av. República 450, Osorno', -40.5690, -73.1560, 'Atención preventiva y peluquería clínica en el sector Rahue.', ['Consulta general', 'Vacunación', 'Peluquería clínica'])
   const huellitasPm = sucursal(shop, 'Huellitas Puerto Montt', 2, 'Urmeneta 620, Puerto Montt', -41.4717, -72.9396, null, [])
   db.miembros.push(
-    { id: uid(), pyme_id: vet, usuario_id: clinico, rol: 'clinico', sucursal_id: null, permisos: ['pacientes'], creado_en: t },
-    { id: uid(), pyme_id: shop, usuario_id: jefe, rol: 'jefe_local', sucursal_id: huellitasPm, permisos: ['perfil', 'catalogo', 'contactos', 'metricas'], creado_en: t },
+    { id: uid(), pyme_id: vet, usuario_id: clinico, rol: 'clinico', sucursal_id: null, permisos: ['pacientes'], creado_en: t() },
+    { id: uid(), pyme_id: shop, usuario_id: jefe, rol: 'jefe_local', sucursal_id: huellitasPm, permisos: ['perfil', 'catalogo', 'contactos', 'metricas'], creado_en: t() },
   )
 
   for (const [nombre, descripcion, precio, tipo, categoria, oferta] of [
@@ -179,10 +185,10 @@ function seed(): Db {
     ['Arnés ajustable', 'Arnés acolchado talla M', 12990, 'producto', 'Accesorios', { precio_clp: 10990, desde: dayOffset(0), hasta: dayOffset(14) }],
     ['Shampoo hipoalergénico', 'Para pieles sensibles', 7990, 'producto', 'Higiene', null],
     ['Baño y corte', 'Servicio de peluquería', 18000, 'servicio', 'Servicios', null],
-  ] as const) db.catalogo.push({ id: uid(), pyme_id: shop, tipo, nombre, descripcion, precio_referencial_clp: precio, disponible: true, categoria, sin_stock: false, oferta: oferta ? { ...oferta } : null, creado_en: t })
+  ] as const) db.catalogo.push({ id: uid(), pyme_id: shop, tipo, nombre, descripcion, precio_referencial_clp: precio, disponible: true, categoria, sin_stock: false, oferta: oferta ? { ...oferta } : null, creado_en: t() })
 
   const luna: MascotaRow = {
-    id: uid(), tutor_id: tutor, nombre: 'Luna', especie: 'perro', raza: 'Labrador', sexo: 'hembra', fecha_nacimiento: null, foto_url: '/img/perro-retrato.jpg', ficha_version: 1, creado_en: t,
+    id: uid(), tutor_id: tutor, nombre: 'Luna', especie: 'perro', raza: 'Labrador', sexo: 'hembra', fecha_nacimiento: null, foto_url: '/img/perro-retrato.jpg', ficha_version: 1, creado_en: t(),
     datos_clinicos: ficha({
       vacunas: [{ nombre: 'Antirrábica', fecha: '2026-03-14', proxima: '2027-03-14' }],
       alergias: [{ agente: 'Pollo', reaccion: 'Dermatitis', gravedad: 'moderada' }],
@@ -191,12 +197,12 @@ function seed(): Db {
     }),
   }
   db.mascotas.push(luna)
-  db.medallas.push({ id: uid(), mascota_id: luna.id, token: uid().replace(/-/g, ''), estado: 'activa', emitida_en: t })
+  db.medallas.push({ id: uid(), mascota_id: luna.id, token: uid().replace(/-/g, ''), estado: 'activa', emitida_en: t() })
 
   const ong = (correo: string, nombre: string, tipo: Ong['tipo'], comuna: number, estado: Ong['estado_verificacion'], perfil: OngPerfil | null) => {
     const o: Ong = {
       id: uid(), propietario_id: user(correo, 'ong', nombre, comuna), nombre, tipo, descripcion: `${nombre}: rescatamos y damos en adopción responsable a perros y gatos de la zona.`, comuna_id: comuna, contacto: correo, redes_sociales: null,
-      estado_verificacion: estado, perfil_publicado: perfil, perfil_borrador: perfil, perfil_estado: perfil ? 'publicado' : 'sin_enviar', perfil_motivo: null, creado_en: t,
+      estado_verificacion: estado, perfil_publicado: perfil, perfil_borrador: perfil, perfil_estado: perfil ? 'publicado' : 'sin_enviar', perfil_motivo: null, creado_en: t(),
     }
     db.ongs.push(o)
     return o.id
@@ -212,7 +218,7 @@ function seed(): Db {
   const nueva = ong('ong2@petsuite.cl', 'Rescate Nuevo', 'rescatista_independiente', 2, 'pendiente', null)
   const historial = () => ficha({ vacunas: [{ nombre: 'Óctuple', fecha: '2026-07-02' }], tratamientos: [{ descripcion: 'Desparasitación', inicio: '2026-07-02' }] })
   const animal = (ong_id: string, nombre: string, especie: string, raza: string, edad: string, salud: string | null, historia: string, foto: string | null, h = historial()): Animal =>
-    ({ id: uid(), ong_id, nombre, especie, raza, edad_estimada: edad, estado_salud: salud, historia, historial_salud: h, foto_url: foto, estado: 'disponible', mascota_id: null, publicado_en: t })
+    ({ id: uid(), ong_id, nombre, especie, raza, edad_estimada: edad, estado_salud: salud, historia, historial_salud: h, foto_url: foto, estado: 'disponible', mascota_id: null, publicado_en: t() })
   db.animales.push(
     animal(patitas, 'Canela', 'perro', 'Mestiza', '1 a 2 años', 'Sana, esterilizada y vacunada', 'Rescatada de la vía pública en Osorno. Es cariñosa y se lleva bien con otros perros.', '/img/canela.jpg'),
     animal(patitas, 'Tomás', 'gato', 'Europeo', '6 meses', 'Sano y desparasitado', 'Encontrado junto a su camada. Juguetón y muy sociable.', '/img/gato-atigrado.jpg'),
@@ -237,7 +243,7 @@ function seed(): Db {
 
   // Publicidad: dos banners aprobados y uno de la ONG esperando al asesor.
   const banner = (autor_tipo: Banner['autor_tipo'], autor_id: string, titulo: string, texto: string, destino: Banner['destino'], ubicacion: Banner['ubicacion'], tono: Banner['tono'], estado: Banner['estado'], desde: number, hasta: number): Banner =>
-    ({ id: uid(), autor_tipo, autor_id, titulo, texto, destino, ubicacion, comuna_id: null, tono, desde: dayOffset(desde), hasta: dayOffset(hasta), estado, motivo: null, revisado_por: estado === 'aprobado' ? asesor : null, impresiones: estado === 'aprobado' ? 140 : 0, clics: estado === 'aprobado' ? 12 : 0, creado_en: t })
+    ({ id: uid(), autor_tipo, autor_id, titulo, texto, destino, ubicacion, comuna_id: null, tono, desde: dayOffset(desde), hasta: dayOffset(hasta), estado, motivo: null, revisado_por: estado === 'aprobado' ? asesor : null, impresiones: estado === 'aprobado' ? 140 : 0, clics: estado === 'aprobado' ? 12 : 0, creado_en: t() })
   db.banners.push(
     banner('pyme', shop, 'Arnés ajustable con precio de oferta', 'Pasa por cualquiera de nuestras sucursales en Osorno y Puerto Montt.', 'perfil', 'inicio', 'calido', 'aprobado', -2, 12),
     banner('pyme', vet, 'Operativo de vacunación en Rahue', 'Antirrábica y óctuple con hora agendada durante este mes.', 'perfil', 'directorio', 'acento', 'aprobado', -1, 20),
@@ -251,19 +257,19 @@ function seed(): Db {
   const convenioVet: Convenio = {
     id: uid(), pyme_id: vet, ong_id: patitas, titulo: 'Consulta general con 10 % de descuento', descuento_pct: 10, condiciones: 'Presenta el código en recepción. No acumulable con otras ofertas.',
     codigo: 'PATITAS-SUR10', desde: dayOffset(-60), hasta: dayOffset(60), meta_mensual: 100, premio: 'Premio de alimentos PetSuite: 2 sacos de 15 kg', estado: 'activo', motivo: null,
-    premios: [{ mes: mesPasado.toISOString().slice(0, 7), otorgado_en: mesPasado.toISOString() }], creado_en: t,
+    premios: [{ mes: mesPasado.toISOString().slice(0, 7), otorgado_en: mesPasado.toISOString() }], creado_en: t(),
   }
   db.convenios.push(convenioVet, {
     id: uid(), pyme_id: shop, ong_id: patitas, titulo: 'Accesorios con 15 % de descuento', descuento_pct: 15, condiciones: 'Válido en accesorios. Un uso por compra.',
-    codigo: 'PATITAS-HUELLITAS15', desde: dayOffset(0), hasta: dayOffset(60), meta_mensual: 100, premio: 'Premio de alimentos PetSuite: 2 sacos de 15 kg', estado: 'pendiente_asesor', motivo: null, premios: [], creado_en: t,
+    codigo: 'PATITAS-HUELLITAS15', desde: dayOffset(0), hasta: dayOffset(60), meta_mensual: 100, premio: 'Premio de alimentos PetSuite: 2 sacos de 15 kg', estado: 'pendiente_asesor', motivo: null, premios: [], creado_en: t(),
   })
   const diaDelMes = hoyLocal.getDate()
   for (let i = 0; i < 62; i++) db.canjes.push({ id: uid(), convenio_id: convenioVet.id, sucursal_id: null, monto_clp: 18_000, registrado_por: clinico, ocurrido_en: mediodia(diaDelMes - (i % diaDelMes)).toISOString() })
   for (let i = 0; i < 100; i++) db.canjes.push({ id: uid(), convenio_id: convenioVet.id, sucursal_id: null, monto_clp: 18_000, registrado_por: clinico, ocurrido_en: mediodia(-(i % 25)).toISOString() })
 
   db.correos.push(
-    { id: uid(), para: 'jefe@petsuite.cl', asunto: 'Tu cuenta de equipo en Huellitas Osorno', tipo: 'cuenta_equipo', enviado_en: t, cuerpo: 'Hola, Paula:\n\nHuellitas Osorno te dio acceso como jefe de local de Huellitas Puerto Montt.\n\nCorreo: jefe@petsuite.cl\nClave temporal: petsuite123\n\nTe recomendamos cambiarla al ingresar.\n\nEquipo PetSuite' },
-    { id: uid(), para: 'tutor@petsuite.cl', asunto: 'Bienvenida a PetSuite', tipo: 'bienvenida', enviado_en: t, cuerpo: 'Hola, Ana:\n\nTu cuenta de tutor está lista. Crea la Ficha Única de tu mascota y activa su QR de emergencia.\n\nEquipo PetSuite' },
+    { id: uid(), para: 'jefe@petsuite.cl', asunto: 'Tu cuenta de equipo en Huellitas Osorno', tipo: 'cuenta_equipo', enviado_en: t(), cuerpo: 'Hola, Paula:\n\nHuellitas Osorno te dio acceso como jefe de local de Huellitas Puerto Montt.\n\nCorreo: jefe@petsuite.cl\nClave temporal: petsuite123\n\nTe recomendamos cambiarla al ingresar.\n\nEquipo PetSuite' },
+    { id: uid(), para: 'tutor@petsuite.cl', asunto: 'Bienvenida a PetSuite', tipo: 'bienvenida', enviado_en: t(), cuerpo: 'Hola, Ana:\n\nTu cuenta de tutor está lista. Crea la Ficha Única de tu mascota y activa su QR de emergencia.\n\nEquipo PetSuite' },
   )
   db.solicitudes_privacidad.push({ id: uid(), usuario_id: tutor2, derecho: 'acceso', detalle: 'Quiero saber qué datos personales guarda PetSuite sobre mí.', estado: 'recibida', respuesta: null, creado_en: hace(3 * 1440), vence_en: dayOffset(27), respondido_en: null })
   return db

@@ -2,10 +2,10 @@
 // CMS de ONG, correos transaccionales, cobranza con Orcob y derechos de la Ley 21.719.
 // server.ts las registra con sus utilidades (auth, parse, planes) para mantener un único enrutador.
 import { z } from 'zod'
-import type { Session } from '../api'
+import type { Session } from '../shared/api'
 import { db, now, uid, dayOffset, VERSION_PRIVACIDAD, type Animal, type Banner, type Convenio, type Correo, type Miembro, type OngPerfil, type Pyme, type SolicitudPrivacidad, type Usuario } from './db'
-import { DIAS_DERIVAR_COBRANZA, ONG_CUPOS, planPorId, type Limites, type Plan } from '../plans'
-import { ROLES_EQUIPO, type ModuloPyme, type Rol } from '../permissions'
+import { DIAS_DERIVAR_COBRANZA, ONG_CUPOS, planPorId, type Limites, type Plan } from '../modules/plans/plans'
+import { ROLES_EQUIPO, type ModuloPyme, type Rol } from '../shared/permissions'
 import { derivarCobranza } from './orcob'
 
 type Req = { params: Record<string, string>; query: URLSearchParams; body: unknown; session: Session | null }
@@ -197,6 +197,11 @@ export function registerSuiteRoutes(ctx: Ctx) {
   }).refine(b => b.hasta >= b.desde, { message: 'La fecha de término debe ser posterior al inicio', path: ['hasta'] })
     .refine(b => b.desde >= dayOffset(0), { message: 'El banner no puede empezar en el pasado', path: ['desde'] })
     .refine(b => b.hasta <= sumarDias(b.desde, 30), { message: 'Un banner dura como máximo 30 días; luego puedes renovarlo', path: ['hasta'] })
+  const parseBanner = (body: unknown) => {
+    const d = parse(bannerSchema, body)
+    if (d.comuna_id !== null && !db.comunas.some(c => c.id === d.comuna_id)) fail(400, 'Comuna no válida')
+    return d
+  }
   const activoONuevo = (b: Banner) => (b.estado === 'pendiente' || b.estado === 'aprobado') && b.hasta >= dayOffset(0)
   const nuevoBanner = (autor_tipo: Banner['autor_tipo'], autor_id: string, d: z.infer<typeof bannerSchema>): Banner =>
     ({ id: uid(), autor_tipo, autor_id, ...d, estado: 'pendiente', motivo: null, revisado_por: null, impresiones: 0, clics: 0, creado_en: now() })
@@ -205,7 +210,7 @@ export function registerSuiteRoutes(ctx: Ctx) {
   on('GET', '/pymes/:id/banners', req => { const p = miPyme(req, 'publicidad'); return db.banners.filter(b => b.autor_tipo === 'pyme' && b.autor_id === p.id).sort((a, b) => b.creado_en.localeCompare(a.creado_en)) })
   on('POST', '/pymes/:id/banners', req => {
     const p = miPyme(req, 'publicidad')
-    const d = parse(bannerSchema, req.body)
+    const d = parseBanner(req.body)
     if (p.estado_verificacion !== 'aprobada') return fail(422, 'Tu negocio debe estar verificado para publicar banners')
     if (d.destino === 'adopciones') return fail(400, 'Los banners de adopción son exclusivos de las ONG')
     exigirCupo(p.id, 'banners')
@@ -224,7 +229,7 @@ export function registerSuiteRoutes(ctx: Ctx) {
   on('GET', '/ong/banners', req => { const o = miOng(req); return db.banners.filter(b => b.autor_tipo === 'ong' && b.autor_id === o.id).sort((a, b) => b.creado_en.localeCompare(a.creado_en)) })
   on('POST', '/ong/banners', req => {
     const o = miOng(req)
-    const d = parse(bannerSchema, req.body)
+    const d = parseBanner(req.body)
     if (o.estado_verificacion !== 'aprobada') return fail(422, 'Tu organización debe estar verificada para publicar banners')
     if (ONG_CUPOS.banners !== null && db.banners.filter(b => b.autor_tipo === 'ong' && b.autor_id === o.id && activoONuevo(b)).length >= ONG_CUPOS.banners) return fail(422, `Las ONG pueden tener ${ONG_CUPOS.banners} banner activo a la vez, sin costo`)
     const b = nuevoBanner('ong', o.id, d)

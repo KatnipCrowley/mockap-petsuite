@@ -1,12 +1,13 @@
 // API simulado de PetSuite: mismas rutas, validaciones y reglas que el servidor real (server/src/routes),
 // resueltas en el navegador sobre mock/db.ts. Los mensajes de error se mantienen en español.
 import { z } from 'zod'
-import { ApiError, type FichaDatos, type Session } from '../api'
+import type { FichaDatos, Session } from '../shared/api'
+import { ApiError } from '../shared/errors'
 import { db, ficha, now, refresh, save, uid, dayOffset, consentimientosBase, type Animal, type Item, type MascotaRow, type Miembro, type Publicacion, type Pyme, type Usuario } from './db'
-import type { Oferta } from '../api'
-import { businessContactSchema, businessProfileSchema, businessReplySchema, userSuspensionSchema } from '../validators'
-import { DIAS_GRACIA, DIAS_PERIODO, PLANES, PLAN_GRATIS, dentroDelLimite, etiquetasLimite, limiteTexto, planPorId, type Limites, type Plan } from '../plans'
-import { PERMISOS_ADMIN, PERMISOS_ASESOR, PERMISOS_DUENO, type ModuloPyme } from '../permissions'
+import type { Oferta } from '../shared/api'
+import { businessContactSchema, businessProfileSchema, businessReplySchema, userSuspensionSchema } from '../shared/validators'
+import { DIAS_GRACIA, DIAS_PERIODO, PLANES, PLAN_GRATIS, dentroDelLimite, etiquetasLimite, limiteTexto, planPorId, type Limites, type Plan } from '../modules/plans/plans'
+import { PERMISOS_ADMIN, PERMISOS_ASESOR, PERMISOS_DUENO, type ModuloPyme } from '../shared/permissions'
 import { crearCobro } from './orcob'
 import { enviarCorreo, registerSuiteRoutes } from './suite'
 
@@ -498,6 +499,7 @@ on('POST', '/pymes', req => {
   if (db.pymes.some(p => p.rut_empresa.toLowerCase() === d.rut_empresa.toLowerCase())) return fail(409, 'Ese RUT de empresa ya está registrado')
   const plan = PLANES.find(p => p.id === d.plan_id)
   if (!plan) return fail(400, 'Plan no disponible')
+  if (!db.comunas.some(c => c.id === d.comuna_id)) return fail(400, 'Comuna no válida')
   const p: Pyme = {
     id: uid(), propietario_id: u.id, nombre_comercial: d.nombre_comercial, rut_empresa: d.rut_empresa, rubro: d.rubro, descripcion: d.descripcion ?? null, comuna_id: d.comuna_id,
     direccion: d.direccion ?? null, latitud: d.latitud != null ? String(d.latitud) : null, longitud: d.longitud != null ? String(d.longitud) : null,

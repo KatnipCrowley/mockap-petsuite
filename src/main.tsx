@@ -4,11 +4,11 @@ import App from './App'
 import '@fontsource-variable/inter'
 import '@fontsource-variable/plus-jakarta-sans'
 import 'leaflet/dist/leaflet.css'
-import './styles.css'
-import './design.css'
-import './design-pages.css'
-import './design-polish.css'
-import './design-suite.css'
+import './styles/styles.css'
+import './styles/design.css'
+import './styles/design-pages.css'
+import './styles/design-polish.css'
+import './styles/design-suite.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode><App /></StrictMode>,

@@ -1,6 +1,6 @@
 # PetSuite: modelo de negocio, roles y reglas
 
-Versión 2026-10. Fuente de verdad en código: `src/plans.ts` (planes y límites) y `src/permissions.ts` (roles y módulos). Si cambias un valor aquí, cámbialo también allí.
+Versión 2026-10. Fuente de verdad en código: `src/modules/plans/plans.ts` (planes y límites) y `src/shared/permissions.ts` (roles y módulos). Si cambias un valor aquí, cámbialo también allí.
 
 ## 1. Actores
 
@@ -106,7 +106,7 @@ Tarifa plana mensual, sin comisiones por venta. Precios en CLP.
 
 Las ONG no pagan. Tienen 1 banner activo y convenios sin límite. Todo pasa por el asesor.
 
-Los precios los definió el equipo. Los límites son una propuesta inicial y se ajustan en `src/plans.ts`.
+Los precios los definió el equipo. Los límites son una propuesta inicial y se ajustan en `src/modules/plans/plans.ts`.
 
 ## 5. Reglas de negocio
 
