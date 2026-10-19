@@ -777,13 +777,17 @@ button:disabled { cursor: not-allowed; opacity: .55; }
   .health-form-modal input, .health-form-modal select, .health-form-modal textarea, .public-contact-demo textarea { font-size: 16px; }
   .public-emergency-brand > span:last-child { font-size: 9px; }
 }
+.qr-print-page { display: none; }
 @media print {
-  .app-shell { display: block; min-height: 0; background: #fff; }
-  .app-shell > .sidebar, .app-shell > .main-content { display: none !important; }
-  .app-shell > .modal-backdrop { position: static; display: block; padding: 0; background: #fff; }
-  .public-qr-modal { max-width: none; border: 0; box-shadow: none; }
-  .public-qr-modal .close, .public-qr-modal .qr-actions, .public-qr-modal .qr-link-actions, .public-qr-modal .qr-disclaimer { display: none; }
-  .public-qr-modal .qr-display img { width: 360px; }
+  @page { size: A4 portrait; margin: 12mm; }
+  html:has(.qr-print-page) { background: #fff !important; }
+  body:has(.qr-print-page) > #root { display: none !important; }
+  body:has(.qr-print-page) { min-width: 0; margin: 0; background: #fff !important; }
+  .qr-print-page { display: block !important; width: 186mm; color: #000; background: #fff; font-family: Arial, sans-serif; }
+  .qr-print-medal { box-sizing: border-box; width: 60mm; min-height: 70mm; padding: 3mm; display: grid; justify-items: center; align-content: start; gap: 1mm; break-inside: avoid; text-align: center; }
+  .qr-print-medal strong { max-width: 54mm; font-size: 14pt; line-height: 1.2; overflow-wrap: anywhere; }
+  .qr-print-medal img { width: 46mm; height: 46mm; image-rendering: auto; }
+  .qr-print-medal span { font-size: 9pt; line-height: 1.2; }
 }
 
 /* Mapa Leaflet + OpenStreetMap del directorio */

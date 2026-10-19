@@ -251,3 +251,11 @@ Antes de finalizar cualquier cambio, se debe agregar una entrada con:
 - Motivo: permitir a quien encuentra una mascota consultar inmediatamente la información crítica y avisar al tutor desde cualquier tamaño de pantalla, sin exponer datos privados.
 - Dependencia para la próxima semana: el contrato actual devuelve 404 tanto para tokens inexistentes como desactivados. Para mostrar el estado distinguible de medalla desactivada hace falta 410 en el mock y el API real; hoy 404 muestra «no existe o ya no está activo». No se modificaron `src/mock/` ni `backend/`.
 - Verificación ejecutada: `npx tsc -b`, `npm run build -- --base=/mockap-petsuite/`, `node --test src/*.test.mjs backend/*.test.mjs` (13/13) y `git diff --check`, correctos. Revisión con Chromium y respuestas simuladas en navegador para los seis estados en 390 y 1366 px, claro y oscuro; sin errores de consola ni desbordamiento horizontal, contraste de textos críticos ≥4,5:1 y reflujo a 195 px (espacio disponible al 200 % de zoom en 390 px). Capturas en `docs/capturas/fe-01/`.
+
+### FE-02 · Descarga e impresión del QR
+
+- Fecha: 2026-10-19.
+- Archivos modificados o agregados: `src/tutor.tsx`, `src/styles.css`, `docs/capturas/fe-02/README.md` y capturas/PDF, `AGENTS.md`.
+- Cambio realizado: el PNG se genera a 1200 × 1200 píxeles y se descarga con un nombre seguro derivado del nombre de la mascota. La impresión se separa en una vista exclusiva de una medalla de 60 × 70 mm sobre A4; muestra solo nombre, QR de 46 mm y texto «Escanéame si me encuentras», en blanco y negro.
+- Motivo: ofrecer un archivo legible y una impresión a tamaño medalla sin incluir la interfaz del tutor ni datos médicos o privados en el papel.
+- Verificación ejecutada: `npx tsc -b`, `npm run build -- --base=/mockap-petsuite/`, `node --test src/*.test.mjs backend/*.test.mjs` y `git diff --check`. Chromium: descarga PNG, hoja A4 y revisión visual a 390 y 1366 px en claro y oscuro; capturas y PDF en `docs/capturas/fe-02/`. El escaneo físico con dos teléfonos requiere validación manual; un QR del mock local no se comparte entre navegadores sin API compartida.
