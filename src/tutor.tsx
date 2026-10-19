@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { AlertCircle, ArrowRight, CalendarDays, Check, ChevronRight, CirclePlus, Copy, Download, MessageCircle, PawPrint, Pencil, Printer, QrCode, ShieldCheck, TriangleAlert, X } from 'lucide-react'
 import QRCode from 'qrcode'
 import { LogoMark, Loading, Photo } from './media'
@@ -241,14 +242,21 @@ function QrModal({ pet, onClose, onChanged }: { pet: Mascota; onClose: () => voi
   const url = token ? qrUrl(token) : ''
   useEffect(() => {
     if (!url) { setSrc(''); return }
-    QRCode.toDataURL(url, { width: 540, margin: 3, errorCorrectionLevel: 'M', color: { dark: '#171717', light: '#ffffff' } }).then(setSrc).catch(() => setError('No se pudo generar el QR.'))
+    QRCode.toDataURL(url, { width: 1200, margin: 4, errorCorrectionLevel: 'M', color: { dark: '#171717', light: '#ffffff' } }).then(setSrc).catch(() => setError('No se pudo generar el QR.'))
   }, [url])
   const act = async (fn: () => Promise<unknown>) => { setBusy(true); setError(''); try { await fn(); await onChanged() } catch (e) { setError(errorText(e)) } finally { setBusy(false) } }
   const issue = () => act(() => api(`/mascotas/${pet.id}/medallas`, { method: 'POST' }))
   const disable = () => act(() => api(`/mascotas/${pet.id}/medallas/activa`, { method: 'DELETE' }))
-  const download = () => { if (!src) return; const link = document.createElement('a'); link.href = src; link.download = `petsuite-${pet.nombre.toLowerCase()}-qr.png`; link.click() }
+  const download = () => {
+    if (!src) return
+    const name = pet.nombre.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'mascota'
+    const link = document.createElement('a')
+    link.href = src
+    link.download = `petsuite-${name}-qr.png`
+    link.click()
+  }
   const copy = async () => { try { await navigator.clipboard.writeText(url); setCopied(true) } catch { setError('No se pudo copiar el enlace. Ábrelo en otra pestaña para compartirlo.') } }
-  return <div className="modal-backdrop"><div className="modal qr-modal public-qr-modal" role="dialog" aria-modal="true" aria-labelledby="qr-title"><button type="button" className="close" aria-label="Cerrar QR" onClick={onClose}><X size={20} /></button><p className="eyebrow">MEDALLA DE EMERGENCIA</p><h2 id="qr-title">QR de {pet.nombre}</h2>
+  return <><div className="modal-backdrop"><div className="modal qr-modal public-qr-modal" role="dialog" aria-modal="true" aria-labelledby="qr-title"><button type="button" className="close" aria-label="Cerrar QR" onClick={onClose}><X size={20} /></button><p className="eyebrow">MEDALLA DE EMERGENCIA</p><h2 id="qr-title">QR de {pet.nombre}</h2>
     {token ? <>
       <p className="muted">Funciona sin iniciar sesión ni instalar nada, desde cualquier teléfono.</p>
       <div className="qr-display">{src ? <img src={src} alt={`Código QR de emergencia de ${pet.nombre}`} /> : <span>{error || 'Generando QR...'}</span>}</div>
@@ -262,7 +270,7 @@ function QrModal({ pet, onClose, onChanged }: { pet: Mascota; onClose: () => voi
     </>}
     {error && token && <p className="form-error" role="alert">{error}</p>}
     {error && !token && <p className="form-error" role="alert">{error}</p>}
-  </div></div>
+  </div></div>{src && token && createPortal(<div className="qr-print-page" aria-hidden="true"><div className="qr-print-medal"><strong>{pet.nombre}</strong><img src={src} alt="" /><span>Escanéame si me encuentras</span></div></div>, document.body)}</>
 }
 
 // UC-10 / UC-11 · Vista pública: sin cuenta. El servidor solo entrega campos autorizados.

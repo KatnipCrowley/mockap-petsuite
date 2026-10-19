@@ -240,3 +240,13 @@ Antes de finalizar cualquier cambio, se debe agregar una entrada con:
 - Motivo: aplicar los cambios de la reunión de octubre: remarcar el modelo de suscripción, definir roles y reglas de negocio, empresas con varias sucursales, gestión por asesores y cumplimiento de la nueva ley de datos, manteniendo como núcleo la Ficha Única y el QR.
 - Limitaciones declaradas: los límites por plan son una propuesta (el equipo solo fijó los precios). Orcob y el correo son simulados. Las claves temporales viajan en texto en el correo demo; en producción se usaría un enlace de activación de un solo uso. El cumplimiento de la Ley 21.719 debe validarlo una asesoría legal.
 - Verificación ejecutada: `npx tsc -b` sin errores y `npm run build -- --base=/mockap-petsuite/` correcto. `node --test src/admin-suspension.test.mjs src/business.test.mjs src/business-rules.test.mjs backend/server.test.mjs`: 13 de 13 pruebas (7 nuevas de reglas de negocio). Recorrido con Playwright (Chromium) por las 9 cuentas demo y todas sus vistas a 1366 px y 390 px, más `#planes`, `#adopciones` y `#ong/<id>`: sin errores de consola ni desplazamiento horizontal. `git diff --check` correcto.
+
+## 2026-10-19
+
+### FE-02 · Descarga e impresión del QR
+
+- Fecha: 2026-10-19.
+- Archivos modificados o agregados: `src/tutor.tsx`, `src/styles.css`, `docs/capturas/fe-02/README.md` y capturas/PDF, `AGENTS.md`.
+- Cambio realizado: el PNG se genera a 1200 × 1200 píxeles y se descarga con un nombre seguro derivado del nombre de la mascota. La impresión se separa en una vista exclusiva de una medalla de 60 × 70 mm sobre A4; muestra solo nombre, QR de 46 mm y texto «Escanéame si me encuentras», en blanco y negro.
+- Motivo: ofrecer un archivo legible y una impresión a tamaño medalla sin incluir la interfaz del tutor ni datos médicos o privados en el papel.
+- Verificación ejecutada: `npx tsc -b`, `npm run build -- --base=/mockap-petsuite/`, `node --test src/*.test.mjs backend/*.test.mjs` y `git diff --check`. Chromium: descarga PNG, hoja A4 y revisión visual a 390 y 1366 px en claro y oscuro; capturas y PDF en `docs/capturas/fe-02/`. El escaneo físico con dos teléfonos requiere validación manual; un QR del mock local no se comparte entre navegadores sin API compartida.
