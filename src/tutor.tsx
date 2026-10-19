@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { AlertCircle, ArrowRight, CalendarDays, Check, ChevronRight, CirclePlus, Copy, Download, MessageCircle, PawPrint, Pencil, Printer, QrCode, ShieldCheck, TriangleAlert, X } from 'lucide-react'
 import QRCode from 'qrcode'
 import { LogoMark, Loading, Photo } from './media'
-import { api, edadDesde, emptyFicha, errorText, iniciales, type FichaDatos, type Mascota, type PublicaEmergencia, type PymeResumen, type RegistroMeta } from './api'
+import { ApiError, api, edadDesde, emptyFicha, errorText, iniciales, type FichaDatos, type Mascota, type PublicaEmergencia, type PymeResumen, type RegistroMeta } from './api'
 import { emergencyContactSchema, medicalEntrySchema, petDetailsSchema, petHealthSchema } from './validators'
 import { AdoptionCatalog } from './adoption'
 import { CommunityView } from './community'
@@ -268,7 +268,8 @@ function QrModal({ pet, onClose, onChanged }: { pet: Mascota; onClose: () => voi
 // UC-10 / UC-11 · Vista pública: sin cuenta. El servidor solo entrega campos autorizados.
 export function EmergencyView({ token }: { token: string | null }) {
   const [pet, setPet] = useState<PublicaEmergencia | null>(null)
-  const [state, setState] = useState<'loading' | 'ok' | 'invalid'>('loading')
+  const [state, setState] = useState<'loading' | 'ok' | 'invalid' | 'disabled' | 'network'>('loading')
+  const [attempt, setAttempt] = useState(0)
   const [form, setForm] = useState({ message: '', name: '', contact: '' })
   const [place, setPlace] = useState<{ latitud: number; longitud: number } | null>(null)
   const [sent, setSent] = useState(false)
@@ -276,13 +277,28 @@ export function EmergencyView({ token }: { token: string | null }) {
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
+    let cancelled = false
+    setPet(null)
     if (!token) { setState('invalid'); return }
-    api<PublicaEmergencia>(`/qr/${token}`).then(p => { setPet(p); setState('ok') }).catch(() => setState('invalid'))
-  }, [token])
+    setState('loading')
+    setSent(false)
+    api<PublicaEmergencia>(`/qr/${token}`).then(p => {
+      if (!cancelled) { setPet(p); setState('ok') }
+    }).catch(e => {
+      if (!cancelled) setState(e instanceof ApiError && e.status === 410 ? 'disabled' : e instanceof ApiError && e.status === 404 ? 'invalid' : 'network')
+    })
+    return () => { cancelled = true }
+  }, [token, attempt])
 
-  if (state === 'loading') return <div className="emergency-page"><div className="emergency-card emergency-invalid"><PawPrint size={35} /><p className="muted">Cargando ficha...</p></div></div>
-  if (state === 'invalid' || !pet) return <div className="emergency-page"><div className="emergency-card emergency-invalid"><QrCode size={35} /><h1>Medalla no válida</h1><p className="muted">Este código no está activo o no existe. Si encontraste una mascota, pide ayuda a un vecino o a una veterinaria cercana.</p><a className="secondary" href="/">Ir a PetSuite</a></div></div>
-  if (sent) return <div className="emergency-page"><div className="emergency-card emergency-invalid"><div className="success-mark"><Check size={26} /></div><h1>Aviso enviado</h1><p className="muted">Enviamos tu mensaje al tutor de {pet.nombre}. Gracias por ayudar. No se muestran datos personales del tutor.</p></div></div>
+  const retry = () => { setState('loading'); setAttempt(value => value + 1) }
+  if (state === 'loading' && !token) return <div className="emergency-page"><main className="emergency-card emergency-invalid"><QrCode size={35} aria-hidden="true" /><h1>Medalla no válida</h1><p>El enlace no incluye un código de medalla. Si encontraste una mascota, pide ayuda a una veterinaria cercana.</p><a className="secondary" href={import.meta.env.BASE_URL}>Ir a PetSuite</a></main></div>
+  if (state === 'loading') return <div className="emergency-page"><main className="emergency-card emergency-invalid" role="status"><PawPrint size={35} aria-hidden="true" /><h1>Cargando ficha</h1><p>Estamos buscando la información de emergencia.</p></main></div>
+  if (state !== 'ok' || !pet) {
+    const disabled = state === 'disabled'
+    const network = state === 'network'
+    return <div className="emergency-page"><main className="emergency-card emergency-invalid"><QrCode size={35} aria-hidden="true" /><h1>{network ? 'No pudimos cargar la ficha' : disabled ? 'Medalla desactivada' : 'Medalla no válida'}</h1><p>{network ? 'Revisa tu conexión e inténtalo de nuevo. Si es urgente, pide ayuda a una veterinaria cercana.' : disabled ? 'Esta medalla ya no permite consultar la ficha. Si encontraste una mascota, pide ayuda a una veterinaria cercana.' : 'Este código no existe o ya no está activo. Si encontraste una mascota, pide ayuda a una veterinaria cercana.'}</p>{network ? <button type="button" className="primary" onClick={retry}>Reintentar</button> : <a className="secondary" href={import.meta.env.BASE_URL}>Ir a PetSuite</a>}</main></div>
+  }
+  if (sent) return <div className="emergency-page"><main className="emergency-card emergency-invalid" role="status"><div className="success-mark"><Check size={26} aria-hidden="true" /></div><h1>Aviso enviado</h1><p>Enviamos tu mensaje al tutor de {pet.nombre}. Gracias por ayudar. No se muestran datos personales del tutor.</p></main></div>
 
   const locate = () => navigator.geolocation?.getCurrentPosition(
     pos => setPlace({ latitud: Number(pos.coords.latitude.toFixed(3)), longitud: Number(pos.coords.longitude.toFixed(3)) }),
@@ -290,17 +306,20 @@ export function EmergencyView({ token }: { token: string | null }) {
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
     const result = emergencyContactSchema.safeParse({ message: form.message })
-    if (!result.success) { setError(result.error.issues[0]?.message || 'Revisa tu mensaje'); return }
+    if (!result.success) { setError(result.error.issues[0]?.message || 'Revisa tu mensaje'); document.getElementById('emergency-message')?.focus(); return }
     setBusy(true); setError('')
     try {
       await api(`/qr/${token}/mensajes`, { method: 'POST', body: { mensaje: result.data.message, ...(form.name.trim() ? { nombre: form.name.trim() } : {}), ...(form.contact.trim() ? { contacto: form.contact.trim() } : {}), ...(place || {}) } })
       setSent(true)
-    } catch (e) { setError(errorText(e)) } finally { setBusy(false) }
+    } catch (e) {
+      if (e instanceof ApiError && (e.status === 404 || e.status === 410)) setState(e.status === 410 ? 'disabled' : 'invalid')
+      else setError(errorText(e))
+    } finally { setBusy(false) }
   }
   return <div className="emergency-page"><main className="emergency-card public-emergency-card"><div className="public-emergency-brand"><span className="brand-mark"><LogoMark /></span> PetSuite <span>FICHA PÚBLICA</span></div><div className="emergency-hero"><Photo src={pet.foto_url} nombre={pet.nombre} className="emergency-pet-photo" /><div className="emergency-hero-text"><p className="eyebrow">INFORMACIÓN DE EMERGENCIA</p><h1>{pet.nombre}</h1><p className="emergency-subtitle">{pet.especie}{pet.raza ? ` · ${pet.raza}` : ''}</p></div></div>
-    {pet.alertasCriticas.length > 0 && <div className="emergency-alert" role="alert"><TriangleAlert size={22} /><div><strong>Atención</strong><p>{pet.alertasCriticas.join(' · ')}</p></div></div>}
+    {pet.alertasCriticas.length > 0 && <div className="emergency-alert"><TriangleAlert size={22} aria-hidden="true" /><div><strong>Atención</strong><p>{pet.alertasCriticas.join(' · ')}</p></div></div>}
     <div className="public-emergency-facts"><div><strong>Alergias</strong><p>{pet.alergias.length ? pet.alergias.map(a => a.agente).join(', ') : 'No registradas'}</p></div><div><strong>Condiciones médicas</strong><p>{pet.condiciones.length ? pet.condiciones.join(', ') : 'No registradas'}</p></div>{pet.notaEmergencia && <div><strong>Indicación importante</strong><p>{pet.notaEmergencia}</p></div>}</div>
-    <p className="privacy-note"><ShieldCheck size={14} /> Esta ficha no muestra teléfono, correo, dirección, medicamentos ni historial privado del tutor.</p>
-    <section className="public-contact-demo"><h2>¿Encontraste a {pet.nombre}?</h2><p>Envía un aviso seguro: el tutor lo recibe sin que se revelen sus datos. Tus datos son opcionales y solo se usarán para coordinar la entrega.</p>
-      <form onSubmit={submit} noValidate><label htmlFor="emergency-message">Mensaje<textarea id="emergency-message" rows={4} maxLength={500} value={form.message} onChange={e => { setForm({ ...form, message: e.target.value }); setError('') }} placeholder="Cuéntale dónde y cómo la encontraste..." /></label><label>Tu nombre (opcional)<input maxLength={80} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></label><label>Cómo contactarte (opcional)<input maxLength={120} value={form.contact} onChange={e => setForm({ ...form, contact: e.target.value })} placeholder="Teléfono o correo" /></label><button type="button" className="secondary full" onClick={locate}><MessageCircle size={16} /> {place ? 'Ubicación aproximada incluida' : 'Incluir mi ubicación aproximada'}</button>{error && <p className="form-error" role="alert">{error}</p>}<button className="primary full" disabled={busy}>{busy ? 'Enviando...' : 'Avisar al tutor'}</button></form></section></main></div>
+    <p className="privacy-note"><ShieldCheck size={18} aria-hidden="true" /> Esta ficha no muestra RUT, teléfono, dirección ni correo del tutor.</p>
+    <section className="public-contact-demo" id="contacto-tutor"><h2>¿Encontraste a {pet.nombre}?</h2><p>Envía un aviso seguro: el tutor lo recibe sin que se revelen sus datos. Tus datos son opcionales y solo se usarán para coordinar la entrega.</p>
+      <form onSubmit={submit} noValidate><label htmlFor="emergency-message">Mensaje<textarea id="emergency-message" rows={4} maxLength={500} value={form.message} aria-invalid={!!error && !emergencyContactSchema.safeParse({ message: form.message }).success} aria-describedby={error ? 'emergency-error' : undefined} onChange={e => { setForm({ ...form, message: e.target.value }); setError('') }} placeholder="Cuéntale dónde y cómo la encontraste..." /></label><label>Tu nombre (opcional)<input maxLength={80} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></label><label>Cómo contactarte (opcional)<input maxLength={120} value={form.contact} onChange={e => setForm({ ...form, contact: e.target.value })} placeholder="Teléfono o correo" /></label><button type="button" className="secondary full" onClick={locate}><MessageCircle size={16} aria-hidden="true" /> {place ? 'Ubicación aproximada incluida' : 'Incluir mi ubicación aproximada'}</button>{error && <p className="form-error" role="alert" id="emergency-error">{error}</p>}<button className="primary full" disabled={busy}>{busy ? 'Enviando...' : 'Avisar al tutor'}</button></form></section></main><div className="emergency-contact-bar"><button type="button" className="primary" onClick={() => { document.getElementById('contacto-tutor')?.scrollIntoView(); document.getElementById('emergency-message')?.focus({ preventScroll: true }) }}>Contactar al tutor</button></div></div>
 }

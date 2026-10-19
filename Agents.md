@@ -240,3 +240,14 @@ Antes de finalizar cualquier cambio, se debe agregar una entrada con:
 - Motivo: aplicar los cambios de la reunión de octubre: remarcar el modelo de suscripción, definir roles y reglas de negocio, empresas con varias sucursales, gestión por asesores y cumplimiento de la nueva ley de datos, manteniendo como núcleo la Ficha Única y el QR.
 - Limitaciones declaradas: los límites por plan son una propuesta (el equipo solo fijó los precios). Orcob y el correo son simulados. Las claves temporales viajan en texto en el correo demo; en producción se usaría un enlace de activación de un solo uso. El cumplimiento de la Ley 21.719 debe validarlo una asesoría legal.
 - Verificación ejecutada: `npx tsc -b` sin errores y `npm run build -- --base=/mockap-petsuite/` correcto. `node --test src/admin-suspension.test.mjs src/business.test.mjs src/business-rules.test.mjs backend/server.test.mjs`: 13 de 13 pruebas (7 nuevas de reglas de negocio). Recorrido con Playwright (Chromium) por las 9 cuentas demo y todas sus vistas a 1366 px y 390 px, más `#planes`, `#adopciones` y `#ong/<id>`: sin errores de consola ni desplazamiento horizontal. `git diff --check` correcto.
+
+## 2026-10-19
+
+### FE-01 · Ficha pública de emergencia
+
+- Fecha: 2026-10-19.
+- Archivos modificados o agregados: `src/tutor.tsx`, `src/design-pages.css`, `docs/capturas/fe-01/README.md` y sus capturas, `AGENTS.md`.
+- Cambio realizado: la ficha pública prioriza foto, nombre, alertas, alergias y condiciones antes del formulario; conserva visible un botón de contacto que lleva al campo del mensaje sin romper la ruta QR. Se separaron carga, medalla inválida, medalla desactivada (cuando el API responda 410), error de red con reintento y aviso enviado; se ajustaron áreas táctiles, asociación de errores, reflujo al ampliar y privacidad de la presentación.
+- Motivo: permitir a quien encuentra una mascota consultar inmediatamente la información crítica y avisar al tutor desde cualquier tamaño de pantalla, sin exponer datos privados.
+- Dependencia para la próxima semana: el contrato actual devuelve 404 tanto para tokens inexistentes como desactivados. Para mostrar el estado distinguible de medalla desactivada hace falta 410 en el mock y el API real; hoy 404 muestra «no existe o ya no está activo». No se modificaron `src/mock/` ni `backend/`.
+- Verificación ejecutada: `npx tsc -b`, `npm run build -- --base=/mockap-petsuite/`, `node --test src/*.test.mjs backend/*.test.mjs` (13/13) y `git diff --check`, correctos. Revisión con Chromium y respuestas simuladas en navegador para los seis estados en 390 y 1366 px, claro y oscuro; sin errores de consola ni desbordamiento horizontal, contraste de textos críticos ≥4,5:1 y reflujo a 195 px (espacio disponible al 200 % de zoom en 390 px). Capturas en `docs/capturas/fe-01/`.
