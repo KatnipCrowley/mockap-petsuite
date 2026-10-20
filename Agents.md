@@ -268,3 +268,11 @@ Antes de finalizar cualquier cambio, se debe agregar una entrada con:
 - Motivo: dar una ruta clara hacia la ficha pública de emergencia sin agregar datos ni rutas al API.
 - Dependencia futura: los arreglos vacíos de alergias y condiciones no distinguen «sin revisar» de «ninguna conocida». Una marca de revisión explícita necesitaría actualizar el mock y el API real en conjunto.
 - Verificación ejecutada: `npx tsc -b`, `npm run build -- --base=/mockap-petsuite/`, `node --test src/*.test.mjs backend/*.test.mjs` y `git diff --check`. Recorrido con Chromium de cuenta nueva a medalla QR y tarjeta demo que abre el campo pendiente, a 390 y 1366 px en modo claro y oscuro; capturas en `docs/capturas/fe-03/`.
+
+### FE-04 · Estados compartidos en vistas por rol
+
+- Fecha: 2026-10-19.
+- Archivos modificados o agregados: `src/feedback.tsx`, `src/feedback.css`, `src/main.tsx`, `src/media.tsx`, `src/tutor.tsx`, `src/directory.tsx`, `src/community.tsx`, `src/adoption.tsx`, `src/business.tsx`, `src/business-profile.tsx`, `src/business-contacts.tsx`, `src/clinical.tsx`, `src/team.tsx`, `src/promotions.tsx`, `src/ong-profile.tsx`, `src/admin.tsx`, `src/advisor.tsx`, `src/privacy.tsx`, `docs/capturas/fe-04/README.md` y capturas, `AGENTS.md`.
+- Cambio realizado: componentes compartidos para esqueleto, estado vacío con acción contextual, error con reintento y permiso insuficiente. Se aplicaron a tutor, directorio y muro; Pyme, clínica y sus módulos; ONG, adopciones públicas, asesor y administración. Se evitó mostrar listas vacías o métricas en cero mientras cargan; se desactivaron animaciones del mapa que emitían errores al salir del directorio durante una transición.
+- Motivo: distinguir falta de datos de fallas de conexión y dar una acción clara para recuperarse en cada rol.
+- Verificación ejecutada: `npx tsc -b`, `npm run build -- --base=/mockap-petsuite/`, `node --test src/*.test.mjs backend/*.test.mjs`, `git diff --check`. Chromium a 390 y 1366 px, claro y oscuro: estados vacíos, carga, recuperación de error HTTP simulado y permiso clínico insuficiente; sin errores de consola ni desbordamiento horizontal. Capturas en `docs/capturas/fe-04/`. La ficha pública QR corresponde a FE-01 y requiere integrar su PR.

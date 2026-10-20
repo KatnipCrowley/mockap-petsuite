@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Bookmark, BookmarkCheck, CalendarDays, Check, CirclePlus, Heart, MapPin, MessageCircle, Pencil, Search, Trash2, Users, X } from 'lucide-react'
 import { api, errorText, fechaCorta, getSession, hoy, iniciales, type Comuna, type Mascota } from './api'
-import { Loading, Photo } from './media'
+import { Photo } from './media'
 import { moderationMessageSchema } from './validators'
 import { BannerStrip } from './promotions'
+import { EmptyState, ErrorState, LoadingState } from './feedback'
 
 type Tipo = 'extravio' | 'encuentro' | 'recomendacion' | 'alerta' | 'evento' | 'adopcion'
 type Comentario = { id: string; autor: string; texto: string; es_mio: boolean; editado: boolean }
@@ -70,8 +71,9 @@ export function CommunityView({ onAdoption, onPyme }: { onAdoption?: () => void;
     <div className="community-intro"><div className="intro-icon"><Users size={20} /></div><div><strong>Una comunidad que se cuida</strong><p>Las publicaciones aparecen solo en el muro de la comuna de su autor. No se permiten enlaces externos.</p></div>{comunas.length > 0 && <select aria-label="Ver muro de otra comuna" value={comuna} disabled={guardadas} onChange={e => setComuna(Number(e.target.value))}>{comunas.map(c => <option key={c.id} value={c.id}>{c.nombre}{c.id === session?.comunaId ? ' (tu comuna)' : ''}</option>)}</select>}</div>
     <div className="list-toolbar"><label className="search-field"><Search size={17} aria-hidden="true" /><span className="sr-only">Buscar en el muro</span><input type="search" value={query} onChange={e => setQuery(e.target.value)} placeholder="Busca por texto, sector, autor o mascota" /></label><select aria-label="Ordenar publicaciones" value={orden} onChange={e => setOrden(e.target.value as 'recientes' | 'apoyadas')}><option value="recientes">Más recientes (urgentes primero)</option><option value="apoyadas">Más apoyadas</option></select></div>
     <div className="community-filters">{(['Todos', 'extravio', 'encuentro', 'alerta', 'evento', 'adopcion', 'recomendacion', 'Guardadas'] as const).map(v => <button key={v} className={filter === v ? 'category-tab active' : 'category-tab'} onClick={() => setFilter(v)}>{v === 'Todos' || v === 'Guardadas' ? v : tipoLabel[v]}</button>)}</div>
-    {error && <p className="form-error" role="alert">{error}</p>}
-    <div className="community-feed">{!posts && !error && <Loading />}
+    {error && !posts && <ErrorState message={error} onRetry={() => void load()} />}
+    {error && posts && <p className="form-error" role="alert">{error}</p>}
+    <div className="community-feed">{!posts && !error && <LoadingState label="Cargando publicaciones" />}
       {visible.map(post => <PostCard key={post.id} post={post} showComment={commenting === post.id} comunaAjena={guardadas && post.comuna_id !== session?.comunaId ? comunas.find(c => c.id === post.comuna_id)?.nombre : undefined}
         onReact={() => act(() => api(`/muro/${post.id}/reacciones`, { method: 'POST' }))}
         onSave={() => act(() => api(`/muro/${post.id}/guardar`, { method: 'POST' }))}
@@ -83,7 +85,7 @@ export function CommunityView({ onAdoption, onPyme }: { onAdoption?: () => void;
         onAddComment={text => act(() => api(`/muro/${post.id}/comentarios`, { method: 'POST', body: { texto: text } }))}
         onEditComment={(c, text) => act(() => api(`/muro/comentarios/${c.id}`, { method: 'PATCH', body: { texto: text } }))}
         onDeleteComment={c => { if (window.confirm('¿Eliminar tu comentario?')) void act(() => api(`/muro/comentarios/${c.id}`, { method: 'DELETE' })) }} />)}
-      {posts && visible.length === 0 && <div className="empty-results">{guardadas ? 'Aún no guardas publicaciones. Usa «Guardar» para volver a ellas después.' : q ? 'Ninguna publicación coincide con tu búsqueda.' : `Todavía no hay publicaciones de este tipo en ${comunaName || 'esta comuna'}.`}</div>}</div>
+      {posts && visible.length === 0 && <EmptyState title={guardadas ? 'Sin publicaciones guardadas' : 'Sin publicaciones'} description={guardadas ? 'Guarda publicaciones del muro para volver a ellas después.' : q ? 'Ninguna publicación coincide con tu búsqueda.' : `Todavía no hay publicaciones de este tipo en ${comunaName || 'esta comuna'}.`} action={guardadas || q || filter !== 'Todos' ? 'Ver todas' : 'Publicar en el muro'} onAction={() => { if (guardadas || q || filter !== 'Todos') { setFilter('Todos'); setQuery('') } else setComposer('new') }} />}</div>
     {composer && <Composer post={composer === 'new' ? null : composer} onClose={() => setComposer(null)} onSaved={async () => { const nuevo = composer === 'new'; setComposer(null); if (nuevo && guardadas) setFilter('Todos'); if (nuevo && !own && session?.comunaId) setComuna(session.comunaId); else await load() }} />}
     {reporting && <ReportModal target={reporting} onClose={() => setReporting(null)} onSaved={() => setReporting(null)} />}
   </section>

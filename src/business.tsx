@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { AlertCircle, Crown, Pencil, ShoppingBag, Tag, X } from 'lucide-react'
 import { api, clp, errorText, fechaCorta, fechaLarga, hoy, ofertaVigente, type Comuna, type ItemCatalogo } from './api'
-import { Loading } from './media'
 import { BusinessProfile } from './business-profile'
 import { BusinessContacts } from './business-contacts'
 import { Branches, Team } from './team'
@@ -10,6 +9,7 @@ import { PlanBadge, PlanGrid, UsageMeters } from './plans-ui'
 import { DIAS_GRACIA, PLANES, planPorId, type Limites, type Plan } from './plans'
 import { moduloLabel, type ModuloPyme } from './permissions'
 import { registerPymeSchema } from './validators'
+import { EmptyState, ErrorState, LoadingState, PermissionState } from './feedback'
 
 export type MiPyme = {
   id: string; nombre_comercial: string; rubro: string; estado_verificacion: 'pendiente' | 'aprobada' | 'rechazada' | 'suspendida'; comuna_id: number; solicitud_pendiente?: boolean
@@ -97,11 +97,11 @@ function PlanAlert({ pyme }: { pyme: MiPyme }) {
 
 export function BusinessArea({ active }: { active: string }) {
   const { pyme, loading, error, reload } = usePyme()
-  if (loading) return <section className="page">{error ? <p className="muted">{error}</p> : <Loading />}</section>
+  if (loading) return <section className="page">{error ? <ErrorState message={error} onRetry={() => void reload()} /> : <LoadingState label="Cargando negocio" />}</section>
   if (!pyme) return <RegisterPyme onDone={reload} />
   // Sin el módulo de la vista, el integrante ve el Inicio (el menú ya oculta lo que no tiene).
   const modulo = vistaModulo[active]
-  if (modulo && !pyme.permisos.includes(modulo)) return <Overview pyme={pyme} />
+  if (modulo && !pyme.permisos.includes(modulo)) return <section className="page role-page"><PermissionState description="Tu rol en la Pyme no tiene acceso a este módulo. Pide permisos al dueño del negocio." /></section>
   if (active === 'business-profile') return pyme.sucursal ? <Branches pyme={pyme} /> : <BusinessProfile pyme={pyme} onSaved={reload} />
   if (active === 'branches') return <Branches pyme={pyme} />
   if (active === 'catalog') return <Catalog pyme={pyme} />
@@ -162,12 +162,13 @@ function Catalog({ pyme }: { pyme: MiPyme }) {
     <StatusBanner pyme={pyme} />
     <form className="catalog-form" onSubmit={add} noValidate><select aria-label="Tipo" value={draft.tipo} onChange={e => setDraft({ ...draft, tipo: e.target.value as 'producto' | 'servicio' })}><option value="producto">Producto</option><option value="servicio">Servicio</option></select><input aria-label="Nombre" value={draft.nombre} onChange={e => setDraft({ ...draft, nombre: e.target.value })} placeholder="Nombre del producto o servicio" /><input aria-label="Categoría" list="catalog-categories" value={draft.categoria} onChange={e => setDraft({ ...draft, categoria: e.target.value })} placeholder="Categoría (ej. Alimentos)" /><input aria-label="Precio referencial" inputMode="numeric" value={draft.precio} onChange={e => setDraft({ ...draft, precio: e.target.value })} placeholder="Precio referencial" /><button className="primary">Agregar</button></form>
     <datalist id="catalog-categories">{categorias.map(c => <option key={c} value={c} />)}</datalist>
-    {error && <p className="form-error" role="alert">{error}</p>}
+    {error && !items && <ErrorState message={error} onRetry={() => void load()} />}
+    {error && items && <p className="form-error" role="alert">{error}</p>}
     {categorias.length > 0 && <div className="category-tabs">{['Todas', ...categorias, ...((items || []).some(i => !i.categoria) ? ['Sin categoría'] : [])].map(c => <button key={c} className={categoria === c ? 'category-tab active' : 'category-tab'} onClick={() => setCategoria(c)}>{c}</button>)}</div>}
-    {!items && !error && <Loading />}
+    {!items && !error && <LoadingState label="Cargando catálogo" />}
     <div className="catalog-list">{shown.map(item => <div className="catalog-item" key={item.id}><div className="catalog-item-main"><strong>{item.nombre}</strong><p>{item.tipo === 'servicio' ? 'Servicio' : 'Producto'}{item.categoria ? ` · ${item.categoria}` : ''}{item.descripcion ? ` · ${item.descripcion}` : ''}</p><b>{clp(item.precio_referencial_clp)}</b><div className="chip-row">{!item.disponible && <span className="chip">Oculto</span>}{item.sin_stock && <span className="chip chip-alert">Sin stock</span>}{estadoOferta(item)}</div></div>
       <div className="catalog-item-actions"><button className={item.disponible ? 'toggle on' : 'toggle'} aria-label={`Mostrar u ocultar ${item.nombre}`} title={item.disponible ? 'Visible en el directorio' : 'Oculto'} onClick={() => update(item, { disponible: !item.disponible })} /><button className="secondary" onClick={() => setEditing(item)}><Pencil size={15} /> Editar</button><button className="text-button" onClick={() => remove(item)}>Eliminar</button></div></div>)}
-      {items && shown.length === 0 && <div className="empty-results">{items.length ? 'No hay ítems en esta categoría.' : 'Todavía no tienes ítems en tu catálogo.'}</div>}</div>
+      {items && shown.length === 0 && <EmptyState title={items.length ? 'Sin ítems en esta categoría' : 'Tu catálogo está vacío'} description={items.length ? 'Prueba otra categoría.' : 'Agrega tu primer producto o servicio para mostrarlo en el directorio.'} action={items.length ? 'Ver todos' : 'Agregar un ítem'} onAction={() => { if (items.length) setCategoria('Todas'); else document.querySelector<HTMLInputElement>('.catalog-form input[aria-label="Nombre"]')?.focus() }} />}</div>
     {editing && <ItemModal item={editing} categorias={categorias} onClose={() => setEditing(null)} onSave={async changes => { await api(`/pymes/${pyme.id}/catalogo/${editing.id}`, { method: 'PUT', body: changes }); setEditing(null); await load() }} />}
   </section>
 }
@@ -204,8 +205,9 @@ function ItemModal({ item, categorias, onClose, onSave }: { item: ItemCatalogo; 
 function MetricsView({ pyme }: { pyme: MiPyme }) {
   const [m, setM] = useState<Metricas | null>(null)
   const [error, setError] = useState('')
-  useEffect(() => { api<Metricas>(`/pymes/${pyme.id}/metricas`).then(setM).catch(e => setError(errorText(e))) }, [pyme.id])
-  if (!m) return <section className="page role-page">{error ? <p className="muted">{error}</p> : <Loading />}</section>
+  const load = useCallback(() => api<Metricas>(`/pymes/${pyme.id}/metricas`).then(setM).catch(e => setError(errorText(e))), [pyme.id])
+  useEffect(() => { void load() }, [load])
+  if (!m) return <section className="page role-page">{error ? <ErrorState message={error} onRetry={() => void load()} /> : <LoadingState label="Cargando métricas" />}</section>
   const t = m.totales, a = m.anteriores, max = Math.max(1, ...m.por_dia.map(d => d.eventos))
   const contactos = t.clic_contacto + t.clic_whatsapp
   const canales = [['Llamadas', t.clic_contacto, a.clic_contacto], ['WhatsApp', t.clic_whatsapp, a.clic_whatsapp]] as const

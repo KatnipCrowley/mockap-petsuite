@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Check, Search, ShieldAlert, ShieldCheck } from 'lucide-react'
+import { Check, Search, ShieldAlert } from 'lucide-react'
 import { api, clp, errorText, iniciales } from './api'
 import { SuspensionReview, type AccountSummary } from './admin-suspension'
 import { Approvals, Collections, NewAccounts, PrivacyAdmin, SentEmails } from './advisor'
 import { PlanBadge } from './plans-ui'
 import { PLANES, type PlanCodigo } from './plans'
 import { rolLabel as rolLargo } from './permissions'
+import { EmptyState, ErrorState, LoadingState, PermissionState } from './feedback'
 
 type OngPendiente = { id: string; nombre: string; tipo: string; descripcion: string | null; contacto: string | null; comuna: string; estado_verificacion: string; animales: number }
 type Resumen = {
@@ -22,6 +23,7 @@ function Metric({ label, value, trend }: { label: string; value: string; trend: 
 
 // El asesor comparte este espacio con el administrador, pero el servidor solo le responde lo de su rol.
 export function AdminArea({ active, rol }: { active: string; rol: 'admin' | 'asesor' }) {
+  if (rol === 'asesor' && ['users', 'moderation', 'privacy-admin'].includes(active)) return <section className="page admin-page"><PermissionState description="Solo la administración de la plataforma puede acceder a esta sección." /></section>
   if (active === 'users' && rol === 'admin') return <Users />
   if (active === 'moderation' && rol === 'admin') return <Moderation />
   if (active === 'privacy-admin' && rol === 'admin') return <PrivacyAdmin />
@@ -37,10 +39,12 @@ export function AdminArea({ active, rol }: { active: string; rol: 'admin' | 'ase
 function Overview({ rol }: { rol: 'admin' | 'asesor' }) {
   const [r, setR] = useState<Resumen | null>(null)
   const [error, setError] = useState('')
-  useEffect(() => { api<Resumen>('/admin/resumen').then(setR).catch(e => setError(errorText(e))) }, [])
+  const load = useCallback(() => api<Resumen>('/admin/resumen').then(value => { setR(value); setError('') }).catch(e => setError(errorText(e))), [])
+  useEffect(() => { void load() }, [load])
   const total = r ? Math.max(1, r.por_plan.reduce((n, p) => n + p.pymes, 0)) : 1
   return <section className="page admin-page"><div className="page-title"><div><p className="eyebrow">{rol === 'asesor' ? 'ASESORÍA COMERCIAL' : 'CENTRO DE CONTROL'}</p><h1>{rol === 'asesor' ? 'Tu cartera de Pymes y ONG' : 'Resumen de PetSuite'}</h1><p className="muted">{rol === 'asesor' ? `${rolLargo.asesor}: gestionas cuentas, planes, aprobaciones y cobranza.` : 'Datos en vivo de la base de datos de la plataforma.'}</p></div></div>
-    {error && <p className="form-error" role="alert">{error}</p>}
+    {!r && !error && <LoadingState label="Cargando resumen" />}
+    {error && <ErrorState message={error} onRetry={() => void load()} />}
     {r && <><div className="admin-metrics"><Metric label="Ingreso mensual recurrente" value={clp(r.mrr)} trend="Suma de planes vigentes" /><Metric label="Pymes verificadas" value={String(r.pymes_activas)} trend={`${r.pymes_pendientes} por verificar · ${r.en_gracia} en gracia`} /><Metric label="Ingresos (30 días)" value={clp(r.ingresos_30d)} trend="Pagos confirmados" />{rol === 'admin' ? <Metric label="Escaneos de QR" value={String(r.escaneos)} trend={`${r.usuarios} usuarios · ${r.suspendidos} suspendidos`} /> : <Metric label="ONG en verificación" value={String(r.ong_pendientes ?? 0)} trend={`${r.animales_disponibles ?? 0} animales en adopción`} />}</div>
       <div className="admin-bottom-grid"><article className="admin-table-card"><div className="chart-heading"><div><p className="eyebrow">MODELO DE NEGOCIO</p><h2>Pymes por plan</h2></div></div><div className="channel-list">{r.por_plan.map(p => <div key={p.codigo}><div className="channel-head"><PlanBadge plan={p} /><small>{p.pymes} {p.pymes === 1 ? 'Pyme' : 'Pymes'} · {clp((PLANES.find(x => x.codigo === p.codigo)?.precio_mensual_clp ?? 0) * p.pymes)}/mes</small></div><div className="channel-bar" aria-hidden="true"><span style={{ width: `${(p.pymes / total) * 100}%` }} /></div></div>)}</div></article>
         <article className="admin-table-card"><div className="chart-heading"><div><p className="eyebrow">PENDIENTES</p><h2>Requiere tu atención</h2></div></div>
@@ -65,10 +69,12 @@ function Users() {
   return <section className="page admin-page"><div className="page-title"><div><p className="eyebrow">ADMINISTRACIÓN</p><h1>Gestión de usuarios</h1><p className="muted">Busca, filtra y administra las cuentas de PetSuite.</p></div><span className="admin-total">{users?.length ?? 0} cuentas</span></div>
     <div className="user-toolbar"><div className="search-field"><span>⌕</span><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar por nombre o correo" /></div></div>
     <div className="user-filters">{(['Todos', 'Activos', 'Suspendidos'] as const).map(v => <button key={v} className={filter === v ? 'category-tab active' : 'category-tab'} onClick={() => setFilter(v)}>{v}</button>)}</div>
-    {error && <p className="form-error" role="alert">{error}</p>}
+    {!users && !error && <LoadingState label="Cargando usuarios" />}
+    {error && !users && <ErrorState message={error} onRetry={() => void load()} />}
+    {error && users && <p className="form-error" role="alert">{error}</p>}
     <div className="admin-table-card user-table polished-user-table"><div className="user-table-head"><span>USUARIO</span><span>ROL</span><span>ESTADO</span><span>ACCIÓN</span></div>
       {shown.map(u => <div className="user-row" key={u.id}><div className="avatar">{iniciales(u.nombre_visible || u.correo)}</div><div className="user-identity"><strong>{u.nombre_visible}</strong><small>{u.correo}</small><button type="button" className="text-button user-reports-link" onClick={() => setSelected({ user: u, view: 'reports' })}>Ver denuncias</button>{u.suspension && <small>{u.suspension.tipo === 'temporal' ? `Hasta ${new Date(u.suspension.hasta!).toLocaleDateString('es-CL')}` : 'Suspensión permanente'} · {u.suspension.motivo.replaceAll('_', ' ')}</small>}</div><span className="user-role">{rolLabel[u.rol] || u.rol}</span><span className={`user-status ${u.estado}`}>{u.estado === 'activo' ? 'Activo' : 'Suspendido'}</span>{u.rol === 'admin' ? <span /> : <button className={u.estado === 'activo' ? 'secondary' : 'primary'} onClick={() => u.estado === 'activo' ? setSelected({ user: u, view: 'suspend' }) : void reactivate(u)}>{u.estado === 'activo' ? 'Suspender' : 'Reactivar'}</button>}</div>)}
-      {users && shown.length === 0 && <div className="empty-results">No encontramos usuarios con estos filtros.</div>}</div>{selected && <SuspensionReview key={`${selected.user.id}-${selected.view}`} user={selected.user} initialView={selected.view} onClose={() => setSelected(null)} onConfirmed={load} />}</section>
+      {users && shown.length === 0 && <EmptyState title="Sin usuarios para este filtro" description="Prueba otra búsqueda o cambia el estado." action="Ver todos" onAction={() => { setQuery(''); setFilter('Todos') }} />}</div>{selected && <SuspensionReview key={`${selected.user.id}-${selected.view}`} user={selected.user} initialView={selected.view} onClose={() => setSelected(null)} onConfirmed={load} />}</section>
 }
 
 // UC-20 · Cola de reportes, más antiguos primero. Ocultar o mantener; reincidencia → suspender al autor (UC-21).
@@ -84,8 +90,10 @@ function Moderation() {
   const n = reports?.length ?? 0
   return <section className="page admin-page moderation-page"><div className="page-title"><div><p className="eyebrow">MODERACIÓN DEL MURO</p><h1>Reportes de contenido</h1><p className="muted">Revisa cada reporte contra las normas de la comunidad y decide.</p></div><span className="moderation-title-count">{n} {n === 1 ? 'pendiente' : 'pendientes'}</span></div>
     <section className="moderation-panel" aria-label="Cola de reportes"><div className="moderation-panel-header"><div><p className="eyebrow">CASOS ABIERTOS</p><h2>Cola de revisión</h2><p className="muted">{n ? 'Ordenados del más antiguo al más reciente.' : 'Todos los reportes han sido revisados.'}</p></div><label className="moderation-search"><Search size={18} aria-hidden="true" /><span className="sr-only">Buscar reporte</span><input type="search" placeholder="Buscar autor o contenido" value={query} onChange={e => setQuery(e.target.value)} /></label></div>
-      {error && <p className="form-error" role="alert">{error}</p>}
-      {shown.length ? <div className="moderation-list">{shown.map(r => <article className="moderation-row" key={r.id}><div className="moderation-identity"><div className="avatar moderation-avatar">{iniciales(r.autor || '??')}</div><div><h3>{r.autor || 'Autor desconocido'}</h3><p>“{r.contenido || 'Contenido no disponible'}”</p><p><small>{r.objeto_tipo === 'comentario' ? 'Comentario · ' : ''}Motivo: {r.motivo} · Reportó {r.reportante} · {new Date(r.creado_en).toLocaleString('es-CL')}</small></p></div></div><div className="moderation-actions"><button type="button" className="secondary" onClick={() => decide(r, 'mantener')}><Check size={16} /> Mantener</button><button type="button" className="secondary" onClick={() => decide(r, 'ocultar')}><ShieldAlert size={16} /> Ocultar</button><button type="button" className="primary" disabled={!r.autor_id} onClick={() => setSelected(r)}><ShieldAlert size={16} /> Ocultar y suspender</button></div></article>)}</div> : <div className="moderation-empty"><ShieldCheck size={30} strokeWidth={1.5} /><h3>{query ? 'Sin resultados' : 'Todo al día'}</h3><p>{query ? 'Prueba con otra búsqueda.' : 'No hay reportes por revisar.'}</p></div>}
+      {!reports && !error && <LoadingState label="Cargando reportes" />}
+      {error && !reports && <ErrorState message={error} onRetry={() => void load()} />}
+      {error && reports && <p className="form-error" role="alert">{error}</p>}
+      {reports && (shown.length ? <div className="moderation-list">{shown.map(r => <article className="moderation-row" key={r.id}><div className="moderation-identity"><div className="avatar moderation-avatar">{iniciales(r.autor || '??')}</div><div><h3>{r.autor || 'Autor desconocido'}</h3><p>“{r.contenido || 'Contenido no disponible'}”</p><p><small>{r.objeto_tipo === 'comentario' ? 'Comentario · ' : ''}Motivo: {r.motivo} · Reportó {r.reportante} · {new Date(r.creado_en).toLocaleString('es-CL')}</small></p></div></div><div className="moderation-actions"><button type="button" className="secondary" onClick={() => decide(r, 'mantener')}><Check size={16} /> Mantener</button><button type="button" className="secondary" onClick={() => decide(r, 'ocultar')}><ShieldAlert size={16} /> Ocultar</button><button type="button" className="primary" disabled={!r.autor_id} onClick={() => setSelected(r)}><ShieldAlert size={16} /> Ocultar y suspender</button></div></article>)}</div> : <EmptyState title={query ? 'Sin resultados' : 'Todo al día'} description={query ? 'Prueba con otra búsqueda.' : 'No hay reportes por revisar.'} action={query ? 'Quitar búsqueda' : undefined} onAction={() => setQuery('')} />)}
     </section>{selected?.autor_id && <SuspensionReview key={selected.id} user={{ id: selected.autor_id, nombre_visible: selected.autor || 'Autor desconocido' }} relatedReportId={selected.id} onClose={() => setSelected(null)} onConfirmed={load} />}</section>
 }
 
@@ -99,12 +107,14 @@ function Pymes() {
   const decide = async (p: PymePendiente, decision: 'aprobar' | 'rechazar' | 'suspender') => { try { await api(`/admin/pymes/${p.id}/verificacion`, { method: 'PATCH', body: { decision } }); await load() } catch (e) { setError(errorText(e)) } }
   return <section className="page admin-page"><div className="page-title"><div><p className="eyebrow">ADMINISTRACIÓN</p><h1>Pymes y suscripciones</h1><p className="muted">Verifica el negocio antes de publicarlo y confirma los pagos por transferencia. Los pagos con Orcob se confirman solos al recibir el aviso de pago.</p></div></div>
     <div className="user-filters">{(['pendiente', 'aprobada', 'rechazada', 'suspendida'] as const).map(v => <button key={v} className={state === v ? 'category-tab active' : 'category-tab'} onClick={() => setState(v)}>{v[0].toUpperCase() + v.slice(1)}s</button>)}</div>
-    {error && <p className="form-error" role="alert">{error}</p>}
+    {!rows && !error && <LoadingState label="Cargando Pymes" />}
+    {error && !rows && <ErrorState message={error} onRetry={() => void load()} />}
+    {error && rows && <p className="form-error" role="alert">{error}</p>}
     <div className="admin-table-card user-table">{rows?.map(p => <div className="user-row" key={p.id}><div className="avatar">{iniciales(p.nombre_comercial)}</div><div className="user-identity"><strong>{p.nombre_comercial}</strong><small>{p.rut_empresa} · {p.rubro} · {p.comuna}</small><small>{p.solicitud === 'renovacion' ? 'Renovación o cambio de plan' : 'Alta'}{p.plan ? ` · plan ${p.plan}` : ''}: {p.monto_clp ? clp(p.monto_clp) : 'sin costo'}{p.canal ? ` · ${p.canal === 'orcob' ? 'Orcob' : 'transferencia'}` : ''}{p.referencia ? ` · ref. ${p.referencia}` : ''}</small><small>Rige hoy: {p.plan_vigente} · {p.sucursales} {p.sucursales === 1 ? 'local' : 'locales'} · {p.equipo} en equipo</small></div><span className={`user-status ${p.estado_verificacion === 'aprobada' ? 'activo' : 'suspendido'}`}>{p.solicitud === 'renovacion' && state === 'pendiente' ? 'pago en revisión' : p.estado_verificacion}</span>
       {p.solicitud === 'renovacion' && state === 'pendiente'
         ? <div><button className="primary" onClick={() => decide(p, 'aprobar')}>Confirmar pago</button><button className="secondary" onClick={() => decide(p, 'rechazar')}>Rechazar pago</button></div>
         : <div>{p.estado_verificacion !== 'aprobada' && <button className="primary" onClick={() => decide(p, 'aprobar')}>Aprobar y activar</button>}{p.estado_verificacion === 'pendiente' && <button className="secondary" onClick={() => decide(p, 'rechazar')}>Rechazar</button>}{p.estado_verificacion === 'aprobada' && <button className="secondary" onClick={() => decide(p, 'suspender')}>Suspender</button>}</div>}</div>)}
-      {rows && rows.length === 0 && <div className="empty-results">No hay Pymes en este estado.</div>}</div></section>
+      {rows && rows.length === 0 && <EmptyState title="Sin Pymes en este estado" description="Selecciona otro estado o vuelve más tarde." action="Actualizar" onAction={() => void load()} />}</div></section>
 }
 
 // UC-28 · Verificar ONG. Hasta entonces sus animales quedan como borrador y no salen en el catálogo público.
@@ -117,8 +127,10 @@ function Ongs() {
   const decide = async (o: OngPendiente, decision: 'aprobar' | 'rechazar') => { try { await api(`/admin/ong/${o.id}/verificacion`, { method: 'PATCH', body: { decision } }); await load() } catch (e) { setError(errorText(e)) } }
   return <section className="page admin-page"><div className="page-title"><div><p className="eyebrow">ADMINISTRACIÓN</p><h1>Verificación de ONG</h1><p className="muted">Revisa las organizaciones de rescate y adopción antes de publicar sus animales en el catálogo.</p></div></div>
     <div className="user-filters">{(['pendiente', 'aprobada', 'rechazada'] as const).map(v => <button key={v} className={state === v ? 'category-tab active' : 'category-tab'} onClick={() => setState(v)}>{v[0].toUpperCase() + v.slice(1)}s</button>)}</div>
-    {error && <p className="form-error" role="alert">{error}</p>}
+    {!rows && !error && <LoadingState label="Cargando organizaciones" />}
+    {error && !rows && <ErrorState message={error} onRetry={() => void load()} />}
+    {error && rows && <p className="form-error" role="alert">{error}</p>}
     <div className="admin-table-card user-table">{rows?.map(o => <div className="user-row" key={o.id}><div className="avatar">{iniciales(o.nombre)}</div><div className="user-identity"><strong>{o.nombre}</strong><small>{o.tipo.replace('_', ' ')} · {o.comuna}{o.contacto ? ` · ${o.contacto}` : ''}</small><small>{o.animales} {o.animales === 1 ? 'animal cargado' : 'animales cargados'}</small></div><span className={`user-status ${o.estado_verificacion === 'aprobada' ? 'activo' : 'suspendido'}`}>{o.estado_verificacion}</span>
       <div>{o.estado_verificacion !== 'aprobada' && <button className="primary" onClick={() => decide(o, 'aprobar')}>Aprobar</button>}{o.estado_verificacion === 'pendiente' && <button className="secondary" onClick={() => decide(o, 'rechazar')}>Rechazar</button>}</div></div>)}
-      {rows && rows.length === 0 && <div className="empty-results">No hay organizaciones en este estado.</div>}</div></section>
+      {rows && rows.length === 0 && <EmptyState title="Sin organizaciones en este estado" description="Selecciona otro estado o vuelve más tarde." action="Actualizar" onAction={() => void load()} />}</div></section>
 }

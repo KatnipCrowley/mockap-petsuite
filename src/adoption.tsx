@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { AlertCircle, ArrowRight, Check, CirclePlus, Heart, MapPin, PawPrint, ShieldCheck, X } from 'lucide-react'
-import { Loading, LogoMark, Photo } from './media'
+import { LogoMark, Photo } from './media'
 import { api, errorText, iniciales, type Comuna, type FichaDatos } from './api'
 import { OngProfileEditor } from './ong-profile'
 import { AdsManager, OngAgreements } from './promotions'
+import { EmptyState, ErrorState, LoadingState } from './feedback'
 
 type AnimalResumen = { id: string; nombre: string; especie: string; raza: string | null; edad_estimada: string | null; estado_salud: string | null; foto_url: string | null; ong: string; comuna: string }
 type OrgResumen = { id: string; nombre: string; tipo: string; comuna: string; mision: string | null; animales: number; cupones: number }
@@ -22,18 +23,20 @@ export function AdoptionCatalog({ standalone }: { standalone?: boolean }) {
 
   const [orgs, setOrgs] = useState<OrgResumen[]>([])
   useEffect(() => { api<Comuna[]>('/comunas').then(setComunas).catch(() => undefined); api<OrgResumen[]>('/ongs').then(setOrgs).catch(() => undefined) }, [])
-  useEffect(() => {
+  const load = useCallback(() => {
     const qs = new URLSearchParams({ ...(comuna ? { comuna } : {}), ...(especie ? { especie } : {}) }).toString()
-    api<AnimalResumen[]>(`/adopciones${qs ? `?${qs}` : ''}`).then(a => { setAnimals(a); setError('') }).catch(e => setError(errorText(e)))
+    setAnimals(null); setError('')
+    void api<AnimalResumen[]>(`/adopciones${qs ? `?${qs}` : ''}`).then(a => { setAnimals(a); setError('') }).catch(e => setError(errorText(e)))
   }, [comuna, especie])
+  useEffect(() => { load() }, [load])
 
   const content = <section className="page directory-page">
     <div className="directory-hero"><div><p className="eyebrow">ADOPCIÓN RESPONSABLE</p><h1>Animales que buscan un hogar</h1><p>Organizaciones de rescate de la Región de Los Lagos publican aquí a los animales en adopción. No necesitas una cuenta para explorar ni para pedir información.</p></div></div>
     <div className="directory-toolbar"><select aria-label="Especie" value={especie} onChange={e => setEspecie(e.target.value)}><option value="">Todas las especies</option><option value="perro">Perros</option><option value="gato">Gatos</option><option value="otro">Otros</option></select><select aria-label="Comuna" value={comuna} onChange={e => setComuna(e.target.value)}><option value="">Todas las comunas</option>{comunas.map(c => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}</select></div>
-    {error && <p className="form-error" role="alert">{error}</p>}
+    {error && <ErrorState message={error} onRetry={load} />}
     <div className="pet-grid adoption-grid">{animals?.map(a => <button key={a.id} className="pet-card" onClick={() => setSelected(a.id)}><Photo src={a.foto_url} nombre={a.nombre} className="pet-photo adoption-photo" /><div className="pet-info"><strong>{a.nombre}</strong><span>{a.especie[0].toUpperCase() + a.especie.slice(1)}{a.raza ? ` · ${a.raza}` : ''}{a.edad_estimada ? ` · ${a.edad_estimada}` : ''}</span><small><MapPin size={13} /> {a.comuna} · {a.ong}</small></div></button>)}</div>
-    {animals && animals.length === 0 && <div className="empty-results">No hay animales en adopción con estos filtros por ahora.</div>}
-    {!animals && !error && <Loading />}
+    {animals && animals.length === 0 && <EmptyState title="Sin animales para estos filtros" description="Prueba otra especie o comuna, o vuelve más tarde." action="Quitar filtros" onAction={() => { setComuna(''); setEspecie('') }} />}
+    {!animals && !error && <LoadingState label="Cargando animales en adopción" />}
     {!!orgs.length && <><div className="section-heading"><h3>Organizaciones verificadas</h3></div><div className="org-grid">{orgs.map(o => <a key={o.id} className="org-card" href={`#ong/${o.id}`}><strong>{o.nombre}</strong><small>{tipoOng[o.tipo] || o.tipo} · {o.comuna} · {o.animales} en adopción{o.cupones ? ` · ${o.cupones} ${o.cupones === 1 ? 'cupón' : 'cupones'} con negocios` : ''}</small>{o.mision && <span>{o.mision}</span>}</a>)}</div></>}
     {selected && <AnimalModal id={selected} onClose={() => setSelected(null)} />}
   </section>
@@ -48,7 +51,8 @@ function AnimalModal({ id, onClose }: { id: string; onClose: () => void }) {
   const [form, setForm] = useState({ mensaje: '', nombre: '', contacto: '' })
   const [sent, setSent] = useState(false)
   const [busy, setBusy] = useState(false)
-  useEffect(() => { api<AnimalDetalle>(`/adopciones/${id}`).then(setAnimal).catch(e => setError(errorText(e))) }, [id])
+  const load = useCallback(() => { setError(''); void api<AnimalDetalle>(`/adopciones/${id}`).then(setAnimal).catch(e => setError(errorText(e))) }, [id])
+  useEffect(() => { load() }, [load])
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -57,7 +61,7 @@ function AnimalModal({ id, onClose }: { id: string; onClose: () => void }) {
     try { await api(`/adopciones/${id}/solicitudes`, { method: 'POST', body: { mensaje: form.mensaje.trim(), ...(form.nombre.trim() && { nombre: form.nombre.trim() }), ...(form.contacto.trim() && { contacto: form.contacto.trim() }) } }); setSent(true) } catch (e) { setError(errorText(e)) } finally { setBusy(false) }
   }
 
-  if (!animal) return <div className="modal-backdrop"><article className="modal store-modal"><button className="close" aria-label="Cerrar" onClick={onClose}><X size={20} /></button>{error ? <p className="muted">{error}</p> : <Loading />}</article></div>
+  if (!animal) return <div className="modal-backdrop"><article className="modal store-modal"><button className="close" aria-label="Cerrar" onClick={onClose}><X size={20} /></button>{error ? <ErrorState message={error} onRetry={load} /> : <LoadingState label="Cargando animal" rows={1} />}</article></div>
   return <div className="modal-backdrop"><article className="modal store-modal"><button className="close" aria-label="Cerrar" onClick={onClose}><X size={20} /></button>
     <Photo src={animal.foto_url} nombre={animal.nombre} className="business-hero modal-photo" />
     <p className="eyebrow">EN ADOPCIÓN · {animal.comuna.toUpperCase()}</p><h2>{animal.nombre}</h2>
@@ -88,7 +92,7 @@ export function OngArea({ active }: { active: string }) {
   const [error, setError] = useState('')
   const reload = useCallback(() => api<Ong | null>('/ong/mia').then(setOng).catch(e => setError(errorText(e))), [])
   useEffect(() => { void reload() }, [reload])
-  if (ong === undefined) return <section className="page">{error ? <p className="muted">{error}</p> : <Loading />}</section>
+  if (ong === undefined) return <section className="page">{error ? <ErrorState message={error} onRetry={() => void reload()} /> : <LoadingState label="Cargando organización" />}</section>
   if (!ong) return <RegisterOng onDone={reload} />
   if (active === 'animals') return <Animals ong={ong} />
   if (active === 'ong-profile') return <OngProfileEditor />
@@ -126,12 +130,16 @@ function StatusBanner({ ong }: { ong: Ong }) {
 }
 
 function Overview({ ong }: { ong: Ong }) {
-  const [animals, setAnimals] = useState<MiAnimal[]>([])
-  useEffect(() => { api<MiAnimal[]>('/ong/animales').then(setAnimals).catch(() => setAnimals([])) }, [])
-  const published = animals.filter(a => a.publicado).length
+  const [animals, setAnimals] = useState<MiAnimal[] | null>(null)
+  const [error, setError] = useState('')
+  const load = useCallback(() => api<MiAnimal[]>('/ong/animales').then(value => { setAnimals(value); setError('') }).catch(e => setError(errorText(e))), [])
+  useEffect(() => { void load() }, [load])
+  const published = animals?.filter(a => a.publicado).length || 0
   return <section className="page business-page"><div className="business-welcome"><div><p className="eyebrow">TU ORGANIZACIÓN EN PETSUITE</p><h1>{ong.nombre}</h1><p>{tipoOng[ong.tipo] || ong.tipo} · {ong.comuna}. Tus animales atraen a nuevos tutores a toda la comunidad.</p></div><ShieldCheck size={38} strokeWidth={1.5} /></div>
     <StatusBanner ong={ong} />
-    <div className="business-stats"><Metric label="Animales publicados" value={String(published)} trend={`${animals.length} en total`} /><Metric label="Solicitudes abiertas" value={String(animals.reduce((s, a) => s + a.solicitudes_abiertas, 0))} trend="Por responder" /><Metric label="Visitas (7 días)" value={String(animals.reduce((s, a) => s + a.visitas_7d, 0))} trend="Al catálogo público" /></div>
+    {!animals && !error && <LoadingState label="Cargando resumen de adopciones" />}
+    {error && !animals && <ErrorState message={error} onRetry={() => void load()} />}
+    {animals && <div className="business-stats"><Metric label="Animales publicados" value={String(published)} trend={`${animals.length} en total`} /><Metric label="Solicitudes abiertas" value={String(animals.reduce((s, a) => s + a.solicitudes_abiertas, 0))} trend="Por responder" /><Metric label="Visitas (7 días)" value={String(animals.reduce((s, a) => s + a.visitas_7d, 0))} trend="Al catálogo público" /></div>}
     <div className="business-activity"><p className="eyebrow">PARTICIPACIÓN SIN COSTO</p><h2>Tu organización en PetSuite es gratis</h2><p>Arma tu perfil público con datos para donar, difunde un banner a la vez y acepta convenios con negocios: cada compra con tu cupón mide el impacto de tu comunidad. Todo pasa por la revisión de un asesor.</p>{ong.estado_verificacion === 'aprobada' && <p><a className="text-button" href={`#ong/${ong.id}`}>Ver mi perfil público</a></p>}</div></section>
 }
 
@@ -150,11 +158,13 @@ function Animals({ ong }: { ong: Ong }) {
   const setEstado = async (a: MiAnimal, estado: 'disponible' | 'en_proceso') => { try { await api(`/ong/animales/${a.id}`, { method: 'PUT', body: { nombre: a.nombre, especie: a.especie, estado } }); await load() } catch (e) { setError(errorText(e)) } }
   return <section className="page role-page"><div className="page-title"><div><p className="eyebrow">ADOPCIONES</p><h1>Mis animales</h1><p className="muted">Publica animales en el catálogo público y gestiona las solicitudes de adopción.</p></div><button className="primary" onClick={() => setEditing('new')}><CirclePlus size={17} /> Publicar animal</button></div>
     <StatusBanner ong={ong} />
-    {error && <p className="form-error" role="alert">{error}</p>}
+    {error && !animals && <ErrorState message={error} onRetry={() => void load()} />}
+    {error && animals && <p className="form-error" role="alert">{error}</p>}
     {notice && <p className="save-message" role="status">{notice}</p>}
+    {!animals && !error && <LoadingState label="Cargando animales de la ONG" />}
     <div className="catalog-list">{animals?.map(a => <div className="catalog-item" key={a.id}><Photo src={a.foto_url} nombre={a.nombre} className="pet-photo small-photo" /><div className="catalog-item-main"><strong>{a.nombre}</strong><p>{a.especie}{a.raza ? ` · ${a.raza}` : ''}{a.edad_estimada ? ` · ${a.edad_estimada}` : ''}</p><small>{estadoLabel[a.estado]} · {a.estado === 'adoptado' ? (a.mascota_id ? 'Ficha Única creada' : 'Pendiente de vincular la Ficha Única') : a.publicado ? 'Publicado' : 'Borrador (sin publicar)'} · {a.visitas_7d} visitas en 7 días · {a.solicitudes_abiertas} solicitudes abiertas</small></div>
       <div className="qr-actions"><button className="secondary" onClick={() => setReviewing(a)}>{a.estado === 'adoptado' && !a.mascota_id ? 'Vincular ficha' : 'Solicitudes'}</button>{a.publicado && a.estado === 'disponible' && <button className="secondary" onClick={() => { setNotice(''); setDiffusing(a) }}>Difundir en el muro</button>}{a.estado !== 'adoptado' && <><button className="secondary" onClick={() => setEditing(a)}>Editar</button><button className="text-button" onClick={() => setEstado(a, a.estado === 'disponible' ? 'en_proceso' : 'disponible')}>{a.estado === 'disponible' ? 'Marcar no disponible' : 'Marcar disponible'}</button></>}</div></div>)}
-      {animals && animals.length === 0 && <div className="empty-results">Aún no has publicado animales.</div>}</div>
+      {animals && animals.length === 0 && <EmptyState title="Aún no hay animales" description="Publica el primer animal para recibir solicitudes de adopción." action="Publicar animal" onAction={() => setEditing('new')} />}</div>
     {editing && <AnimalForm animal={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onSaved={async () => { setEditing(null); await load() }} />}
     {reviewing && <Review animal={reviewing} onClose={() => { setReviewing(null); void load() }} />}
     {diffusing && <DiffuseModal animal={diffusing} onClose={() => setDiffusing(null)} onDone={() => { setNotice(`${diffusing.nombre} ya aparece en el muro comunal de ${ong.comuna}.`); setDiffusing(null) }} />}

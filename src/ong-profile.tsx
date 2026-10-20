@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Heart, Home, MapPin, PawPrint, ShieldCheck, X } from 'lucide-react'
 import { api, errorText, type CuponPublico } from './api'
-import { Loading, LogoMark, Photo } from './media'
+import { LogoMark, Photo } from './media'
 import { CouponList } from './promotions'
+import { EmptyState, ErrorState, LoadingState } from './feedback'
 
 export type OngPerfil = {
   mision: string; como_ayudar: string; necesidades: string[]; voluntariado: string; horario_visitas: string
@@ -51,7 +52,7 @@ export function OngProfileEditor() {
       setNotice(enviar ? 'Enviado a revisión. Tu perfil público cambiará cuando el asesor lo apruebe.' : 'Borrador guardado.'); await load()
     } catch (e) { setError(errorText(e)) } finally { setBusy(false) }
   }
-  if (!data) return <section className="page">{error ? <p className="form-error" role="alert">{error}</p> : <Loading />}</section>
+   if (!data) return <section className="page">{error ? <ErrorState message={error} onRetry={() => void load()} /> : <LoadingState label="Cargando perfil de ONG" />}</section>
   return <section className="page role-page"><div className="page-title"><div><p className="eyebrow">CMS DE TU ORGANIZACIÓN</p><h1>Perfil público</h1><p className="muted">Arma tu página sin subir imágenes: misión, necesidades, cómo donar y voluntariado. Un asesor revisa los cambios antes de publicarlos para proteger a quienes donan.</p></div><span className={`user-status ${data.estado === 'publicado' ? 'activo' : 'suspendido'}`}>{estadoPerfil[data.estado]}</span></div>
     {data.motivo && <div className="alert-card warn"><div><strong>Observaciones del asesor</strong><p>{data.motivo}</p></div></div>}
     {data.estado_verificacion !== 'aprobada' && <div className="alert-card"><div><strong>Tu organización aún no está verificada</strong><p>Puedes preparar el perfil; se publicará cuando el equipo te verifique.</p></div></div>}
@@ -73,15 +74,16 @@ export function OngProfileEditor() {
 export function PublicOngProfile({ id }: { id: string }) {
   const [ong, setOng] = useState<Publica | null>(null)
   const [error, setError] = useState('')
-  useEffect(() => { api<Publica>(`/ongs/${id}`).then(setOng).catch(e => setError(errorText(e))) }, [id])
+  const load = useCallback(() => api<Publica>(`/ongs/${id}`).then(value => { setOng(value); setError('') }).catch(e => setError(errorText(e))), [id])
+  useEffect(() => { void load() }, [load])
   const perfil = ong?.perfil ?? { ...vacio, mision: ong?.descripcion ?? '' }
   return <div className="emergency-page adoption-public"><main style={{ width: 'min(1100px, 100%)' }}><div className="public-emergency-brand" style={{ justifyContent: 'space-between' }}><span><span className="brand-mark"><LogoMark /></span> PetSuite <span>ORGANIZACIONES</span></span><button className="secondary" onClick={() => { if (window.history.length > 1) window.history.back(); else window.location.hash = '#adopciones' }}><X size={15} /> Volver</button></div>
-    {!ong ? (error ? <p className="form-error" role="alert">{error}</p> : <Loading />) : <section className="page">
+    {!ong ? (error ? <ErrorState message={error} onRetry={() => void load()} /> : <LoadingState label="Cargando organización pública" />) : <section className="page">
       <OngHero nombre={ong.nombre} sub={`${tipoOng[ong.tipo] || ong.tipo} · ${ong.comuna}`.toUpperCase()} perfil={perfil} />
       <div className="business-stats"><div className="metric-card"><small>Animales en adopción</small><strong>{ong.animales.length}</strong><span><MapPin size={13} /> {ong.comuna}</span></div><div className="metric-card"><small>Compras con sus cupones este mes</small><strong>{ong.impacto.canjes_mes}</strong><span>{ong.impacto.aliados} negocios aliados</span></div><div className="metric-card"><small>Impacto acumulado</small><strong>{ong.impacto.canjes_total}</strong><span>Canjes en negocios Pet-Care</span></div></div>
       {!!ong.cupones.length && <><div className="section-heading"><h3>Apoya comprando con sus cupones</h3></div><CouponList cupones={ong.cupones} por="negocio" /></>}
       <PerfilBody perfil={perfil} />
-      {!!ong.animales.length && <><div className="section-heading"><h3>Buscan un hogar</h3></div><div className="pet-grid adoption-grid">{ong.animales.map(a => <a key={a.id} className="pet-card" href="#adopciones"><Photo src={a.foto_url} nombre={a.nombre} className="pet-photo adoption-photo" /><div className="pet-info"><strong>{a.nombre}</strong><span>{a.especie}{a.edad_estimada ? ` · ${a.edad_estimada}` : ''}</span></div></a>)}</div></>}
+       {!!ong.animales.length ? <><div className="section-heading"><h3>Buscan un hogar</h3></div><div className="pet-grid adoption-grid">{ong.animales.map(a => <a key={a.id} className="pet-card" href="#adopciones"><Photo src={a.foto_url} nombre={a.nombre} className="pet-photo adoption-photo" /><div className="pet-info"><strong>{a.nombre}</strong><span>{a.especie}{a.edad_estimada ? ` · ${a.edad_estimada}` : ''}</span></div></a>)}</div></> : <EmptyState title="Sin animales en adopción" description="Explora otras organizaciones para encontrar a tu nuevo compañero." action="Ver adopciones" onAction={() => { window.location.hash = '#adopciones' }} />}
       {ong.contacto && <p className="muted">Contacto: {ong.contacto}{ong.redes_sociales ? ` · ${ong.redes_sociales}` : ''}</p>}
     </section>}</main></div>
 }
