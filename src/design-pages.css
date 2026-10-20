@@ -14,6 +14,23 @@
 .chip-alert { background: var(--color-danger-soft); color: var(--color-danger); }
 [data-mode="dark"] .chip-alert { color: #ff9c90; }
 .chip-info { background: var(--color-info-soft); color: var(--color-accent-solid); }
+.onboarding-panel { margin-bottom: var(--space-5); padding: var(--space-5); border: 1px solid var(--color-border-subtle); border-radius: var(--radius-xl); background: var(--color-bg-surface); box-shadow: var(--shadow-sm); }
+.onboarding-panel h2 { margin: 0 0 var(--space-2); }
+.onboarding-panel > p { margin: 0 0 var(--space-4); }
+.onboarding-panel ol { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); margin: 0; padding: 0; list-style: none; counter-reset: step; }
+.onboarding-panel li { display: grid; align-content: start; justify-items: start; gap: var(--space-2); min-width: 0; padding: var(--space-4); border: 1px solid var(--color-border-subtle); border-radius: var(--radius-md); background: var(--color-bg-subtle); counter-increment: step; }
+.onboarding-panel li:before { content: counter(step); display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--color-accent-solid); color: var(--color-accent-on-solid); font-weight: 700; }
+.onboarding-panel li span { color: var(--color-text-secondary); }
+.onboarding-panel li button { min-height: 44px; }
+.pet-info .pet-completion { display: block; margin-top: var(--space-2); color: var(--color-text-primary); font-size: 0.8rem; font-style: normal; font-weight: 700; }
+.pet-card-wrapper { min-width: 0; display: grid; gap: var(--space-1); }
+.pet-card-wrapper .pet-card { width: 100%; }
+.pet-card-wrapper .pet-next { display: inline-flex; align-items: center; justify-content: flex-start; gap: var(--space-1); min-height: 44px; padding: 4px 8px; text-align: left; font-size: 0.85rem; }
+.pet-card-wrapper.compact .pet-next { font-size: 0.8rem; }
+.pet-completion-panel { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-3); margin-block: var(--space-4); padding: var(--space-3) var(--space-4); border: 1px solid var(--color-border-subtle); border-radius: var(--radius-md); background: var(--color-bg-subtle); }
+.pet-completion-panel p { margin: 3px 0 0; }
+.pet-completion-panel button { min-height: 44px; display: inline-flex; align-items: center; gap: var(--space-2); text-align: left; }
+@media (max-width: 740px) { .onboarding-panel ol { grid-template-columns: 1fr; } }
 @media (max-width: 640px) {
   .pet-hero { grid-template-columns: 1fr; }
   .pet-hero-photo { width: 100%; height: 220px; }

@@ -259,3 +259,12 @@ Antes de finalizar cualquier cambio, se debe agregar una entrada con:
 - Cambio realizado: el PNG se genera a 1200 × 1200 píxeles y se descarga con un nombre seguro derivado del nombre de la mascota. La impresión se separa en una vista exclusiva de una medalla de 60 × 70 mm sobre A4; muestra solo nombre, QR de 46 mm y texto «Escanéame si me encuentras», en blanco y negro.
 - Motivo: ofrecer un archivo legible y una impresión a tamaño medalla sin incluir la interfaz del tutor ni datos médicos o privados en el papel.
 - Verificación ejecutada: `npx tsc -b`, `npm run build -- --base=/mockap-petsuite/`, `node --test src/*.test.mjs backend/*.test.mjs` y `git diff --check`. Chromium: descarga PNG, hoja A4 y revisión visual a 390 y 1366 px en claro y oscuro; capturas y PDF en `docs/capturas/fe-02/`. El escaneo físico con dos teléfonos requiere validación manual; un QR del mock local no se comparte entre navegadores sin API compartida.
+
+### FE-03 · Primer uso del tutor
+
+- Fecha: 2026-10-19.
+- Archivos modificados o agregados: `src/tutor.tsx`, `src/design-pages.css`, `docs/capturas/fe-03/README.md` y capturas, `AGENTS.md`.
+- Cambio realizado: Inicio de una cuenta sin mascotas guía en tres pasos (registro, datos críticos y QR); cada mascota muestra un porcentaje calculado con identidad, alergias, condiciones y medalla activa, y sus tarjetas incluyen un botón que abre directamente el siguiente campo pendiente. Tras crear una mascota se abre su ficha y se puede llegar al QR sin ayuda externa.
+- Motivo: dar una ruta clara hacia la ficha pública de emergencia sin agregar datos ni rutas al API.
+- Dependencia futura: los arreglos vacíos de alergias y condiciones no distinguen «sin revisar» de «ninguna conocida». Una marca de revisión explícita necesitaría actualizar el mock y el API real en conjunto.
+- Verificación ejecutada: `npx tsc -b`, `npm run build -- --base=/mockap-petsuite/`, `node --test src/*.test.mjs backend/*.test.mjs` y `git diff --check`. Recorrido con Chromium de cuenta nueva a medalla QR y tarjeta demo que abre el campo pendiente, a 390 y 1366 px en modo claro y oscuro; capturas en `docs/capturas/fe-03/`.

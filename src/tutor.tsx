@@ -17,6 +17,13 @@ const splitList = (value: string) => value.split(',').map(item => item.trim()).f
 const ficha = (pet: Mascota): FichaDatos => ({ ...emptyFicha(), ...pet.datos_clinicos })
 const qrUrl = (token: string) => `${window.location.origin}${import.meta.env.BASE_URL}#qr/${token}`
 
+// Indicador de campos registrados, no diagnóstico: el API aún no distingue «ninguna» de «sin revisar».
+const completionOf = (pet: Mascota) => {
+  const f = ficha(pet)
+  const checks = [!!pet.nombre && !!pet.especie, f.alergias.length > 0, f.condiciones.length > 0, !!pet.token_activo]
+  return { percent: checks.filter(Boolean).length * 25, next: !checks[1] ? 'allergies' : !checks[2] ? 'conditions' : !checks[3] ? 'qr' : null } as const
+}
+
 const entriesOf = (pet: Mascota): Entry[] => {
   const f = ficha(pet)
   return [
@@ -52,6 +59,7 @@ export function TutorArea({ active, setActive, name }: { active: string; setActi
   const [showAdd, setShowAdd] = useState(false)
   const [editing, setEditing] = useState<Mascota | null>(null)
   const [qrPet, setQrPet] = useState<Mascota | null>(null)
+  const [nextField, setNextField] = useState<{ id: string; field: 'allergies' | 'conditions' | 'qr' } | null>(null)
   const [openPyme, setOpenPyme] = useState<string | null>(null)
   const consumed = useCallback(() => setOpenPyme(null), [])
 
@@ -61,10 +69,11 @@ export function TutorArea({ active, setActive, name }: { active: string; setActi
   if (!pets) return <section className="page">{error ? <p className="muted">{error}</p> : <Loading />}</section>
   const selected = pets.find(p => p.id === selectedId) || pets[0] || null
   const pick = (pet: Mascota) => { setSelectedId(pet.id); setActive('pets') }
+  const openMissing = (pet: Mascota) => { const field = completionOf(pet).next; if (!field) return; setSelectedId(pet.id); setNextField({ id: pet.id, field }); setActive('pets') }
 
   return <>
-    {active === 'home' && <Dashboard pets={pets} name={name} banner={<BannerStrip ubicacion="inicio" onPyme={id => { setOpenPyme(id); setActive('directory') }} />} onSelect={pick} onPets={() => setActive('pets')} onCommunity={() => setActive('community')} onAdd={() => setShowAdd(true)} />}
-    {active === 'pets' && <PetsView pets={pets} selected={selected} onSelect={pet => setSelectedId(pet.id)} onAdd={() => setShowAdd(true)} onQr={setQrPet} onEdit={setEditing} onChanged={load} />}
+    {active === 'home' && <Dashboard pets={pets} name={name} banner={<BannerStrip ubicacion="inicio" onPyme={id => { setOpenPyme(id); setActive('directory') }} />} onSelect={pick} onMissing={openMissing} onPets={() => setActive('pets')} onCommunity={() => setActive('community')} onAdd={() => setShowAdd(true)} />}
+    {active === 'pets' && <PetsView pets={pets} selected={selected} onSelect={pet => setSelectedId(pet.id)} onMissing={openMissing} target={nextField} onTargetHandled={() => setNextField(null)} onAdd={() => setShowAdd(true)} onQr={setQrPet} onEdit={setEditing} onChanged={load} />}
     {showAdd && <PetFormModal onClose={() => setShowAdd(false)} onSaved={async id => { await load(); setSelectedId(id); setShowAdd(false); setActive('pets') }} />}
     {editing && <PetFormModal pet={editing} onClose={() => setEditing(null)} onSaved={async () => { await load(); setEditing(null) }} />}
     {qrPet && <QrModal pet={pets.find(p => p.id === qrPet.id) || qrPet} onClose={() => setQrPet(null)} onChanged={load} />}
@@ -92,18 +101,19 @@ function PetHero({ pet, onOpen }: { pet: Mascota; onOpen: () => void }) {
   </article>
 }
 
-function Dashboard({ pets, name, banner, onSelect, onPets, onCommunity, onAdd }: { pets: Mascota[]; name: string; banner?: React.ReactNode; onSelect: (pet: Mascota) => void; onPets: () => void; onCommunity: () => void; onAdd: () => void }) {
+function Dashboard({ pets, name, banner, onSelect, onMissing, onPets, onCommunity, onAdd }: { pets: Mascota[]; name: string; banner?: React.ReactNode; onSelect: (pet: Mascota) => void; onMissing: (pet: Mascota) => void; onPets: () => void; onCommunity: () => void; onAdd: () => void }) {
   const [latest, setLatest] = useState<{ autor: string; tipo: string; texto: string } | null>(null)
   useEffect(() => { api<{ autor: string; tipo: string; texto: string }[]>('/muro').then(p => setLatest(p[0] || null)).catch(() => setLatest(null)) }, [])
   const sinQr = pets.filter(p => !p.token_activo).length
   return <section className="page home-page">
     <div className="welcome"><div><p className="eyebrow">TU ESPACIO PETSUITE</p><h1>Hola, {name.split(' ')[0]}</h1><p className="muted">Todo lo importante para tus mascotas, en un solo lugar.</p></div><button className="primary" onClick={onAdd}><CirclePlus size={17} /> Agregar mascota</button></div>
+    {!pets.length && <section className="onboarding-panel" aria-labelledby="onboarding-title"><p className="eyebrow">PRIMEROS PASOS</p><h2 id="onboarding-title">Prepara su ficha de emergencia</h2><p>Desde la Ficha Única puedes compartir datos críticos sin mostrar tu información personal.</p><ol><li><strong>Registra tu mascota</strong><span>Comienza con su nombre y especie.</span><button className="primary" onClick={onAdd}>Registrar mascota <ArrowRight size={16} /></button></li><li><strong>Completa alergias y condiciones</strong><span>Después del registro, agrega lo que quien la encuentre debe saber.</span></li><li><strong>Genera su medalla QR</strong><span>Abre su ficha y activa el código de emergencia.</span></li></ol></section>}
     {banner}
     {pets[0] && <PetHero pet={pets[0]} onOpen={() => onSelect(pets[0])} />}
-    <div className="alert-card"><div className="alert-icon"><QrCode size={22} /></div><div><strong>{sinQr ? `${sinQr} ${sinQr === 1 ? 'mascota sin' : 'mascotas sin'} medalla QR activa` : 'Su ficha de emergencia, siempre lista'}</strong><p>{sinQr ? 'Activa su QR para que quien la encuentre pueda avisarte sin ver tus datos personales.' : 'Revisa los datos de tus mascotas y accede a su QR cuando lo necesites.'}</p></div><button className="text-button" onClick={onPets}>Ver fichas <ArrowRight size={16} /></button></div>
-    <section className="content-panel"><div className="section-heading"><div><p className="eyebrow">MIS MASCOTAS</p><h2>Sus fichas</h2></div><button className="text-button" onClick={onPets}>Ver todas <ArrowRight size={16} /></button></div>
-      <div className="pet-grid">{pets.map(pet => <PetCard key={pet.id} pet={pet} onClick={() => onSelect(pet)} />)}<button className="add-card" onClick={onAdd}><CirclePlus size={25} /><strong>Agregar mascota</strong><small>Registra a un nuevo compañero</small></button></div>
-    </section>
+    {pets.length > 0 && <div className="alert-card"><div className="alert-icon"><QrCode size={22} /></div><div><strong>{sinQr ? `${sinQr} ${sinQr === 1 ? 'mascota sin' : 'mascotas sin'} medalla QR activa` : 'Su ficha de emergencia, siempre lista'}</strong><p>{sinQr ? 'Activa su QR para que quien la encuentre pueda avisarte sin ver tus datos personales.' : 'Revisa los datos de tus mascotas y accede a su QR cuando lo necesites.'}</p></div><button className="text-button" onClick={onPets}>Ver fichas <ArrowRight size={16} /></button></div>}
+    {pets.length > 0 && <section className="content-panel"><div className="section-heading"><div><p className="eyebrow">MIS MASCOTAS</p><h2>Sus fichas</h2></div><button className="text-button" onClick={onPets}>Ver todas <ArrowRight size={16} /></button></div>
+      <div className="pet-grid">{pets.map(pet => <PetCardWithNext key={pet.id} pet={pet} onClick={() => onSelect(pet)} onMissing={() => onMissing(pet)} />)}<button className="add-card" onClick={onAdd}><CirclePlus size={25} /><strong>Agregar mascota</strong><small>Registra a un nuevo compañero</small></button></div>
+    </section>}
     <section className="content-panel"><div className="section-heading community-heading"><div><p className="eyebrow">COMUNIDAD</p><h2>Lo último en el muro de tu comuna</h2></div><button className="text-button" onClick={onCommunity}>Ir al muro <ArrowRight size={16} /></button></div>
       {latest ? <div className="post-preview"><div className="post-avatar">{iniciales(latest.autor)}</div><div><strong>{latest.autor}</strong><p>{latest.texto}</p><span className="post-tag">{latest.tipo.toUpperCase()}</span></div></div> : <p className="muted">Todavía no hay publicaciones en tu comuna.</p>}
     </section>
@@ -112,18 +122,32 @@ function Dashboard({ pets, name, banner, onSelect, onPets, onCommunity, onAdd }:
 
 function PetCard({ pet, onClick, compact, selected }: { pet: Mascota; onClick: () => void; compact?: boolean; selected?: boolean }) {
   const edad = edadDesde(pet.fecha_nacimiento)
-  return <button className={`pet-card ${compact ? 'compact' : ''} ${selected ? 'selected' : ''}`} onClick={onClick}><Photo src={pet.foto_url} nombre={pet.nombre} /><div className="pet-info"><strong>{pet.nombre}</strong><span>{pet.raza || pet.especie}{edad != null ? ` · ${edad} ${edad === 1 ? 'año' : 'años'}` : ''}</span>{!compact && <small><b className={pet.token_activo ? 'status-dot' : 'status-dot inactive'} /> {pet.token_activo ? 'Medalla QR activa' : 'Sin medalla QR'}</small>}</div>{compact && <ChevronRight className="chevron" size={18} />}</button>
+  const { percent } = completionOf(pet)
+  return <button className={`pet-card ${compact ? 'compact' : ''} ${selected ? 'selected' : ''}`} onClick={onClick}><Photo src={pet.foto_url} nombre={pet.nombre} /><div className="pet-info"><strong>{pet.nombre}</strong><span>{pet.raza || pet.especie}{edad != null ? ` · ${edad} ${edad === 1 ? 'año' : 'años'}` : ''}</span><em className="pet-completion">Ficha {percent} % completa</em>{!compact && <small><b className={pet.token_activo ? 'status-dot' : 'status-dot inactive'} /> {pet.token_activo ? 'Medalla QR activa' : 'Sin medalla QR'}</small>}</div>{compact && <ChevronRight className="chevron" size={18} />}</button>
 }
 
-function PetsView({ pets, selected, onSelect, onAdd, onQr, onEdit, onChanged }: { pets: Mascota[]; selected: Mascota | null; onSelect: (pet: Mascota) => void; onAdd: () => void; onQr: (pet: Mascota) => void; onEdit: (pet: Mascota) => void; onChanged: () => Promise<void> }) {
+function PetCardWithNext({ pet, onClick, onMissing, compact, selected }: { pet: Mascota; onClick: () => void; onMissing: () => void; compact?: boolean; selected?: boolean }) {
+  const next = completionOf(pet).next
+  const label = next === 'allergies' ? 'Completar alergias' : next === 'conditions' ? 'Completar condiciones' : 'Generar medalla QR'
+  return <div className={`pet-card-wrapper ${compact ? 'compact' : ''}`}><PetCard pet={pet} onClick={onClick} compact={compact} selected={selected} />{next && <button type="button" className="text-button pet-next" onClick={onMissing}>{label} de {pet.nombre} <ArrowRight size={16} /></button>}</div>
+}
+
+function PetsView({ pets, selected, onSelect, onMissing, target, onTargetHandled, onAdd, onQr, onEdit, onChanged }: { pets: Mascota[]; selected: Mascota | null; onSelect: (pet: Mascota) => void; onMissing: (pet: Mascota) => void; target: { id: string; field: 'allergies' | 'conditions' | 'qr' } | null; onTargetHandled: () => void; onAdd: () => void; onQr: (pet: Mascota) => void; onEdit: (pet: Mascota) => void; onChanged: () => Promise<void> }) {
   const [healthOpen, setHealthOpen] = useState(false)
+  const [healthField, setHealthField] = useState<'allergies' | 'conditions' | null>(null)
   const [entryOpen, setEntryOpen] = useState(false)
   const [editingEntry, setEditingEntry] = useState<Entry | null>(null)
+  useEffect(() => {
+    if (!target || target.id !== selected?.id) return
+    if (target.field === 'qr') onQr(selected)
+    else { setHealthField(target.field); setHealthOpen(true) }
+    onTargetHandled()
+  }, [target, selected, onQr, onTargetHandled])
   const persist = async (pet: Mascota, next: FichaDatos) => { await saveFicha(pet, next); await onChanged() }
   return <section className="page pets-page"><div className="page-title"><div><p className="eyebrow">TU ESPACIO</p><h1>Mis mascotas</h1><p className="muted">Ficha de salud, historial y QR de emergencia en un solo lugar.</p></div><button className="primary" onClick={onAdd}><CirclePlus size={17} /> Agregar mascota</button></div>
-    <div className="pets-layout"><section className="pet-list content-panel"><div className="section-heading"><div><p className="eyebrow">TUS COMPAÑEROS</p><h2>Selecciona una ficha</h2></div><span className="pet-count">{pets.length}</span></div>{pets.map(pet => <PetCard key={pet.id} pet={pet} onClick={() => onSelect(pet)} compact selected={selected?.id === pet.id} />)}</section>
-      {selected ? <PetDetail key={selected.id} pet={selected} onQr={() => onQr(selected)} onEdit={() => onEdit(selected)} onHealth={() => setHealthOpen(true)} onAddEntry={() => { setEditingEntry(null); setEntryOpen(true) }} onEditEntry={entry => { setEditingEntry(entry); setEntryOpen(true) }} /> : <div className="detail-card"><p className="muted">Agrega una mascota para comenzar su ficha de salud.</p></div>}</div>
-    {selected && healthOpen && <HealthModal key={selected.id} pet={selected} onClose={() => setHealthOpen(false)} onSave={async next => { await persist(selected, next); setHealthOpen(false) }} />}
+    <div className="pets-layout"><section className="pet-list content-panel"><div className="section-heading"><div><p className="eyebrow">TUS COMPAÑEROS</p><h2>Selecciona una ficha</h2></div><span className="pet-count">{pets.length}</span></div>{pets.map(pet => <PetCardWithNext key={pet.id} pet={pet} onClick={() => onSelect(pet)} onMissing={() => onMissing(pet)} compact selected={selected?.id === pet.id} />)}</section>
+      {selected ? <PetDetail key={selected.id} pet={selected} onQr={() => onQr(selected)} onEdit={() => onEdit(selected)} onHealth={field => { setHealthField(field || null); setHealthOpen(true) }} onAddEntry={() => { setEditingEntry(null); setEntryOpen(true) }} onEditEntry={entry => { setEditingEntry(entry); setEntryOpen(true) }} /> : <div className="detail-card"><p className="muted">Agrega una mascota para comenzar su ficha de salud.</p></div>}</div>
+    {selected && healthOpen && <HealthModal key={selected.id} pet={selected} initialField={healthField} onClose={() => { setHealthOpen(false); setHealthField(null) }} onSave={async next => { await persist(selected, next); setHealthOpen(false); setHealthField(null) }} />}
     {selected && entryOpen && <EntryModal key={`${selected.id}-${editingEntry?.id || 'new'}`} entry={editingEntry} onClose={() => setEntryOpen(false)} onSave={async entry => {
       const others = entriesOf(selected).filter(e => e.id !== editingEntry?.id)
       await persist(selected, withEntries(ficha(selected), [...others, { ...entry, meta: editingEntry?.meta }])); setEntryOpen(false)
@@ -131,13 +155,15 @@ function PetsView({ pets, selected, onSelect, onAdd, onQr, onEdit, onChanged }: 
   </section>
 }
 
-function PetDetail({ pet, onQr, onEdit, onHealth, onAddEntry, onEditEntry }: { pet: Mascota; onQr: () => void; onEdit: () => void; onHealth: () => void; onAddEntry: () => void; onEditEntry: (entry: Entry) => void }) {
+function PetDetail({ pet, onQr, onEdit, onHealth, onAddEntry, onEditEntry }: { pet: Mascota; onQr: () => void; onEdit: () => void; onHealth: (field?: 'allergies' | 'conditions') => void; onAddEntry: () => void; onEditEntry: (entry: Entry) => void }) {
   const f = ficha(pet)
+  const completion = completionOf(pet)
   const history = entriesOf(pet)
   const edad = edadDesde(pet.fecha_nacimiento)
   return <article className="detail-card health-detail"><div className="detail-head"><Photo src={pet.foto_url} nombre={pet.nombre} className="pet-photo large" /><div><p className="eyebrow">FICHA ÚNICA DE SALUD</p><h2>{pet.nombre}</h2><p className="muted">{pet.especie}{pet.raza ? ` · ${pet.raza}` : ''}</p></div><button type="button" className="secondary pet-edit-button" onClick={onEdit}><Pencil size={16} /> Editar datos</button></div>
+    <div className="pet-completion-panel"><div><strong>Ficha {completion.percent} % completa</strong><p>{completion.next ? 'Agrega datos para que su ficha de emergencia sea más útil.' : 'Datos principales registrados y medalla QR activa.'}</p></div>{completion.next && <button type="button" className="text-button" onClick={() => completion.next === 'qr' ? onQr() : onHealth(completion.next!)}>{completion.next === 'allergies' ? 'Completar alergias' : completion.next === 'conditions' ? 'Completar condiciones' : 'Generar medalla QR'} <ArrowRight size={16} /></button>}</div>
     <div className="detail-stats"><div><small>Edad</small><strong>{edad == null ? 'Sin dato' : `${edad} ${edad === 1 ? 'año' : 'años'}`}</strong></div><div><small>Sexo</small><strong>{pet.sexo ? pet.sexo[0].toUpperCase() + pet.sexo.slice(1) : 'Sin dato'}</strong></div><div><small>Versión de ficha</small><strong>{pet.ficha_version}</strong></div></div>
-    <section className="pet-health-section"><div className="pet-section-head"><div><p className="eyebrow">INFORMACIÓN CRÍTICA</p><h3>Datos de salud</h3></div><button className="secondary" onClick={onHealth}><Pencil size={15} /> Editar salud</button></div><div className="health-facts"><div><span>Alergias</span><strong>{f.alergias.length ? f.alergias.map(a => a.agente).join(', ') : 'No registradas'}</strong></div><div><span>Condiciones médicas</span><strong>{f.condiciones.length ? f.condiciones.join(', ') : 'No registradas'}</strong></div><div><span>Medicamentos · solo tutor</span><strong>{f.medicamentos.length ? f.medicamentos.join(', ') : 'No registrados'}</strong></div></div>{f.notaEmergencia && <p className="health-note"><AlertCircle size={17} /> {f.notaEmergencia}</p>}</section>
+    <section className="pet-health-section"><div className="pet-section-head"><div><p className="eyebrow">INFORMACIÓN CRÍTICA</p><h3>Datos de salud</h3></div><button className="secondary" onClick={() => onHealth()}><Pencil size={15} /> Editar salud</button></div><div className="health-facts"><div><span>Alergias</span><strong>{f.alergias.length ? f.alergias.map(a => a.agente).join(', ') : 'No registradas'}</strong></div><div><span>Condiciones médicas</span><strong>{f.condiciones.length ? f.condiciones.join(', ') : 'No registradas'}</strong></div><div><span>Medicamentos · solo tutor</span><strong>{f.medicamentos.length ? f.medicamentos.join(', ') : 'No registrados'}</strong></div></div>{f.notaEmergencia && <p className="health-note"><AlertCircle size={17} /> {f.notaEmergencia}</p>}</section>
     <section className="pet-health-section"><div className="pet-section-head"><div><p className="eyebrow">REGISTRO PRIVADO</p><h3>Historial médico</h3></div><button className="secondary" onClick={onAddEntry}><CirclePlus size={16} /> Agregar registro</button></div>{history.length ? <div className="medical-timeline">{history.map(entry => <div className={entry.meta?.anulado ? 'medical-event is-void' : 'medical-event'} key={`${entry.type}-${entry.id}`}><div className="medical-event-icon"><CalendarDays size={17} /></div><div><span>{entry.type}{entry.date ? ` · ${new Date(`${entry.date}T12:00:00`).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}` : ''}</span><strong>{entry.title}</strong>{entry.notes && <p>{entry.notes}</p>}{entry.meta?.proxima && <p>Próxima dosis: {new Date(`${entry.meta.proxima}T12:00:00`).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })}</p>}{entry.meta?.clinica && <small className="event-author">Registrado por {entry.meta.clinica}{entry.meta.anulado ? ` · Anulado por la clínica: ${entry.meta.anulado.motivo}` : ''}</small>}</div>{entry.meta?.registrado_por ? <span className="event-lock">Registro clínico</span> : <button className="text-button" onClick={() => onEditEntry(entry)} aria-label={`Editar ${entry.title}`}>Editar</button>}</div>)}</div> : <p className="muted">Todavía no hay vacunas ni atenciones registradas.</p>}</section>
     <section className="pet-qr-section"><div className="pet-section-head"><div><p className="eyebrow">ACCESO DE EMERGENCIA</p><h3>Medalla QR</h3></div><span className={pet.token_activo ? 'pet-qr-badge active' : 'pet-qr-badge'}>{pet.token_activo ? 'Activa' : 'Sin medalla'}</span></div><p className="muted">El QR contiene solo un código opaco. La ficha pública muestra nombre, especie, raza, alergias, condiciones y la nota de emergencia; tus datos personales, medicamentos e historial nunca se exponen.</p><p className="pet-qr-warning">Si pierdes la medalla, genera una nueva o desactívala: el código anterior deja de funcionar de inmediato.</p><button className="primary" onClick={onQr}><QrCode size={17} /> {pet.token_activo ? 'Ver y compartir QR' : 'Generar medalla QR'}</button></section>
     <ClinicAccess pet={pet} />
@@ -179,9 +205,10 @@ function PetMessages({ pet }: { pet: Mascota }) {
     <div className="demo-contact-list">{messages.map(m => <div key={m.id}><small>{new Date(m.enviado_en).toLocaleString('es-CL')} · {m.estado === 'nuevo' ? 'Nuevo' : m.estado === 'leido' ? 'Leído' : 'Respondido'}</small><p>{m.mensaje}</p>{(m.remitente_nombre || m.remitente_contacto) && <p><b>{m.remitente_nombre}</b> {m.remitente_contacto && `· ${m.remitente_contacto}`}</p>}{m.latitud && m.longitud && <a className="text-button" target="_blank" rel="noopener noreferrer" href={`https://www.openstreetmap.org/?mlat=${m.latitud}&mlon=${m.longitud}#map=17/${m.latitud}/${m.longitud}`}>Ver ubicación aproximada <ArrowRight size={14} /></a>}{m.estado !== 'respondido' && <button className="text-button" onClick={() => mark(m.id, m.estado === 'nuevo' ? 'leido' : 'respondido')}>{m.estado === 'nuevo' ? 'Marcar como leído' : 'Marcar como respondido'}</button>}</div>)}</div></section>
 }
 
-function HealthModal({ pet, onClose, onSave }: { pet: Mascota; onClose: () => void; onSave: (next: FichaDatos) => Promise<void> }) {
+function HealthModal({ pet, initialField, onClose, onSave }: { pet: Mascota; initialField?: 'allergies' | 'conditions' | null; onClose: () => void; onSave: (next: FichaDatos) => Promise<void> }) {
   const f = ficha(pet)
   const [form, setForm] = useState({ allergies: f.alergias.map(a => a.agente).join(', '), conditions: f.condiciones.join(', '), medications: f.medicamentos.join(', '), emergencyNotes: f.notaEmergencia })
+  useEffect(() => { if (initialField) document.getElementById(`health-${initialField}`)?.focus() }, [initialField])
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const submit = async (event: React.FormEvent) => {
@@ -195,7 +222,7 @@ function HealthModal({ pet, onClose, onSave }: { pet: Mascota; onClose: () => vo
       await onSave({ ...f, alergias: lists[0].map(agente => known.get(agente.toLowerCase()) || { agente }), condiciones: lists[1], medicamentos: lists[2], notaEmergencia: parsed.data.emergencyNotes.trim() })
     } catch (e) { setError(errorText(e)) } finally { setBusy(false) }
   }
-  return <div className="modal-backdrop"><form className="modal health-form-modal" onSubmit={submit} noValidate><button type="button" className="close" aria-label="Cerrar" onClick={onClose}><X size={20} /></button><p className="eyebrow">FICHA DE {pet.nombre.toUpperCase()}</p><h2>Editar datos de salud</h2><p className="muted">Separa varios elementos con comas. Alergias, condiciones y nota de emergencia aparecerán en el QR.</p><div className="health-form-fields"><label>Alergias<input value={form.allergies} onChange={e => setForm({ ...form, allergies: e.target.value })} placeholder="Ej.: pollo, penicilina" /></label><label>Condiciones médicas<input value={form.conditions} onChange={e => setForm({ ...form, conditions: e.target.value })} placeholder="Ej.: diabetes" /></label><label>Medicamentos (privado)<input value={form.medications} onChange={e => setForm({ ...form, medications: e.target.value })} placeholder="Ej.: tratamiento indicado por veterinaria" /></label><label>Nota pública de emergencia<textarea rows={3} maxLength={160} value={form.emergencyNotes} onChange={e => setForm({ ...form, emergencyNotes: e.target.value })} placeholder="Indicación importante para quien encuentre a tu mascota" /></label></div>{error && <p className="form-error" role="alert">{error}</p>}<div className="modal-actions"><button className="secondary" type="button" onClick={onClose}>Cancelar</button><button className="primary" disabled={busy}>{busy ? 'Guardando...' : 'Guardar salud'}</button></div></form></div>
+  return <div className="modal-backdrop"><form className="modal health-form-modal" onSubmit={submit} noValidate><button type="button" className="close" aria-label="Cerrar" onClick={onClose}><X size={20} /></button><p className="eyebrow">FICHA DE {pet.nombre.toUpperCase()}</p><h2>Editar datos de salud</h2><p className="muted">Separa varios elementos con comas. Alergias, condiciones y nota de emergencia aparecerán en el QR.</p><div className="health-form-fields"><label htmlFor="health-allergies">Alergias<input id="health-allergies" value={form.allergies} onChange={e => setForm({ ...form, allergies: e.target.value })} placeholder="Ej.: pollo, penicilina" /></label><label htmlFor="health-conditions">Condiciones médicas<input id="health-conditions" value={form.conditions} onChange={e => setForm({ ...form, conditions: e.target.value })} placeholder="Ej.: diabetes" /></label><label>Medicamentos (privado)<input value={form.medications} onChange={e => setForm({ ...form, medications: e.target.value })} placeholder="Ej.: tratamiento indicado por veterinaria" /></label><label>Nota pública de emergencia<textarea rows={3} maxLength={160} value={form.emergencyNotes} onChange={e => setForm({ ...form, emergencyNotes: e.target.value })} placeholder="Indicación importante para quien encuentre a tu mascota" /></label></div>{error && <p className="form-error" role="alert">{error}</p>}<div className="modal-actions"><button className="secondary" type="button" onClick={onClose}>Cancelar</button><button className="primary" disabled={busy}>{busy ? 'Guardando...' : 'Guardar salud'}</button></div></form></div>
 }
 
 function EntryModal({ entry, onClose, onSave }: { entry: Entry | null; onClose: () => void; onSave: (entry: Entry) => Promise<void> }) {
