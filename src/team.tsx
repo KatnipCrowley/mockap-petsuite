@@ -5,6 +5,7 @@ import { Loading } from './media'
 import type { MiPyme } from './business'
 import { ROLES_EQUIPO, moduloLabel, type ModuloPyme, type RolEquipo } from './permissions'
 import { limiteTexto } from './plans'
+import { EmptyState, ErrorState, LoadingState, PermissionState } from './feedback'
 
 type Sucursal = { id: string; nombre: string; comuna_id: number; comuna: string; direccion: string | null; telefono: string | null; whatsapp: string | null; horario: Record<string, string>; latitud: string | null; longitud: string | null; descripcion: string | null; servicios: string[]; equipo: string[] }
 type Integrante = { id: string; rol: RolEquipo; permisos: ModuloPyme[]; sucursal_id: string | null; sucursal: string; nombre: string; correo: string; estado: string; creado_en: string }
@@ -22,14 +23,14 @@ export function Branches({ pyme }: { pyme: MiPyme }) {
   const remove = async (s: Sucursal) => { if (!window.confirm(`¿Eliminar la sucursal «${s.nombre}»? Su equipo quedará asignado a la casa matriz.`)) return; try { await api(`/pymes/${pyme.id}/sucursales/${s.id}`, { method: 'DELETE' }); await load() } catch (e) { setError(errorText(e)) } }
   const max = pyme.plan.limites.sucursales
   return <section className="page role-page"><div className="page-title"><div><p className="eyebrow">MULTISUCURSAL</p><h1>{dueno ? 'Sucursales' : 'Perfil de mi local'}</h1><p className="muted">{dueno ? `Cada sucursal aparece en el mapa y en el buscador del directorio. Tu plan ${pyme.plan.nombre} permite ${limiteTexto(max)} ${max === 1 ? 'local' : 'locales'} contando la casa matriz (usas ${pyme.uso.sucursales}).${pyme.plan.beneficios.perfil_sucursal ? ' Cada sucursal puede tener su propia descripción y servicios.' : ' Desde Plata, cada sucursal puede tener su propia descripción y servicios.'}` : 'Mantén al día la dirección, el horario y el contacto del local que tienes a cargo.'}</p></div>{dueno && <button className="primary" onClick={() => setEditing('new')}><CirclePlus size={17} /> Nueva sucursal</button>}</div>
-    {error && <p className="form-error" role="alert">{error}</p>}
-    {!rows && !error && <Loading />}
+    {error && !rows && <ErrorState message={error} onRetry={() => void load()} />}{error && rows && <p className="form-error" role="alert">{error}</p>}
+    {!rows && !error && <LoadingState label="Cargando sucursales" />}
     <div className="branch-grid">{dueno && <article className="branch-card is-main"><p className="eyebrow">CASA MATRIZ</p><h2>{pyme.nombre_comercial}</h2><p className="muted">Se edita en «Perfil del negocio». Sus datos son los de la empresa.</p></article>}
       {rows?.map(s => <article className="branch-card" key={s.id}><p className="eyebrow">{s.comuna.toUpperCase()}</p><h2>{s.nombre}</h2><p><MapPin size={14} /> {s.direccion || 'Sin dirección'}</p><p className="muted">{Object.entries(s.horario).map(([d, h]) => `${diaLabel[d] || d}: ${h}`).join(' · ') || 'Sin horario publicado'}</p>
         {s.descripcion && <p>{s.descripcion}</p>}{!!s.servicios.length && <div className="chip-row">{s.servicios.map(x => <span key={x} className="chip chip-info">{x}</span>)}</div>}
         <small className="muted">Equipo: {s.equipo.length ? s.equipo.join(', ') : 'sin integrantes asignados'}</small>
         <div className="qr-actions"><button className="secondary" onClick={() => setEditing(s)}><Pencil size={15} /> Editar</button>{dueno && <button className="text-button danger-text" onClick={() => remove(s)}><Trash2 size={15} /> Eliminar</button>}</div></article>)}
-      {rows && rows.length === 0 && !dueno && <div className="empty-results">No tienes una sucursal asignada.</div>}</div>
+      {rows && rows.length === 0 && !dueno && <PermissionState description="No tienes una sucursal asignada. Solicita al dueño que actualice tu equipo." />}{rows && rows.length === 0 && dueno && <EmptyState title="Solo tienes la casa matriz" description="Agrega otra sucursal cuando tu plan lo permita." action={max !== null && pyme.uso.sucursales >= max ? 'Actualizar' : 'Nueva sucursal'} onAction={() => max !== null && pyme.uso.sucursales >= max ? void load() : setEditing('new')} />}</div>
     {editing && <BranchModal pyme={pyme} branch={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onSaved={async () => { setEditing(null); await load() }} />}
   </section>
 }
@@ -71,11 +72,11 @@ export function Team({ pyme, onChange }: { pyme: MiPyme; onChange: () => Promise
   const max = pyme.plan.limites.usuarios
   return <section className="page role-page"><div className="page-title"><div><p className="eyebrow">ROLES INTERNOS DE LA EMPRESA</p><h1>Equipo y permisos</h1><p className="muted">Crea cuentas para jefes de local{pyme.rubro === 'veterinaria' ? ' y personal clínico' : ''} y decide qué módulos usa cada uno. Las credenciales llegan por correo. Tu plan {pyme.plan.nombre} incluye {limiteTexto(max)} {max === 1 ? 'cuenta' : 'cuentas'} de equipo (usas {pyme.uso.usuarios}).</p></div><button className="primary" disabled={max === 0} onClick={() => { setNotice(''); setEditing('new') }}><UserPlus size={17} /> Agregar integrante</button></div>
     {max === 0 && <div className="alert-card"><div><strong>El plan Gratis no incluye cuentas de equipo</strong><p>Desde Bronce puedes sumar un jefe de local; en Plata, hasta 5 integrantes.</p></div></div>}
-    {notice && <p className="save-message" role="status">{notice}</p>}{error && <p className="form-error" role="alert">{error}</p>}
+     {notice && <p className="save-message" role="status">{notice}</p>}{error && !rows && <ErrorState message={error} onRetry={() => void load()} />}{error && rows && <p className="form-error" role="alert">{error}</p>}{!rows && !error && <LoadingState label="Cargando equipo" />}
     <div className="admin-table-card user-table polished-user-table suite-table"><div className="user-table-head"><span>INTEGRANTE</span><span>ROL</span><span>LOCAL</span><span>ACCIÓN</span></div>
       <div className="user-row"><div className="avatar">TÚ</div><div className="user-identity"><strong>Dueño o administrador</strong><small>Todos los módulos salvo Pacientes, que es del personal clínico.</small></div><span className="user-role">Dueño</span><span className="user-role">Toda la empresa</span><span /></div>
       {rows?.map(m => <div className="user-row" key={m.id}><div className="avatar">{m.nombre.slice(0, 2).toUpperCase()}</div><div className="user-identity"><strong>{m.nombre}</strong><small>{m.correo} · desde {fechaLarga(m.creado_en)}</small><div className="chip-row">{m.permisos.map(p => <span key={p} className="chip">{moduloLabel[p]}</span>)}</div></div><span className="user-role">{m.rol === 'clinico' ? 'Clínico' : 'Jefe de local'}</span><span className="user-role">{m.sucursal}</span><div><button className="secondary" onClick={() => { setNotice(''); setEditing(m) }}>Permisos</button><button className="text-button danger-text" onClick={() => remove(m)}>Retirar</button></div></div>)}
-      {rows && rows.length === 0 && <div className="empty-results">Aún no agregas integrantes.</div>}</div>
+       {rows && rows.length === 0 && <EmptyState title="Aún no hay integrantes" description="Puedes invitar a un jefe de local o personal clínico según tu plan." action={max === 0 ? 'Actualizar' : 'Agregar integrante'} onAction={() => max === 0 ? void load() : setEditing('new')} />}</div>
     {editing && <MemberModal pyme={pyme} member={editing === 'new' ? null : editing} sucursales={sucursales} onClose={() => setEditing(null)} onSaved={async msg => { setEditing(null); setNotice(msg); await load(); await onChange() }} />}
   </section>
 }

@@ -36,8 +36,8 @@ export function LogoMark({ size = 34 }: { size?: number }) {
 }
 
 /** Marcador de carga con forma de tarjetas, para no dejar la pantalla vacía mientras llegan los datos. */
-export function Loading({ rows = 3 }: { rows?: number }) {
-  return <div className="skeleton-list" role="status" aria-label="Cargando">
+export function Loading({ rows = 3, label = 'Cargando' }: { rows?: number; label?: string }) {
+  return <div className="skeleton-list" role="status" aria-label={label}>
     {Array.from({ length: rows }, (_, i) => <div className="skeleton-card" key={i}><div className="skeleton skeleton-photo" /><div className="skeleton-lines"><div className="skeleton skeleton-line w60" /><div className="skeleton skeleton-line w40" /><div className="skeleton skeleton-line w80" /></div></div>)}
   </div>
 }

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { AlertCircle, ArrowRight, CalendarDays, Check, ChevronRight, CirclePlus, Copy, Download, MessageCircle, PawPrint, Pencil, Printer, QrCode, ShieldCheck, TriangleAlert, X } from 'lucide-react'
 import QRCode from 'qrcode'
-import { LogoMark, Loading, Photo } from './media'
+import { LogoMark, Photo } from './media'
+import { EmptyState, ErrorState, LoadingState } from './feedback'
 import { api, edadDesde, emptyFicha, errorText, iniciales, type FichaDatos, type Mascota, type PublicaEmergencia, type PymeResumen, type RegistroMeta } from './api'
 import { emergencyContactSchema, medicalEntrySchema, petDetailsSchema, petHealthSchema } from './validators'
 import { AdoptionCatalog } from './adoption'
@@ -57,7 +58,7 @@ export function TutorArea({ active, setActive, name }: { active: string; setActi
   if (active === 'adoption') return <AdoptionCatalog />
   if (active === 'directory') return <DirectoryView initialPyme={openPyme} onOpened={consumed} />
   if (active === 'community') return <CommunityView onAdoption={() => setActive('adoption')} onPyme={id => { setOpenPyme(id); setActive('directory') }} />
-  if (!pets) return <section className="page">{error ? <p className="muted">{error}</p> : <Loading />}</section>
+  if (!pets) return <section className="page">{error ? <ErrorState message={error} onRetry={() => void load()} /> : <LoadingState label="Cargando mascotas" />}</section>
   const selected = pets.find(p => p.id === selectedId) || pets[0] || null
   const pick = (pet: Mascota) => { setSelectedId(pet.id); setActive('pets') }
 
@@ -121,7 +122,7 @@ function PetsView({ pets, selected, onSelect, onAdd, onQr, onEdit, onChanged }: 
   const persist = async (pet: Mascota, next: FichaDatos) => { await saveFicha(pet, next); await onChanged() }
   return <section className="page pets-page"><div className="page-title"><div><p className="eyebrow">TU ESPACIO</p><h1>Mis mascotas</h1><p className="muted">Ficha de salud, historial y QR de emergencia en un solo lugar.</p></div><button className="primary" onClick={onAdd}><CirclePlus size={17} /> Agregar mascota</button></div>
     <div className="pets-layout"><section className="pet-list content-panel"><div className="section-heading"><div><p className="eyebrow">TUS COMPAÑEROS</p><h2>Selecciona una ficha</h2></div><span className="pet-count">{pets.length}</span></div>{pets.map(pet => <PetCard key={pet.id} pet={pet} onClick={() => onSelect(pet)} compact selected={selected?.id === pet.id} />)}</section>
-      {selected ? <PetDetail key={selected.id} pet={selected} onQr={() => onQr(selected)} onEdit={() => onEdit(selected)} onHealth={() => setHealthOpen(true)} onAddEntry={() => { setEditingEntry(null); setEntryOpen(true) }} onEditEntry={entry => { setEditingEntry(entry); setEntryOpen(true) }} /> : <div className="detail-card"><p className="muted">Agrega una mascota para comenzar su ficha de salud.</p></div>}</div>
+      {selected ? <PetDetail key={selected.id} pet={selected} onQr={() => onQr(selected)} onEdit={() => onEdit(selected)} onHealth={() => setHealthOpen(true)} onAddEntry={() => { setEditingEntry(null); setEntryOpen(true) }} onEditEntry={entry => { setEditingEntry(entry); setEntryOpen(true) }} /> : <EmptyState title="Comienza su Ficha Única" description="Agrega una mascota para registrar sus datos de salud y generar su QR." action="Agregar mascota" onAction={onAdd} />}</div>
     {selected && healthOpen && <HealthModal key={selected.id} pet={selected} onClose={() => setHealthOpen(false)} onSave={async next => { await persist(selected, next); setHealthOpen(false) }} />}
     {selected && entryOpen && <EntryModal key={`${selected.id}-${editingEntry?.id || 'new'}`} entry={editingEntry} onClose={() => setEntryOpen(false)} onSave={async entry => {
       const others = entriesOf(selected).filter(e => e.id !== editingEntry?.id)

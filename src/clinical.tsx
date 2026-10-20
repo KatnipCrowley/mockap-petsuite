@@ -4,6 +4,7 @@ import { Loading, Photo } from './media'
 import { api, emptyFicha, errorText, fechaCorta, type FichaDatos, type RegistroMeta } from './api'
 import { usePyme } from './business'
 import { BusinessContacts } from './business-contacts'
+import { EmptyState, ErrorState, LoadingState, PermissionState } from './feedback'
 
 type Paciente = { id: string; nombre: string; especie: string; raza: string | null; foto_url?: string | null; tutor: string; permiso: 'lectura' | 'escritura'; vigente_hasta: string; alertas: string[] | null }
 type FichaResp = { id: string; datos_clinicos: FichaDatos; version: number }
@@ -24,15 +25,16 @@ const eventosDe = (d: FichaDatos): Evento[] => [
 export function ClinicalArea({ active }: { active: string }) {
   const { pyme, loading, error, reload } = usePyme()
   const [patients, setPatients] = useState<Paciente[] | null>(null)
+  const [patientsError, setPatientsError] = useState('')
   const [open, setOpen] = useState<Paciente | null>(null)
   const [query, setQuery] = useState('')
   const [filtro, setFiltro] = useState<typeof filtros[number]>('Todos')
-  const loadPatients = useCallback(() => api<Paciente[]>('/mascotas/accesibles').then(setPatients).catch(() => setPatients([])), [])
+  const loadPatients = useCallback(() => api<Paciente[]>('/mascotas/accesibles').then(rows => { setPatients(rows); setPatientsError('') }).catch(e => setPatientsError(errorText(e))), [])
   useEffect(() => { void loadPatients() }, [loadPatients])
 
-  if (loading) return <section className="page">{error ? <p className="muted">{error}</p> : <Loading />}</section>
+  if (loading) return <section className="page">{error ? <ErrorState message={error} onRetry={() => void reload()} /> : <LoadingState label="Cargando clínica" />}</section>
   // El personal clínico pertenece a una veterinaria (Pyme): su dueño lo agrega desde Equipo.
-  if (!pyme) return <section className="page role-page"><div className="alert-card"><div><strong>Aún no perteneces a una veterinaria</strong><p>Pide al dueño o administrador de tu veterinaria que te agregue desde «Equipo». <button className="text-button" onClick={() => void reload()}>Volver a revisar</button></p></div></div></section>
+  if (!pyme) return <section className="page role-page"><PermissionState description="Aún no perteneces a una veterinaria. Pide al dueño que te agregue desde Equipo." /><button className="secondary" onClick={() => void reload()}>Volver a revisar</button></section>
   if (active === 'contacts' && pyme.permisos.includes('contactos')) return <BusinessContacts pyme={pyme} />
   const list = patients || []
   const alerts = list.filter(p => p.alertas && p.alertas.length).length
@@ -42,12 +44,14 @@ export function ClinicalArea({ active }: { active: string }) {
 
   return <section className="page clinical-page"><div className="page-title"><div><p className="eyebrow">ATENCIÓN VETERINARIA · {pyme.nombre_comercial.toUpperCase()}</p><h1>{active === 'patients' ? 'Pacientes' : 'Tu jornada clínica'}</h1><p className="muted">Fichas que los tutores compartieron contigo por un tiempo limitado.</p></div></div>
     {pyme.estado_verificacion !== 'aprobada' && <div className="alert-card"><div><strong>Tu clínica está: {pyme.estado_verificacion === 'pendiente' ? 'en verificación' : pyme.estado_verificacion}</strong><p>Los tutores solo pueden compartir fichas con veterinarias verificadas.</p></div></div>}
-    <div className="clinical-summary"><div><strong>{list.length}</strong><span>Fichas con acceso vigente</span></div><div><strong>{alerts}</strong><span>Con alertas críticas</span></div><div><strong>{list.filter(porVencer).length}</strong><span>Accesos que vencen en 3 días</span></div></div>
+    {patients && <div className="clinical-summary"><div><strong>{list.length}</strong><span>Fichas con acceso vigente</span></div><div><strong>{alerts}</strong><span>Con alertas críticas</span></div><div><strong>{list.filter(porVencer).length}</strong><span>Accesos que vencen en 3 días</span></div></div>}
     <div className="clinical-panel"><div className="chart-heading"><div><p className="eyebrow">PACIENTES</p><h2>Accesos otorgados</h2></div></div>
       {list.length > 0 && <div className="list-toolbar"><label className="search-field"><Search size={17} aria-hidden="true" /><span className="sr-only">Buscar paciente</span><input type="search" value={query} onChange={e => setQuery(e.target.value)} placeholder="Busca por mascota, tutor o raza" /></label><div className="category-tabs">{filtros.map(f => <button key={f} className={filtro === f ? 'category-tab active' : 'category-tab'} onClick={() => setFiltro(f)}>{f}</button>)}</div></div>}
       {shown.map(p => <div className="patient-row" key={p.id}><Photo src={p.foto_url} nombre={p.nombre} className="pet-photo small-photo" /><div><strong>{p.nombre}</strong><small>{p.tutor} · {p.permiso === 'escritura' ? 'lectura y registro' : 'solo lectura'} · acceso hasta {new Date(p.vigente_hasta).toLocaleDateString('es-CL')}{porVencer(p) ? ' (vence pronto)' : ''}</small></div><span className={p.alertas?.length ? 'clinical-alert' : 'clinical-ok'}>{p.alertas?.length ? p.alertas[0] : 'Sin alertas'}</span><button className="secondary" onClick={() => setOpen(p)}>Abrir ficha</button></div>)}
-      {patients && list.length === 0 && <div className="empty-results">Aún no tienes fichas compartidas. El tutor puede otorgarte acceso desde la ficha de su mascota.</div>}
-      {list.length > 0 && shown.length === 0 && <div className="empty-results">Ningún paciente coincide con la búsqueda.</div>}</div>
+      {!patients && !patientsError && <LoadingState label="Cargando pacientes" rows={2} />}
+      {patientsError && <ErrorState message={patientsError} onRetry={() => void loadPatients()} />}
+      {patients && list.length === 0 && <EmptyState title="Sin pacientes compartidos" description="El tutor puede otorgarte acceso temporal desde la ficha de su mascota." />}
+      {list.length > 0 && shown.length === 0 && <EmptyState title="Sin pacientes para este filtro" description="Prueba otra búsqueda o revisa todos los accesos." action="Ver todos" onAction={() => { setQuery(''); setFiltro('Todos') }} />}</div>
     {open && <FichaModal paciente={open} clinicaId={pyme.id} onClose={() => { setOpen(null); void loadPatients() }} />}
   </section>
 }

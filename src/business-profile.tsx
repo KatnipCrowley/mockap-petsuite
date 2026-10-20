@@ -3,8 +3,9 @@ import L from 'leaflet'
 import { Check, MapPin } from 'lucide-react'
 import { api, errorText, type Comuna, type PymeResumen } from './api'
 import type { MiPyme } from './business'
-import { Loading, Photo, rubroFoto } from './media'
+import { Photo, rubroFoto } from './media'
 import { businessProfileSchema } from './validators'
+import { ErrorState, LoadingState } from './feedback'
 
 type EditableProfile = PymeResumen & { rut_empresa: string; comuna_id: number; estado_verificacion: string }
 type Draft = {
@@ -53,6 +54,7 @@ export function BusinessProfile({ pyme, onSaved }: { pyme: MiPyme; onSaved?: () 
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [saved, setSaved] = useState(false)
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
     let alive = true
@@ -65,7 +67,7 @@ export function BusinessProfile({ pyme, onSaved }: { pyme: MiPyme; onSaved?: () 
       })
       .catch(e => { if (alive) { setError(errorText(e)); setLoading(false) } })
     return () => { alive = false }
-  }, [pyme.id])
+  }, [pyme.id, attempt])
 
   const movePin = useCallback((latitude: string, longitude: string) => setForm(previous => previous && { ...previous, latitud: latitude, longitud: longitude }), [])
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => setForm(previous => previous && { ...previous, [key]: value })
@@ -89,7 +91,7 @@ export function BusinessProfile({ pyme, onSaved }: { pyme: MiPyme; onSaved?: () 
   }
 
   return <section className="page business-profile-page"><div className="page-title"><div><p className="eyebrow">TU VITRINA PET-CARE</p><h1>{pyme.rubro === 'veterinaria' ? 'Perfil de la clínica' : 'Perfil del negocio'}</h1><p className="muted">Mantén actualizada la información que aparece en el directorio.</p></div></div>
-    {loading ? <Loading rows={2} /> : !form || !profile ? <p className="form-error" role="alert">{error || 'No se pudo cargar el perfil.'}</p> : <form className="business-profile-layout" onSubmit={submit} noValidate>
+    {loading ? <LoadingState label="Cargando perfil del negocio" rows={2} /> : !form || !profile ? <ErrorState message={error || 'No se pudo cargar el perfil.'} onRetry={() => { setError(''); setLoading(true); setAttempt(value => value + 1) }} /> : <form className="business-profile-layout" onSubmit={submit} noValidate>
       <div className="business-profile-main">
         <section className="settings-card"><div className="settings-card-heading"><div><p className="eyebrow">DATOS DEL NEGOCIO</p><h2>Información pública</h2></div></div><div className="settings-form-grid"><label>Nombre comercial<input maxLength={100} value={form.nombre_comercial} onChange={e => set('nombre_comercial', e.target.value)} /></label><label>Comuna<select value={form.comuna_id} onChange={e => set('comuna_id', Number(e.target.value))}>{comunas.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select></label><label>Dirección<input maxLength={200} value={form.direccion} onChange={e => set('direccion', e.target.value)} placeholder="Calle y número" /></label><label>Teléfono<input maxLength={20} value={form.telefono} onChange={e => set('telefono', e.target.value)} placeholder="Ej.: +56 64 234 5678" /></label><label>WhatsApp<input maxLength={20} value={form.whatsapp} onChange={e => set('whatsapp', e.target.value)} placeholder="Ej.: 56912345678" /></label></div><label className="business-profile-description">Descripción<textarea maxLength={1000} rows={4} value={form.descripcion} onChange={e => set('descripcion', e.target.value)} placeholder="Cuéntale a la comunidad qué ofrece tu negocio" /></label><label className="business-profile-description">Servicios destacados (separados por comas, máximo 12)<input value={form.servicios} onChange={e => set('servicios', e.target.value)} placeholder={pyme.rubro === 'veterinaria' ? 'Consulta general, Vacunación, Urgencias' : 'Despacho a domicilio, Asesoría'} /></label></section>
         <section className="settings-card"><div className="settings-card-heading"><div><p className="eyebrow">VISITAS Y UBICACIÓN</p><h2>Horario y mapa</h2></div></div><div className="settings-form-grid"><label>Lunes a viernes<input maxLength={80} value={form.horario['lun-vie']} onChange={e => set('horario', { ...form.horario, 'lun-vie': e.target.value })} placeholder="09:00-18:00" /></label><label>Sábado<input maxLength={80} value={form.horario.sab} onChange={e => set('horario', { ...form.horario, sab: e.target.value })} placeholder="Cerrado" /></label><label>Domingo<input maxLength={80} value={form.horario.dom} onChange={e => set('horario', { ...form.horario, dom: e.target.value })} placeholder="Cerrado" /></label></div><p className="muted business-location-hint"><MapPin size={16} /> Marca tu ubicación en el mapa o ingresa ambas coordenadas.</p><LocationPicker lat={form.latitud} lng={form.longitud} onChange={movePin} /><div className="settings-form-grid business-coordinates"><label>Latitud<input inputMode="decimal" value={form.latitud} onChange={e => set('latitud', e.target.value)} placeholder="-40.5735" /></label><label>Longitud<input inputMode="decimal" value={form.longitud} onChange={e => set('longitud', e.target.value)} placeholder="-73.1335" /></label></div></section>
