@@ -275,7 +275,7 @@ Antes de finalizar cualquier cambio, se debe agregar una entrada con:
 - Archivos modificados o agregados: `src/feedback.tsx`, `src/feedback.css`, `src/main.tsx`, `src/media.tsx`, `src/tutor.tsx`, `src/directory.tsx`, `src/community.tsx`, `src/adoption.tsx`, `src/business.tsx`, `src/business-profile.tsx`, `src/business-contacts.tsx`, `src/clinical.tsx`, `src/team.tsx`, `src/promotions.tsx`, `src/ong-profile.tsx`, `src/admin.tsx`, `src/advisor.tsx`, `src/privacy.tsx`, `docs/capturas/fe-04/README.md` y capturas, `AGENTS.md`.
 - Cambio realizado: componentes compartidos para esqueleto, estado vacío con acción contextual, error con reintento y permiso insuficiente. Se aplicaron a tutor, directorio y muro; Pyme, clínica y sus módulos; ONG, adopciones públicas, asesor y administración. Se evitó mostrar listas vacías o métricas en cero mientras cargan; se desactivaron animaciones del mapa que emitían errores al salir del directorio durante una transición.
 - Motivo: distinguir falta de datos de fallas de conexión y dar una acción clara para recuperarse en cada rol.
-- Verificación ejecutada: `npx tsc -b`, `npm run build -- --base=/mockap-petsuite/`, `node --test src/*.test.mjs backend/*.test.mjs`, `git diff --check`. Chromium a 390 y 1366 px, claro y oscuro: estados vacíos, carga, recuperación de error HTTP simulado y permiso clínico insuficiente; sin errores de consola ni desbordamiento horizontal. Capturas en `docs/capturas/fe-04/`. La ficha pública QR corresponde a FE-01 y requiere integrar su PR.
+- Verificación ejecutada: `npx tsc -b`, `npm run build -- --base=/mockap-petsuite/`, `node --test src/*.test.mjs backend/*.test.mjs`, `git diff --check`. Chromium a 390 y 1366 px, claro y oscuro: estados vacíos, carga, recuperación de error HTTP simulado y permiso clínico insuficiente; sin errores de consola ni desbordamiento horizontal. Capturas en `docs/capturas/fe-04/`. La ficha pública QR corresponde a FE-01 y está en la misma rama consolidada.
 
 ### FE-05 · Revisión responsive y de paletas de las vistas de octubre
 
@@ -284,3 +284,11 @@ Antes de finalizar cualquier cambio, se debe agregar una entrada con:
 - Cambio realizado: se revisaron las 17 vistas de planes, sucursales, equipo, promociones, convenios, perfil de ONG, asesor, privacidad y correos. Se corrigió el contraste de etiquetas de estado en oscuro, el reflujo de las tablas administrativas, los banners de aprobaciones en móvil y el encabezado público de planes.
 - Motivo: evitar texto ilegible y composición comprimida en las vistas nuevas, conservando los temas y el modo oscuro.
 - Verificación ejecutada: revisión con Chromium a 390 y 1366 px en claro y oscuro (Original), y a 768 y 1024 px en oscuro (Original, Océano y Lavanda); sin desbordamiento horizontal ni errores de JavaScript. Etiquetas de estado renderizadas verificadas con contraste ≥4,5:1. Capturas y lista de vistas en `docs/capturas/fe-05/README.md`. `npx tsc -b`, `npm run build -- --base=/mockap-petsuite/`, `node --test src/*.test.mjs backend/*.test.mjs` y `git diff --check` ejecutados correctamente.
+
+### Consolidación FE-01 a FE-05 en una rama
+
+- Fecha: 2026-10-19.
+- Archivos modificados: `src/tutor.tsx`, `Agents.md`, `docs/capturas/fe-04/README.md`.
+- Cambio realizado: se integraron en `fe-01-a-fe-05-frontend` los cinco cambios de frontend sobre `main`. Se conservaron conjuntamente la guía y las acciones de primer uso, la ficha pública, la impresión QR y los estados de recuperación; la bitácora reúne sus cinco entradas.
+- Motivo: preparar una sola rama para revisión e integración sin perder funcionalidades ni capturas de las tareas.
+- Verificación ejecutada: `npx tsc -b`, `npm run build -- --base=/mockap-petsuite/`, `node --test src/*.test.mjs backend/*.test.mjs` (13/13), `git diff --check main...HEAD` y recorrido integrado con Chromium a 390 px claro y 1366 px oscuro (tutor, salud, PNG, impresión, QR público, contacto, estados vacíos y salida del mapa), además de registro de cuenta nueva hasta medalla QR y panel de privacidad a 768 px oscuro/Océano. Sin errores de JavaScript ni desplazamiento horizontal.
