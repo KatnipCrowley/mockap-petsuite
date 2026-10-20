@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Download } from 'lucide-react'
 import { api, errorText, fechaLarga } from './api'
-import { Loading } from './media'
 import { MailList, type Correo } from './advisor'
+import { ErrorState, LoadingState } from './feedback'
 
 type Consentimiento = { tipo: 'terminos' | 'privacidad' | 'comunicaciones' | 'metricas'; otorgado: boolean; version: string; fecha: string }
 type Solicitud = { id: string; derecho: string; detalle: string; estado: string; respuesta: string | null; creado_en: string; vence_en: string }
@@ -40,7 +40,7 @@ export function PrivacyCenter() {
     event.preventDefault(); setError(''); setNotice('')
     try { const s = await api<Solicitud>('/privacidad/solicitudes', { method: 'POST', body: { derecho, detalle } }); setNotice(`Solicitud registrada. Responderemos a más tardar el ${fechaLarga(s.vence_en)}.`); setDetalle(''); await load() } catch (e) { setError(errorText(e)) }
   }
-  if (!data) return <div className="settings-card">{error ? <p className="form-error" role="alert">{error}</p> : <Loading />}</div>
+   if (!data) return <div className="settings-card">{error ? <ErrorState message={error} onRetry={() => void load()} /> : <LoadingState label="Cargando privacidad" />}</div>
   const valor = (t: Consentimiento['tipo']) => data.consentimientos.find(c => c.tipo === t)
   return <>
     <div className="settings-card"><div className="settings-card-heading"><div><p className="eyebrow">LEY 21.719 · TUS DATOS PERSONALES</p><h2>Consentimientos</h2><p className="muted">Puedes retirar en cualquier momento los consentimientos opcionales. Los obligatorios son necesarios para prestar el servicio; para dejarlos, solicita la supresión de tu cuenta.</p></div></div>
@@ -63,6 +63,7 @@ export function PrivacyCenter() {
 export function MyInbox() {
   const [rows, setRows] = useState<Correo[] | null>(null)
   const [error, setError] = useState('')
-  useEffect(() => { api<Correo[]>('/correos/mios').then(setRows).catch(e => setError(errorText(e))) }, [])
-  return <div className="settings-card"><div className="settings-card-heading"><div><p className="eyebrow">MODO DEMOSTRACIÓN</p><h2>Correos recibidos</h2><p className="muted">Sin servidor de correo, los mensajes que PetSuite te enviaría se guardan aquí.</p></div></div>{error && <p className="form-error" role="alert">{error}</p>}{rows ? <MailList rows={rows} /> : !error && <Loading />}</div>
+  const load = useCallback(() => api<Correo[]>('/correos/mios').then(value => { setRows(value); setError('') }).catch(e => setError(errorText(e))), [])
+  useEffect(() => { void load() }, [load])
+  return <div className="settings-card"><div className="settings-card-heading"><div><p className="eyebrow">MODO DEMOSTRACIÓN</p><h2>Correos recibidos</h2><p className="muted">Sin servidor de correo, los mensajes que PetSuite te enviaría se guardan aquí.</p></div></div>{error && !rows && <ErrorState message={error} onRetry={() => void load()} />}{error && rows && <p className="form-error" role="alert">{error}</p>}{rows ? <MailList rows={rows} onRefresh={() => void load()} /> : !error && <LoadingState label="Cargando correos recibidos" />}</div>
 }

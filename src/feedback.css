@@ -1,0 +1,8 @@
+.feedback-state { display: grid; justify-items: start; gap: 10px; width: 100%; min-width: 0; padding: 24px; border: 1px solid var(--color-border-subtle); border-radius: var(--radius-lg); background: var(--color-bg-surface-adjusted); color: var(--color-text-primary); }
+.feedback-state > svg { color: var(--color-accent-strong); }
+.feedback-state h3, .feedback-state p { margin: 0; overflow-wrap: anywhere; }
+.feedback-state p { color: var(--color-text-secondary); }
+.feedback-state button { min-height: 44px; padding-inline: 16px; }
+.feedback-state .skeleton-list { width: 100%; }
+.feedback-error > svg { color: var(--color-danger); }
+[data-mode="dark"] .feedback-error > svg { color: #ffaea4; }

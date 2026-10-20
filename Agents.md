@@ -240,3 +240,55 @@ Antes de finalizar cualquier cambio, se debe agregar una entrada con:
 - Motivo: aplicar los cambios de la reunión de octubre: remarcar el modelo de suscripción, definir roles y reglas de negocio, empresas con varias sucursales, gestión por asesores y cumplimiento de la nueva ley de datos, manteniendo como núcleo la Ficha Única y el QR.
 - Limitaciones declaradas: los límites por plan son una propuesta (el equipo solo fijó los precios). Orcob y el correo son simulados. Las claves temporales viajan en texto en el correo demo; en producción se usaría un enlace de activación de un solo uso. El cumplimiento de la Ley 21.719 debe validarlo una asesoría legal.
 - Verificación ejecutada: `npx tsc -b` sin errores y `npm run build -- --base=/mockap-petsuite/` correcto. `node --test src/admin-suspension.test.mjs src/business.test.mjs src/business-rules.test.mjs backend/server.test.mjs`: 13 de 13 pruebas (7 nuevas de reglas de negocio). Recorrido con Playwright (Chromium) por las 9 cuentas demo y todas sus vistas a 1366 px y 390 px, más `#planes`, `#adopciones` y `#ong/<id>`: sin errores de consola ni desplazamiento horizontal. `git diff --check` correcto.
+
+## 2026-10-19
+
+### FE-01 · Ficha pública de emergencia
+
+- Fecha: 2026-10-19.
+- Archivos modificados o agregados: `src/tutor.tsx`, `src/design-pages.css`, `docs/capturas/fe-01/README.md` y sus capturas, `AGENTS.md`.
+- Cambio realizado: la ficha pública prioriza foto, nombre, alertas, alergias y condiciones antes del formulario; conserva visible un botón de contacto que lleva al campo del mensaje sin romper la ruta QR. Se separaron carga, medalla inválida, medalla desactivada (cuando el API responda 410), error de red con reintento y aviso enviado; se ajustaron áreas táctiles, asociación de errores, reflujo al ampliar y privacidad de la presentación.
+- Motivo: permitir a quien encuentra una mascota consultar inmediatamente la información crítica y avisar al tutor desde cualquier tamaño de pantalla, sin exponer datos privados.
+- Dependencia para la próxima semana: el contrato actual devuelve 404 tanto para tokens inexistentes como desactivados. Para mostrar el estado distinguible de medalla desactivada hace falta 410 en el mock y el API real; hoy 404 muestra «no existe o ya no está activo». No se modificaron `src/mock/` ni `backend/`.
+- Verificación ejecutada: `npx tsc -b`, `npm run build -- --base=/mockap-petsuite/`, `node --test src/*.test.mjs backend/*.test.mjs` (13/13) y `git diff --check`, correctos. Revisión con Chromium y respuestas simuladas en navegador para los seis estados en 390 y 1366 px, claro y oscuro; sin errores de consola ni desbordamiento horizontal, contraste de textos críticos ≥4,5:1 y reflujo a 195 px (espacio disponible al 200 % de zoom en 390 px). Capturas en `docs/capturas/fe-01/`.
+
+### FE-02 · Descarga e impresión del QR
+
+- Fecha: 2026-10-19.
+- Archivos modificados o agregados: `src/tutor.tsx`, `src/styles.css`, `docs/capturas/fe-02/README.md` y capturas/PDF, `AGENTS.md`.
+- Cambio realizado: el PNG se genera a 1200 × 1200 píxeles y se descarga con un nombre seguro derivado del nombre de la mascota. La impresión se separa en una vista exclusiva de una medalla de 60 × 70 mm sobre A4; muestra solo nombre, QR de 46 mm y texto «Escanéame si me encuentras», en blanco y negro.
+- Motivo: ofrecer un archivo legible y una impresión a tamaño medalla sin incluir la interfaz del tutor ni datos médicos o privados en el papel.
+- Verificación ejecutada: `npx tsc -b`, `npm run build -- --base=/mockap-petsuite/`, `node --test src/*.test.mjs backend/*.test.mjs` y `git diff --check`. Chromium: descarga PNG, hoja A4 y revisión visual a 390 y 1366 px en claro y oscuro; capturas y PDF en `docs/capturas/fe-02/`. El escaneo físico con dos teléfonos requiere validación manual; un QR del mock local no se comparte entre navegadores sin API compartida.
+
+### FE-03 · Primer uso del tutor
+
+- Fecha: 2026-10-19.
+- Archivos modificados o agregados: `src/tutor.tsx`, `src/design-pages.css`, `docs/capturas/fe-03/README.md` y capturas, `AGENTS.md`.
+- Cambio realizado: Inicio de una cuenta sin mascotas guía en tres pasos (registro, datos críticos y QR); cada mascota muestra un porcentaje calculado con identidad, alergias, condiciones y medalla activa, y sus tarjetas incluyen un botón que abre directamente el siguiente campo pendiente. Tras crear una mascota se abre su ficha y se puede llegar al QR sin ayuda externa.
+- Motivo: dar una ruta clara hacia la ficha pública de emergencia sin agregar datos ni rutas al API.
+- Dependencia futura: los arreglos vacíos de alergias y condiciones no distinguen «sin revisar» de «ninguna conocida». Una marca de revisión explícita necesitaría actualizar el mock y el API real en conjunto.
+- Verificación ejecutada: `npx tsc -b`, `npm run build -- --base=/mockap-petsuite/`, `node --test src/*.test.mjs backend/*.test.mjs` y `git diff --check`. Recorrido con Chromium de cuenta nueva a medalla QR y tarjeta demo que abre el campo pendiente, a 390 y 1366 px en modo claro y oscuro; capturas en `docs/capturas/fe-03/`.
+
+### FE-04 · Estados compartidos en vistas por rol
+
+- Fecha: 2026-10-19.
+- Archivos modificados o agregados: `src/feedback.tsx`, `src/feedback.css`, `src/main.tsx`, `src/media.tsx`, `src/tutor.tsx`, `src/directory.tsx`, `src/community.tsx`, `src/adoption.tsx`, `src/business.tsx`, `src/business-profile.tsx`, `src/business-contacts.tsx`, `src/clinical.tsx`, `src/team.tsx`, `src/promotions.tsx`, `src/ong-profile.tsx`, `src/admin.tsx`, `src/advisor.tsx`, `src/privacy.tsx`, `docs/capturas/fe-04/README.md` y capturas, `AGENTS.md`.
+- Cambio realizado: componentes compartidos para esqueleto, estado vacío con acción contextual, error con reintento y permiso insuficiente. Se aplicaron a tutor, directorio y muro; Pyme, clínica y sus módulos; ONG, adopciones públicas, asesor y administración. Se evitó mostrar listas vacías o métricas en cero mientras cargan; se desactivaron animaciones del mapa que emitían errores al salir del directorio durante una transición.
+- Motivo: distinguir falta de datos de fallas de conexión y dar una acción clara para recuperarse en cada rol.
+- Verificación ejecutada: `npx tsc -b`, `npm run build -- --base=/mockap-petsuite/`, `node --test src/*.test.mjs backend/*.test.mjs`, `git diff --check`. Chromium a 390 y 1366 px, claro y oscuro: estados vacíos, carga, recuperación de error HTTP simulado y permiso clínico insuficiente; sin errores de consola ni desbordamiento horizontal. Capturas en `docs/capturas/fe-04/`. La ficha pública QR corresponde a FE-01 y está en la misma rama consolidada.
+
+### FE-05 · Revisión responsive y de paletas de las vistas de octubre
+
+- Fecha: 2026-10-19.
+- Archivos modificados o agregados: `src/design-suite.css`, `docs/capturas/fe-05/README.md` y 102 capturas, `AGENTS.md`.
+- Cambio realizado: se revisaron las 17 vistas de planes, sucursales, equipo, promociones, convenios, perfil de ONG, asesor, privacidad y correos. Se corrigió el contraste de etiquetas de estado en oscuro, el reflujo de las tablas administrativas, los banners de aprobaciones en móvil y el encabezado público de planes.
+- Motivo: evitar texto ilegible y composición comprimida en las vistas nuevas, conservando los temas y el modo oscuro.
+- Verificación ejecutada: revisión con Chromium a 390 y 1366 px en claro y oscuro (Original), y a 768 y 1024 px en oscuro (Original, Océano y Lavanda); sin desbordamiento horizontal ni errores de JavaScript. Etiquetas de estado renderizadas verificadas con contraste ≥4,5:1. Capturas y lista de vistas en `docs/capturas/fe-05/README.md`. `npx tsc -b`, `npm run build -- --base=/mockap-petsuite/`, `node --test src/*.test.mjs backend/*.test.mjs` y `git diff --check` ejecutados correctamente.
+
+### Consolidación FE-01 a FE-05 en una rama
+
+- Fecha: 2026-10-19.
+- Archivos modificados: `src/tutor.tsx`, `Agents.md`, `docs/capturas/fe-04/README.md`.
+- Cambio realizado: se integraron en `fe-01-a-fe-05-frontend` los cinco cambios de frontend sobre `main`. Se conservaron conjuntamente la guía y las acciones de primer uso, la ficha pública, la impresión QR y los estados de recuperación; la bitácora reúne sus cinco entradas.
+- Motivo: preparar una sola rama para revisión e integración sin perder funcionalidades ni capturas de las tareas.
+- Verificación ejecutada: `npx tsc -b`, `npm run build -- --base=/mockap-petsuite/`, `node --test src/*.test.mjs backend/*.test.mjs` (13/13), `git diff --check main...HEAD` y recorrido integrado con Chromium a 390 px claro y 1366 px oscuro (tutor, salud, PNG, impresión, QR público, contacto, estados vacíos y salida del mapa), además de registro de cuenta nueva hasta medalla QR y panel de privacidad a 768 px oscuro/Océano. Sin errores de JavaScript ni desplazamiento horizontal.

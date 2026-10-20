@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { BadgePercent, CirclePlus, Gift, Megaphone, Ticket, X } from 'lucide-react'
 import { api, errorText, fechaLarga, getSession, hoy, type CuponPublico } from './api'
-import { Loading } from './media'
 import type { MiPyme } from './business'
 import { ONG_CUPOS, limiteTexto, type Plan } from './plans'
+import { EmptyState, ErrorState, LoadingState } from './feedback'
 
 // ---------- Banners públicos ----------
 type BannerPublico = { id: string; titulo: string; texto: string; tono: 'acento' | 'calido' | 'info'; destino: 'perfil' | 'adopciones' | 'convenio'; autor_tipo: 'pyme' | 'ong'; autor_id: string; autor: string }
@@ -36,11 +36,11 @@ export function AdsManager({ base, plan, autor }: { base: string; plan?: Plan; a
   const retirar = async (b: MiBanner) => { try { await api(`${base}/banners/${b.id}`, { method: 'DELETE' }); await load() } catch (e) { setError(errorText(e)) } }
   return <section className="page role-page"><div className="page-title"><div><p className="eyebrow">PUBLICIDAD EN PETSUITE</p><h1>Banners</h1><p className="muted">Mensajes breves, sin imágenes, en el inicio de los tutores, el directorio o el muro. Un asesor PetSuite revisa cada banner antes de publicarlo. {autor === 'ong' ? `Las ONG tienen ${cupo} banner activo sin costo.` : `Tu plan ${plan?.nombre} incluye ${limiteTexto(cupo)} ${cupo === 1 ? 'banner activo' : 'banners activos'}.`} Usas {activos}.</p></div><button className="primary" disabled={cupo !== null && activos >= cupo} onClick={() => setCreating(true)}><CirclePlus size={17} /> Nuevo banner</button></div>
     {autor === 'pyme' && cupo === 0 && <div className="alert-card"><div className="alert-icon"><Megaphone size={22} /></div><div><strong>Tu plan no incluye banners</strong><p>Desde Plata puedes publicar un banner y en Oro hasta tres, con prioridad sobre los demás.</p></div></div>}
-    {error && <p className="form-error" role="alert">{error}</p>}
-    {!rows && !error && <Loading />}
+    {error && !rows && <ErrorState message={error} onRetry={() => void load()} />}{error && rows && <p className="form-error" role="alert">{error}</p>}
+    {!rows && !error && <LoadingState label="Cargando banners" />}
     <div className="catalog-list">{rows?.map(b => <div className="catalog-item" key={b.id}><div className={`promo-card tone-${b.tono} promo-preview`}><strong>{b.titulo}</strong><span>{b.texto}</span></div><div className="catalog-item-main"><p>{b.ubicacion === 'inicio' ? 'Inicio del tutor' : b.ubicacion === 'directorio' ? 'Directorio' : 'Muro comunal'} · {fechaLarga(b.desde)} al {fechaLarga(b.hasta)}</p><small>{b.impresiones} impresiones · {b.clics} clics{b.motivo ? ` · Motivo: ${b.motivo}` : ''}</small></div>
       <div className="catalog-item-actions"><span className={`user-status ${b.estado === 'aprobado' ? 'activo' : 'suspendido'}`}>{estadoBanner[b.estado]}</span>{(b.estado === 'pendiente' || b.estado === 'aprobado') && <button className="text-button" onClick={() => retirar(b)}>Retirar</button>}</div></div>)}
-      {rows && rows.length === 0 && <div className="empty-results">Aún no creas banners.</div>}</div>
+      {rows && rows.length === 0 && <EmptyState title="Aún no hay banners" description="Crea un mensaje breve para enviarlo a revisión." action={cupo !== null && activos >= cupo ? 'Actualizar' : 'Nuevo banner'} onAction={() => cupo !== null && activos >= cupo ? void load() : setCreating(true)} />}</div>
     {creating && <BannerModal base={base} autor={autor} onClose={() => setCreating(false)} onSaved={async () => { setCreating(false); await load() }} />}
   </section>
 }
@@ -99,10 +99,10 @@ export function PymeAgreements({ pyme }: { pyme: MiPyme }) {
   const cupo = pyme.plan.limites.convenios, dueno = pyme.rol_interno === 'dueno'
   return <section className="page role-page"><div className="page-title"><div><p className="eyebrow">ALIANZAS CON ONG</p><h1>Convenios y cupones</h1><p className="muted">Ofrece un descuento que la ONG difunde en su comunidad. Cada venta con el código se registra como canje: así medimos la visibilidad que te entrega la ONG. Al llegar a la meta mensual (por ejemplo, 100 ventas) ganas el premio de alimentos. Tu plan {pyme.plan.nombre} permite {limiteTexto(cupo)} {cupo === 1 ? 'convenio' : 'convenios'}.</p></div>{dueno && <button className="primary" disabled={cupo !== null && pyme.uso.convenios >= cupo} onClick={() => setCreating(true)}><CirclePlus size={17} /> Proponer convenio</button>}</div>
     <form className="settings-card redeem-form" onSubmit={canjear} noValidate><div><p className="eyebrow">CAJA</p><h2>Registrar un canje</h2><p className="muted">Ingresa el código que presenta el cliente.{pyme.sucursal ? ` Se registra en ${pyme.sucursal.nombre}.` : ''}</p></div><div className="redeem-row"><input aria-label="Código del cupón" value={codigo} onChange={e => setCodigo(e.target.value.toUpperCase())} placeholder="PATITAS-SUR10" /><button className="primary"><BadgePercent size={16} /> Registrar canje</button></div></form>
-    {notice && <p className="save-message" role="status">{notice}</p>}{error && <p className="form-error" role="alert">{error}</p>}
-    {!rows && !error && <Loading />}
+    {notice && <p className="save-message" role="status">{notice}</p>}{error && !rows && <ErrorState message={error} onRetry={() => void load()} />}{error && rows && <p className="form-error" role="alert">{error}</p>}
+    {!rows && !error && <LoadingState label="Cargando convenios" />}
     <div className="agreement-grid">{rows?.map(c => <ConvenioCard key={c.id} c={c} actions={dueno && (c.estado === 'activo' || c.estado.startsWith('pendiente')) ? <button className="text-button" onClick={() => finalizar(c)}>Finalizar convenio</button> : null} />)}</div>
-    {rows && rows.length === 0 && <div className="empty-results">Aún no tienes convenios. Propón uno a una ONG verificada.</div>}
+    {rows && rows.length === 0 && <EmptyState title="Aún no hay convenios" description="Propón un cupón a una ONG verificada." action={dueno && (cupo === null || pyme.uso.convenios < cupo) ? 'Proponer convenio' : 'Actualizar'} onAction={() => dueno && (cupo === null || pyme.uso.convenios < cupo) ? setCreating(true) : void load()} />}
     {creating && <AgreementModal pyme={pyme} onClose={() => setCreating(false)} onSaved={async () => { setCreating(false); setNotice('Propuesta enviada a la ONG. Cuando la acepte, un asesor la revisará.'); await load() }} />}
   </section>
 }
@@ -138,10 +138,10 @@ export function OngAgreements() {
   const activos = (rows || []).filter(c => c.estado === 'activo')
   return <section className="page role-page"><div className="page-title"><div><p className="eyebrow">IMPACTO DE TU COMUNIDAD</p><h1>Convenios con negocios</h1><p className="muted">Los negocios aliados ofrecen descuentos a tu comunidad. Comparte los códigos activos: cada canje muestra cuánta visibilidad les entregas y suma para el premio de alimentos.</p></div></div>
     <div className="business-stats"><div className="metric-card"><small>Convenios activos</small><strong>{activos.length}</strong><span>Códigos para difundir</span></div><div className="metric-card"><small>Canjes este mes</small><strong>{activos.reduce((n, c) => n + c.canjes_mes, 0)}</strong><span>Ventas gracias a tu comunidad</span></div><div className="metric-card"><small>Canjes históricos</small><strong>{(rows || []).reduce((n, c) => n + c.canjes_total, 0)}</strong><span>Impacto acumulado</span></div></div>
-    {error && <p className="form-error" role="alert">{error}</p>}
-    {!rows && !error && <Loading />}
+    {error && !rows && <ErrorState message={error} onRetry={() => void load()} />}{error && rows && <p className="form-error" role="alert">{error}</p>}
+    {!rows && !error && <LoadingState label="Cargando convenios de la ONG" />}
     <div className="agreement-grid">{rows?.map(c => <ConvenioCard key={c.id} c={c} actions={c.estado === 'pendiente_ong' ? <div className="qr-actions"><button className="primary" onClick={() => decidir(c, 'aceptar')}>Aceptar convenio</button><button className="text-button" onClick={() => decidir(c, 'rechazar')}>Rechazar</button></div> : null} />)}</div>
-    {rows && rows.length === 0 && <div className="empty-results">Aún no recibes propuestas de convenio.</div>}
+    {rows && rows.length === 0 && <EmptyState title="Sin propuestas de convenio" description="Los negocios aliados podrán enviarte propuestas aquí." action="Actualizar" onAction={() => void load()} />}
   </section>
 }
 

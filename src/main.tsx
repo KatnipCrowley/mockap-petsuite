@@ -9,6 +9,7 @@ import './design.css'
 import './design-pages.css'
 import './design-polish.css'
 import './design-suite.css'
+import './feedback.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode><App /></StrictMode>,

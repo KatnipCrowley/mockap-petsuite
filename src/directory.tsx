@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Building2, ChevronRight, Clock3, Crown, MapPin, MessageCircle, Phone, Search, Tag, X } from 'lucide-react'
 import { BannerStrip, CouponList } from './promotions'
 import L from 'leaflet'
@@ -6,6 +6,7 @@ import 'leaflet/dist/leaflet.css'
 import { Photo, rubroFoto } from './media'
 import { api, clp, errorText, fechaCorta, iniciales, type PymePerfil, type PymeResumen, type Comuna } from './api'
 import { businessContactSchema } from './validators'
+import { EmptyState, ErrorState, LoadingState } from './feedback'
 
 const rubros = [['', 'Todas'], ['veterinaria', 'Veterinarias'], ['tienda', 'Tiendas'], ['peluqueria', 'Peluquerías']] as const
 const rubroLabel: Record<string, string> = { veterinaria: 'Veterinaria', tienda: 'Tienda', peluqueria: 'Peluquería', otro: 'Servicio Pet-Care' }
@@ -22,7 +23,7 @@ function PlacesMap({ places, onSelect }: { places: PymeResumen[]; onSelect: (p: 
 
   useEffect(() => {
     if (!box.current || map.current) return
-    map.current = L.map(box.current, { scrollWheelZoom: false }).setView([-40.5735, -73.1335], 12)
+    map.current = L.map(box.current, { scrollWheelZoom: false, zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false }).setView([-40.5735, -73.1335], 12)
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; Colaboradores de <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }).addTo(map.current)
     layer.current = L.layerGroup().addTo(map.current)
     return () => { map.current?.remove(); map.current = null }
@@ -64,10 +65,12 @@ export function DirectoryView({ initialPyme, onOpened }: { initialPyme?: string 
   const loadContacts = () => api<SentContact[]>('/mis-contactos-pyme').then(rows => { setSentContacts(rows); setContactError('') }).catch(e => setContactError(errorText(e)))
 
   useEffect(() => { api<Comuna[]>('/comunas').then(setComunas).catch(() => undefined) }, [])
-  useEffect(() => {
+  const load = useCallback(() => {
     const qs = new URLSearchParams({ ...(comuna ? { comuna } : {}), ...(rubro ? { rubro } : {}) }).toString()
-    api<PymeResumen[]>(`/pymes${qs ? `?${qs}` : ''}`).then(p => { setPlaces(p); setError('') }).catch(e => setError(errorText(e)))
+    setPlaces(null); setError('')
+    void api<PymeResumen[]>(`/pymes${qs ? `?${qs}` : ''}`).then(p => { setPlaces(p); setError('') }).catch(e => setError(errorText(e)))
   }, [comuna, rubro])
+  useEffect(() => { load() }, [load])
 
   const [abrir, setAbrir] = useState<string | null>(initialPyme ?? null)
   useEffect(() => { if (initialPyme) { setAbrir(initialPyme); onOpened?.() } }, [initialPyme, onOpened])
@@ -79,10 +82,11 @@ export function DirectoryView({ initialPyme, onOpened }: { initialPyme?: string 
     {showContacts && <section className="directory-my-contacts"><div className="pet-section-head"><div><p className="eyebrow">CONVERSACIONES</p><h2>Mis consultas</h2></div><button className="text-button" onClick={() => void loadContacts()}>Actualizar</button></div>{contactError && <p className="form-error" role="alert">{contactError}</p>}{sentContacts?.map(row => <article key={row.id} className="directory-contact-item"><div><strong>{row.negocio}</strong><small>{new Date(row.creado_en).toLocaleString('es-CL')} · {row.estado === 'respondido' ? 'Respondida' : row.estado === 'leido' ? 'Leída' : 'Enviada'}</small></div><p>{row.mensaje}</p>{row.respuesta && <div className="business-contact-answer"><strong>Respuesta del negocio</strong><p>{row.respuesta}</p></div>}</article>)}{sentContacts?.length === 0 && <div className="empty-results">Todavía no tienes consultas a negocios.</div>}</section>}
     <div className="directory-toolbar"><label className="search-field"><Search size={17} aria-hidden="true" /><span className="sr-only">Buscar negocio</span><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Busca por nombre, servicio, sucursal o cupón" /></label><select aria-label="Comuna" value={comuna} onChange={e => setComuna(e.target.value)}><option value="">Todas las comunas</option>{comunas.map(c => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}</select></div>
     <div className="category-tabs">{rubros.map(([value, label]) => <button key={label} className={rubro === value ? 'category-tab active' : 'category-tab'} onClick={() => setRubro(value)}>{label}</button>)}<button className={soloOfertas ? 'category-tab active' : 'category-tab'} aria-pressed={soloOfertas} onClick={() => setSoloOfertas(!soloOfertas)}><Tag size={14} /> Con ofertas o cupones</button></div>
-    {error && <p className="form-error" role="alert">{error}</p>}
+    {error && !places && <ErrorState message={error} onRetry={load} />}
     <div className="directory-layout"><div className="business-results"><div className="results-count"><strong>{places ? `${shown.length} ${shown.length === 1 ? 'lugar' : 'lugares'}` : 'Cargando...'}</strong><span>Negocios verificados por PetSuite</span></div>
+      {!places && !error && <LoadingState label="Cargando negocios" rows={2} />}
       {shown.map((p, i) => <button key={p.id} className="business-card store-card" onClick={() => setSelected(p)}><Photo src={p.foto_portada || rubroFoto[p.rubro] || rubroFoto.otro} nombre={p.nombre_comercial} className="business-logo business-thumb" /><div className="business-info"><div className="business-card-top"><strong>{p.nombre_comercial}</strong>{p.destacado === 2 && <span className="chip chip-featured"><Crown size={12} /> Destacado</span>}{!!p.ofertas && <span className="chip chip-warn"><Tag size={12} /> {p.ofertas === 1 ? '1 oferta' : `${p.ofertas} ofertas`}</span>}{!!p.cupones?.length && <span className="chip chip-info">Cupón ONG</span>}</div><span>{rubroLabel[p.rubro] || p.rubro} · {p.comuna}{p.sucursales?.length ? ` · +${p.sucursales.length} ${p.sucursales.length === 1 ? 'sucursal' : 'sucursales'}` : ''}</span><small>{p.descripcion}</small><div className="business-meta">{p.direccion}</div></div><ChevronRight className="chevron" size={18} /></button>)}
-      {places && shown.length === 0 && <div className="empty-results">No encontramos negocios con estos filtros.</div>}</div>
+      {places && shown.length === 0 && <EmptyState title={places.length ? 'Sin resultados' : 'Aún no hay negocios'} description={places.length ? 'Prueba otra búsqueda o quita los filtros.' : 'Vuelve más tarde para explorar negocios verificados.'} action={places.length ? 'Quitar filtros' : 'Actualizar'} onAction={() => { if (places.length) { setQuery(''); setComuna(''); setRubro(''); setSoloOfertas(false) } else load() }} />}</div>
       <div className="map-card"><div className="map-header"><strong>Mapa</strong><span>{shown.length} en el mapa</span></div><PlacesMap places={shown} onSelect={setSelected} /></div></div>
     {(selected || abrir) && <PymeModal id={selected?.id ?? abrir!} onClose={() => { setSelected(null); setAbrir(null) }} onContactSent={() => { if (showContacts) void loadContacts() }} />}
   </section>
