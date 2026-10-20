@@ -240,3 +240,13 @@ Antes de finalizar cualquier cambio, se debe agregar una entrada con:
 - Motivo: aplicar los cambios de la reunión de octubre: remarcar el modelo de suscripción, definir roles y reglas de negocio, empresas con varias sucursales, gestión por asesores y cumplimiento de la nueva ley de datos, manteniendo como núcleo la Ficha Única y el QR.
 - Limitaciones declaradas: los límites por plan son una propuesta (el equipo solo fijó los precios). Orcob y el correo son simulados. Las claves temporales viajan en texto en el correo demo; en producción se usaría un enlace de activación de un solo uso. El cumplimiento de la Ley 21.719 debe validarlo una asesoría legal.
 - Verificación ejecutada: `npx tsc -b` sin errores y `npm run build -- --base=/mockap-petsuite/` correcto. `node --test src/admin-suspension.test.mjs src/business.test.mjs src/business-rules.test.mjs backend/server.test.mjs`: 13 de 13 pruebas (7 nuevas de reglas de negocio). Recorrido con Playwright (Chromium) por las 9 cuentas demo y todas sus vistas a 1366 px y 390 px, más `#planes`, `#adopciones` y `#ong/<id>`: sin errores de consola ni desplazamiento horizontal. `git diff --check` correcto.
+
+## 2026-10-19
+
+### FE-05 · Revisión responsive y de paletas de las vistas de octubre
+
+- Fecha: 2026-10-19.
+- Archivos modificados o agregados: `src/design-suite.css`, `docs/capturas/fe-05/README.md` y 102 capturas, `AGENTS.md`.
+- Cambio realizado: se revisaron las 17 vistas de planes, sucursales, equipo, promociones, convenios, perfil de ONG, asesor, privacidad y correos. Se corrigió el contraste de etiquetas de estado en oscuro, el reflujo de las tablas administrativas, los banners de aprobaciones en móvil y el encabezado público de planes.
+- Motivo: evitar texto ilegible y composición comprimida en las vistas nuevas, conservando los temas y el modo oscuro.
+- Verificación ejecutada: revisión con Chromium a 390 y 1366 px en claro y oscuro (Original), y a 768 y 1024 px en oscuro (Original, Océano y Lavanda); sin desbordamiento horizontal ni errores de JavaScript. Etiquetas de estado renderizadas verificadas con contraste ≥4,5:1. Capturas y lista de vistas en `docs/capturas/fe-05/README.md`. `npx tsc -b`, `npm run build -- --base=/mockap-petsuite/`, `node --test src/*.test.mjs backend/*.test.mjs` y `git diff --check` ejecutados correctamente.
