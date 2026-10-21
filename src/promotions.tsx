@@ -4,6 +4,7 @@ import { api, errorText, fechaLarga, getSession, hoy, type CuponPublico } from '
 import type { MiPyme } from './business'
 import { ONG_CUPOS, limiteTexto, type Plan } from './plans'
 import { EmptyState, ErrorState, LoadingState } from './feedback'
+import { useModalFocus } from './accessibility'
 
 // ---------- Banners públicos ----------
 type BannerPublico = { id: string; titulo: string; texto: string; tono: 'acento' | 'calido' | 'info'; destino: 'perfil' | 'adopciones' | 'convenio'; autor_tipo: 'pyme' | 'ong'; autor_id: string; autor: string }
@@ -46,6 +47,7 @@ export function AdsManager({ base, plan, autor }: { base: string; plan?: Plan; a
 }
 
 function BannerModal({ base, autor, onClose, onSaved }: { base: string; autor: 'pyme' | 'ong'; onClose: () => void; onSaved: () => Promise<void> }) {
+  useModalFocus(onClose, 'input')
   const fin = new Date(); fin.setDate(fin.getDate() + 14)
   const [form, setForm] = useState({ titulo: '', texto: '', destino: autor === 'ong' ? 'adopciones' : 'perfil', ubicacion: 'inicio', tono: 'acento', desde: hoy(), hasta: fin.toISOString().slice(0, 10) })
   const [error, setError] = useState('')
@@ -108,6 +110,7 @@ export function PymeAgreements({ pyme }: { pyme: MiPyme }) {
 }
 
 function AgreementModal({ pyme, onClose, onSaved }: { pyme: MiPyme; onClose: () => void; onSaved: () => Promise<void> }) {
+  useModalFocus(onClose, 'select')
   const [ongs, setOngs] = useState<{ id: string; nombre: string; comuna: string }[]>([])
   const fin = new Date(); fin.setMonth(fin.getMonth() + 3)
   const [form, setForm] = useState({ ong_id: '', titulo: '', descuento_pct: 10, condiciones: 'Presenta el código al pagar. No acumulable con otras ofertas.', desde: hoy(), hasta: fin.toISOString().slice(0, 10), meta_mensual: 100, premio: 'Premio de alimentos PetSuite: 2 sacos de 15 kg' })

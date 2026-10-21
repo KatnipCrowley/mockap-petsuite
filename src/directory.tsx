@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Building2, ChevronRight, Clock3, Crown, MapPin, MessageCircle, Phone, Search, Tag, X } from 'lucide-react'
+import { Building2, ChevronRight, Clock3, Crown, MapPin, MessageCircle, Phone, Search, Tag } from 'lucide-react'
 import { BannerStrip, CouponList } from './promotions'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -7,6 +7,7 @@ import { Photo, rubroFoto } from './media'
 import { api, clp, errorText, fechaCorta, iniciales, type PymePerfil, type PymeResumen, type Comuna } from './api'
 import { businessContactSchema } from './validators'
 import { EmptyState, ErrorState, LoadingState } from './feedback'
+import { useModalFocus } from './accessibility'
 
 const rubros = [['', 'Todas'], ['veterinaria', 'Veterinarias'], ['tienda', 'Tiendas'], ['peluqueria', 'Peluquerías']] as const
 const rubroLabel: Record<string, string> = { veterinaria: 'Veterinaria', tienda: 'Tienda', peluqueria: 'Peluquería', otro: 'Servicio Pet-Care' }
@@ -93,12 +94,14 @@ export function DirectoryView({ initialPyme, onOpened }: { initialPyme?: string 
 }
 
 function PymeModal({ id, onClose, onContactSent }: { id: string; onClose: () => void; onContactSent: () => void }) {
+  useModalFocus(onClose, ':scope')
   const [pyme, setPyme] = useState<PymePerfil | null>(null)
   const [error, setError] = useState('')
   const [open, setOpen] = useState<string | null>(null)
   const [message, setMessage] = useState('')
   const [contact, setContact] = useState('')
   const [contactError, setContactError] = useState('')
+  const [contactErrorField, setContactErrorField] = useState('')
   const [sent, setSent] = useState(false)
   const [busy, setBusy] = useState(false)
   useEffect(() => { api<PymePerfil>(`/pymes/${id}`).then(setPyme).catch(e => setError(errorText(e))) }, [id])
@@ -106,22 +109,28 @@ function PymeModal({ id, onClose, onContactSent }: { id: string; onClose: () => 
   const submitContact = async (event: React.FormEvent) => {
     event.preventDefault()
     const parsed = businessContactSchema.safeParse({ mensaje: message, contacto: contact })
-    if (!parsed.success) { setContactError(parsed.error.issues[0]?.message || 'Revisa tu consulta'); return }
-    setBusy(true); setContactError('')
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0]
+      const field = String(issue?.path[0] || '')
+      setContactError(issue?.message || 'Revisa tu consulta'); setContactErrorField(field)
+      requestAnimationFrame(() => document.getElementById(`directory-contact-${field}`)?.focus())
+      return
+    }
+    setBusy(true); setContactError(''); setContactErrorField('')
     try { await api(`/pymes/${id}/contactos`, { method: 'POST', body: parsed.data }); setSent(true); setMessage(''); onContactSent() } catch (e) { setContactError(errorText(e)) } finally { setBusy(false) }
   }
-  if (!pyme) return <div className="modal-backdrop"><article className="modal store-modal"><button className="close" aria-label="Cerrar" onClick={onClose}><X size={20} /></button><p className="muted">{error || 'Cargando perfil...'}</p></article></div>
+  if (!pyme) return <div className="modal-backdrop directory-profile-backdrop" onClick={event => { if (event.target === event.currentTarget) onClose() }}><article className="modal store-modal directory-profile-modal" role="dialog" aria-modal="true" aria-label="Perfil del negocio"><p className="muted">{error || 'Cargando perfil...'}</p><button type="button" className="secondary" onClick={onClose}>Volver al directorio</button></article></div>
   const wa = pyme.whatsapp?.replace(/\D/g, '')
-  return <div className="modal-backdrop"><article className="modal store-modal"><button className="close" aria-label="Cerrar" onClick={onClose}><X size={20} /></button><Photo src={pyme.foto_portada || rubroFoto[pyme.rubro] || rubroFoto.otro} nombre={pyme.nombre_comercial} className="business-hero modal-photo" /><p className="eyebrow">{(rubroLabel[pyme.rubro] || pyme.rubro).toUpperCase()} · {pyme.comuna?.toUpperCase()}</p><h2>{pyme.nombre_comercial}</h2><p className="muted">{pyme.descripcion}</p>
+  return <div className="modal-backdrop directory-profile-backdrop" onClick={event => { if (event.target === event.currentTarget) onClose() }}><article className="modal store-modal directory-profile-modal" role="dialog" aria-modal="true" aria-labelledby="directory-business-title"><Photo src={pyme.foto_portada || rubroFoto[pyme.rubro] || rubroFoto.otro} nombre={pyme.nombre_comercial} className="business-hero modal-photo" /><p className="eyebrow">{(rubroLabel[pyme.rubro] || pyme.rubro).toUpperCase()} · {pyme.comuna?.toUpperCase()}</p><h2 id="directory-business-title">{pyme.nombre_comercial}</h2><p className="muted">{pyme.descripcion}</p>
     <div className="store-info">{pyme.direccion && <span><MapPin size={16} /> {pyme.direccion}</span>}{Object.entries(pyme.horario || {}).map(([dia, h]) => <span key={dia}><Clock3 size={16} /> {diaLabel[dia] || dia}: {h}</span>)}</div>
     {!!pyme.servicios?.length && <div className="chip-row service-chips" aria-label="Servicios destacados">{pyme.servicios.map(s => <span className="chip chip-info" key={s}>{s}</span>)}</div>}
     {!!pyme.cupones?.length && <><div className="section-heading"><h3>Cupones con ONG aliadas</h3></div><p className="muted">Presenta el código al pagar: tu compra apoya a la organización.</p><CouponList cupones={pyme.cupones} por="ong" /></>}
     {!!pyme.sucursales?.length && <><div className="section-heading"><h3>Sucursales</h3></div><div className="branch-list">{pyme.sucursales.map(s => <div key={s.id} className="branch-row"><Building2 size={18} aria-hidden="true" /><div><strong>{s.nombre}</strong><small>{s.direccion ? `${s.direccion} · ` : ''}{s.comuna}{Object.keys(s.horario).length ? ` · ${Object.entries(s.horario).map(([d, h]) => `${diaLabel[d] || d} ${h}`).join(', ')}` : ''}</small>{s.descripcion && <small>{s.descripcion}</small>}{!!s.servicios.length && <div className="chip-row">{s.servicios.map(x => <span key={x} className="chip">{x}</span>)}</div>}</div>{s.telefono && <a className="text-button" href={`tel:${s.telefono}`}>Llamar</a>}</div>)}</div></>}
     <div className="section-heading"><h3>Catálogo</h3></div>
     <p className="muted">Precios referenciales. La compra y el pago se coordinan directamente con el negocio.</p>
-    <div className="product-list">{pyme.catalogo.length ? pyme.catalogo.map(item => <div className={item.oferta ? 'product-row has-offer' : 'product-row'} key={item.id} onClick={() => { setOpen(open === item.id ? null : item.id); track('vista_item', item.id) }} role="button" tabIndex={0} onKeyDown={e => { if (e.key === 'Enter') { setOpen(open === item.id ? null : item.id); track('vista_item', item.id) } }}><div><strong>{item.nombre}</strong><small>{item.tipo === 'servicio' ? 'Servicio' : 'Producto'}{item.categoria ? ` · ${item.categoria}` : ''}{open === item.id && item.descripcion ? ` · ${item.descripcion}` : ''}</small>{(item.oferta || item.sin_stock) && <div className="chip-row">{item.oferta && <span className="chip chip-warn"><Tag size={12} /> Oferta hasta el {fechaCorta(item.oferta.hasta)}</span>}{item.sin_stock && <span className="chip chip-alert">Sin stock por ahora</span>}</div>}</div>{item.oferta ? <span className="price-offer"><s>{clp(item.precio_referencial_clp)}</s><b>{clp(item.oferta.precio_clp)}</b></span> : <b>{clp(item.precio_referencial_clp)}</b>}</div>) : <p className="muted">Este negocio aún no publica su catálogo.</p>}</div>
+    <div className="product-list">{pyme.catalogo.length ? pyme.catalogo.map(item => <div className={item.oferta ? 'product-row has-offer' : 'product-row'} key={item.id} onClick={() => { setOpen(open === item.id ? null : item.id); track('vista_item', item.id) }} role="button" tabIndex={0} aria-expanded={open === item.id} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(open === item.id ? null : item.id); track('vista_item', item.id) } }}><div><strong>{item.nombre}</strong><small>{item.tipo === 'servicio' ? 'Servicio' : 'Producto'}{item.categoria ? ` · ${item.categoria}` : ''}{open === item.id && item.descripcion ? ` · ${item.descripcion}` : ''}</small>{(item.oferta || item.sin_stock) && <div className="chip-row">{item.oferta && <span className="chip chip-warn"><Tag size={12} /> Oferta hasta el {fechaCorta(item.oferta.hasta)}</span>}{item.sin_stock && <span className="chip chip-alert">Sin stock por ahora</span>}</div>}</div>{item.oferta ? <span className="price-offer"><s>{clp(item.precio_referencial_clp)}</s><b>{clp(item.oferta.precio_clp)}</b></span> : <b>{clp(item.precio_referencial_clp)}</b>}</div>) : <p className="muted">Este negocio aún no publica su catálogo.</p>}</div>
     <div className="qr-actions">{pyme.telefono && <a className="secondary" href={`tel:${pyme.telefono}`} onClick={() => track('clic_contacto')}><Phone size={16} /> Llamar</a>}{wa && <a className="primary" href={`https://wa.me/${wa}`} target="_blank" rel="noopener noreferrer" onClick={() => track('clic_whatsapp')}><MessageCircle size={16} /> WhatsApp</a>}</div>
     {!pyme.telefono && !wa && <p className="muted">Este negocio no publicó un medio de contacto.</p>}
-    <section className="directory-contact-form"><p className="eyebrow">CONTACTO EN PETSUITE</p><h3>Escribe a {pyme.nombre_comercial}</h3><p className="muted">Tu consulta llegará a su bandeja. Podrás leer su respuesta en «Mis consultas».</p>{sent && <p className="business-saved" role="status"><MessageCircle size={17} /> Consulta enviada. Revisa «Mis consultas» para ver la respuesta.</p>}<form onSubmit={submitContact} noValidate><label>Mensaje<textarea maxLength={500} rows={4} value={message} onChange={e => { setMessage(e.target.value); setContactError(''); setSent(false) }} placeholder="Cuéntale qué necesitas..." /></label><label>Dato de contacto (opcional)<input maxLength={120} value={contact} onChange={e => setContact(e.target.value)} placeholder="Correo o teléfono si quieres compartirlo" /></label>{contactError && <p className="form-error" role="alert">{contactError}</p>}<button className="primary" disabled={busy}>{busy ? 'Enviando...' : 'Enviar consulta'}</button></form></section>
+    <section className="directory-contact-form"><p className="eyebrow">CONTACTO EN PETSUITE</p><h3>Escribe a {pyme.nombre_comercial}</h3><p className="muted">Tu consulta llegará a su bandeja. Podrás leer su respuesta en «Mis consultas».</p><p className="sr-only" role="status" aria-live="polite">{sent ? 'Consulta enviada. Revisa Mis consultas para ver la respuesta.' : ''}</p>{sent && <p className="business-saved"><MessageCircle size={17} /> Consulta enviada. Revisa «Mis consultas» para ver la respuesta.</p>}<form onSubmit={submitContact} noValidate><label>Mensaje<textarea id="directory-contact-mensaje" maxLength={500} rows={4} value={message} aria-invalid={contactErrorField === 'mensaje'} aria-describedby={contactErrorField === 'mensaje' ? 'directory-contact-error' : undefined} onChange={e => { setMessage(e.target.value); setContactError(''); setContactErrorField(''); setSent(false) }} placeholder="Cuéntale qué necesitas..." /></label><label>Dato de contacto (opcional)<input id="directory-contact-contacto" maxLength={120} value={contact} aria-invalid={contactErrorField === 'contacto'} aria-describedby={contactErrorField === 'contacto' ? 'directory-contact-error' : undefined} onChange={e => { setContact(e.target.value); if (contactErrorField === 'contacto') { setContactError(''); setContactErrorField('') } }} placeholder="Correo o teléfono si quieres compartirlo" /></label>{contactError && <p className="form-error" id={contactErrorField ? 'directory-contact-error' : undefined} role={contactErrorField ? undefined : 'alert'}>{contactError}</p>}<button className="primary" disabled={busy}>{busy ? 'Enviando...' : 'Enviar consulta'}</button></form></section>
     <button className="secondary full" onClick={onClose}>Seguir explorando</button></article></div>
 }

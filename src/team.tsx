@@ -6,6 +6,7 @@ import type { MiPyme } from './business'
 import { ROLES_EQUIPO, moduloLabel, type ModuloPyme, type RolEquipo } from './permissions'
 import { limiteTexto } from './plans'
 import { EmptyState, ErrorState, LoadingState, PermissionState } from './feedback'
+import { useModalFocus } from './accessibility'
 
 type Sucursal = { id: string; nombre: string; comuna_id: number; comuna: string; direccion: string | null; telefono: string | null; whatsapp: string | null; horario: Record<string, string>; latitud: string | null; longitud: string | null; descripcion: string | null; servicios: string[]; equipo: string[] }
 type Integrante = { id: string; rol: RolEquipo; permisos: ModuloPyme[]; sucursal_id: string | null; sucursal: string; nombre: string; correo: string; estado: string; creado_en: string }
@@ -36,6 +37,7 @@ export function Branches({ pyme }: { pyme: MiPyme }) {
 }
 
 function BranchModal({ pyme, branch, onClose, onSaved }: { pyme: MiPyme; branch: Sucursal | null; onClose: () => void; onSaved: () => Promise<void> }) {
+  useModalFocus(onClose, 'input')
   const [comunas, setComunas] = useState<Comuna[]>([])
   const [form, setForm] = useState({ nombre: branch?.nombre || '', comuna_id: branch?.comuna_id || pyme.comuna_id, direccion: branch?.direccion || '', telefono: branch?.telefono || '', whatsapp: branch?.whatsapp || '', lunVie: branch?.horario['lun-vie'] || '', sab: branch?.horario.sab || '', dom: branch?.horario.dom || '', latitud: branch?.latitud || '', longitud: branch?.longitud || '', descripcion: branch?.descripcion || '', servicios: (branch?.servicios || []).join(', ') })
   const [error, setError] = useState('')
@@ -82,6 +84,7 @@ export function Team({ pyme, onChange }: { pyme: MiPyme; onChange: () => Promise
 }
 
 function MemberModal({ pyme, member, sucursales, onClose, onSaved }: { pyme: MiPyme; member: Integrante | null; sucursales: Sucursal[]; onClose: () => void; onSaved: (msg: string) => Promise<void> }) {
+  useModalFocus(onClose, member ? 'select' : 'input')
   const [form, setForm] = useState({ nombre: member?.nombre || '', correo: member?.correo || '', rol: member?.rol || 'jefe_local' as RolEquipo, sucursal_id: member?.sucursal_id ?? '' })
   const [permisos, setPermisos] = useState<ModuloPyme[]>(member?.permisos || [...ROLES_EQUIPO.jefe_local.porDefecto])
   const [error, setError] = useState('')

@@ -10,6 +10,7 @@ import { AdoptionCatalog } from './adoption'
 import { CommunityView } from './community'
 import { DirectoryView } from './directory'
 import { BannerStrip } from './promotions'
+import { useModalFocus } from './accessibility'
 
 // meta conserva lo que el formulario del tutor no edita (próxima dosis, autoría de la clínica, anulación).
 type Entry = { id: string; type: 'Vacuna' | 'Atención' | 'Tratamiento'; date: string; title: string; notes: string; meta?: RegistroMeta & { proxima?: string; fin?: string } }
@@ -207,61 +208,90 @@ function PetMessages({ pet }: { pet: Mascota }) {
 }
 
 function HealthModal({ pet, initialField, onClose, onSave }: { pet: Mascota; initialField?: 'allergies' | 'conditions' | null; onClose: () => void; onSave: (next: FichaDatos) => Promise<void> }) {
+  useModalFocus(onClose, initialField ? `#health-${initialField}` : '#health-allergies')
   const f = ficha(pet)
   const [form, setForm] = useState({ allergies: f.alergias.map(a => a.agente).join(', '), conditions: f.condiciones.join(', '), medications: f.medicamentos.join(', '), emergencyNotes: f.notaEmergencia })
-  useEffect(() => { if (initialField) document.getElementById(`health-${initialField}`)?.focus() }, [initialField])
   const [error, setError] = useState('')
+  const [errorField, setErrorField] = useState('')
   const [busy, setBusy] = useState(false)
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
     const parsed = petHealthSchema.safeParse(form)
-    if (!parsed.success) { setError(parsed.error.issues[0]?.message || 'Revisa los datos de salud'); return }
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0]
+      const field = String(issue?.path[0] || '')
+      setError(issue?.message || 'Revisa los datos de salud'); setErrorField(field)
+      requestAnimationFrame(() => document.getElementById(`health-${field}`)?.focus())
+      return
+    }
     const lists = [parsed.data.allergies, parsed.data.conditions, parsed.data.medications].map(splitList)
     setBusy(true)
     try {
       const known = new Map(f.alergias.map(a => [a.agente.toLowerCase(), a]))
       await onSave({ ...f, alergias: lists[0].map(agente => known.get(agente.toLowerCase()) || { agente }), condiciones: lists[1], medicamentos: lists[2], notaEmergencia: parsed.data.emergencyNotes.trim() })
-    } catch (e) { setError(errorText(e)) } finally { setBusy(false) }
+    } catch (e) { setError(errorText(e)); setErrorField('') } finally { setBusy(false) }
   }
-  return <div className="modal-backdrop"><form className="modal health-form-modal" onSubmit={submit} noValidate><button type="button" className="close" aria-label="Cerrar" onClick={onClose}><X size={20} /></button><p className="eyebrow">FICHA DE {pet.nombre.toUpperCase()}</p><h2>Editar datos de salud</h2><p className="muted">Separa varios elementos con comas. Alergias, condiciones y nota de emergencia aparecerán en el QR.</p><div className="health-form-fields"><label htmlFor="health-allergies">Alergias<input id="health-allergies" value={form.allergies} onChange={e => setForm({ ...form, allergies: e.target.value })} placeholder="Ej.: pollo, penicilina" /></label><label htmlFor="health-conditions">Condiciones médicas<input id="health-conditions" value={form.conditions} onChange={e => setForm({ ...form, conditions: e.target.value })} placeholder="Ej.: diabetes" /></label><label>Medicamentos (privado)<input value={form.medications} onChange={e => setForm({ ...form, medications: e.target.value })} placeholder="Ej.: tratamiento indicado por veterinaria" /></label><label>Nota pública de emergencia<textarea rows={3} maxLength={160} value={form.emergencyNotes} onChange={e => setForm({ ...form, emergencyNotes: e.target.value })} placeholder="Indicación importante para quien encuentre a tu mascota" /></label></div>{error && <p className="form-error" role="alert">{error}</p>}<div className="modal-actions"><button className="secondary" type="button" onClick={onClose}>Cancelar</button><button className="primary" disabled={busy}>{busy ? 'Guardando...' : 'Guardar salud'}</button></div></form></div>
+  const update = (key: keyof typeof form, value: string) => { setForm({ ...form, [key]: value }); if (errorField === key) { setError(''); setErrorField('') } }
+  const fieldProps = (key: keyof typeof form) => ({ id: `health-${key}`, 'aria-invalid': errorField === key, 'aria-describedby': errorField === key ? 'health-field-error' : undefined })
+  return <div className="modal-backdrop"><form className="modal health-form-modal" onSubmit={submit} noValidate><button type="button" className="close" aria-label="Cerrar" onClick={onClose}><X size={20} /></button><p className="eyebrow">FICHA DE {pet.nombre.toUpperCase()}</p><h2>Editar datos de salud</h2><p className="muted">Separa varios elementos con comas. Alergias, condiciones y nota de emergencia aparecerán en el QR.</p><div className="health-form-fields"><label>Alergias<input {...fieldProps('allergies')} value={form.allergies} onChange={e => update('allergies', e.target.value)} placeholder="Ej.: pollo, penicilina" /></label><label>Condiciones médicas<input {...fieldProps('conditions')} value={form.conditions} onChange={e => update('conditions', e.target.value)} placeholder="Ej.: diabetes" /></label><label>Medicamentos (privado)<input {...fieldProps('medications')} value={form.medications} onChange={e => update('medications', e.target.value)} placeholder="Ej.: tratamiento indicado por veterinaria" /></label><label>Nota pública de emergencia<textarea {...fieldProps('emergencyNotes')} rows={3} maxLength={160} value={form.emergencyNotes} onChange={e => update('emergencyNotes', e.target.value)} placeholder="Indicación importante para quien encuentre a tu mascota" /></label></div>{error && <p className="form-error" id={errorField ? 'health-field-error' : undefined} role={errorField ? undefined : 'alert'}>{error}</p>}<div className="modal-actions"><button className="secondary" type="button" onClick={onClose}>Cancelar</button><button className="primary" disabled={busy}>{busy ? 'Guardando...' : 'Guardar salud'}</button></div></form></div>
 }
 
 function EntryModal({ entry, onClose, onSave }: { entry: Entry | null; onClose: () => void; onSave: (entry: Entry) => Promise<void> }) {
+  useModalFocus(onClose, 'input[type="date"]')
   const [form, setForm] = useState({ date: entry?.date || new Date().toISOString().slice(0, 10), type: entry?.type || 'Atención' as Entry['type'], title: entry?.title || '', notes: entry?.notes || '' })
   const [error, setError] = useState('')
+  const [errorField, setErrorField] = useState('')
   const [busy, setBusy] = useState(false)
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
     const parsed = medicalEntrySchema.safeParse(form)
-    if (!parsed.success) { setError(parsed.error.issues[0]?.message || 'Revisa el registro'); return }
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0]
+      const field = String(issue?.path[0] || '')
+      setError(issue?.message || 'Revisa el registro'); setErrorField(field)
+      requestAnimationFrame(() => document.getElementById(`entry-${field}`)?.focus())
+      return
+    }
     setBusy(true)
-    try { await onSave({ id: entry?.id.match(/^[vat]\d+$/) ? crypto.randomUUID() : entry?.id || crypto.randomUUID(), ...parsed.data }) } catch (e) { setError(errorText(e)) } finally { setBusy(false) }
+    try { await onSave({ id: entry?.id.match(/^[vat]\d+$/) ? crypto.randomUUID() : entry?.id || crypto.randomUUID(), ...parsed.data }) } catch (e) { setError(errorText(e)); setErrorField('') } finally { setBusy(false) }
   }
-  return <div className="modal-backdrop"><form className="modal health-form-modal" onSubmit={submit} noValidate><button type="button" className="close" aria-label="Cerrar" onClick={onClose}><X size={20} /></button><p className="eyebrow">HISTORIAL PRIVADO</p><h2>{entry ? 'Editar registro' : 'Agregar atención o vacuna'}</h2><div className="health-form-fields"><label>Fecha<input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} /></label><label>Tipo<select value={form.type} onChange={e => setForm({ ...form, type: e.target.value as Entry['type'] })}><option>Atención</option><option>Vacuna</option><option>Tratamiento</option></select></label><label>Nombre del registro<input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="Ej.: vacuna antirrábica" /></label><label>Detalles<textarea rows={4} maxLength={500} value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} placeholder="Indicaciones, resultados o próxima visita" /></label></div>{error && <p className="form-error" role="alert">{error}</p>}<div className="modal-actions"><button className="secondary" type="button" onClick={onClose}>Cancelar</button><button className="primary" disabled={busy}>{busy ? 'Guardando...' : 'Guardar registro'}</button></div></form></div>
+  const update = (key: keyof typeof form, value: string) => { setForm({ ...form, [key]: value }); if (errorField === key) { setError(''); setErrorField('') } }
+  const fieldProps = (key: keyof typeof form) => ({ id: `entry-${key}`, 'aria-invalid': errorField === key, 'aria-describedby': errorField === key ? 'entry-field-error' : undefined })
+  return <div className="modal-backdrop"><form className="modal health-form-modal" onSubmit={submit} noValidate><button type="button" className="close" aria-label="Cerrar" onClick={onClose}><X size={20} /></button><p className="eyebrow">HISTORIAL PRIVADO</p><h2>{entry ? 'Editar registro' : 'Agregar atención o vacuna'}</h2><div className="health-form-fields"><label>Fecha<input {...fieldProps('date')} type="date" value={form.date} onChange={e => update('date', e.target.value)} /></label><label>Tipo<select {...fieldProps('type')} value={form.type} onChange={e => update('type', e.target.value as Entry['type'])}><option>Atención</option><option>Vacuna</option><option>Tratamiento</option></select></label><label>Nombre del registro<input {...fieldProps('title')} value={form.title} onChange={e => update('title', e.target.value)} placeholder="Ej.: vacuna antirrábica" /></label><label>Detalles<textarea {...fieldProps('notes')} rows={4} maxLength={500} value={form.notes} onChange={e => update('notes', e.target.value)} placeholder="Indicaciones, resultados o próxima visita" /></label></div>{error && <p className="form-error" id={errorField ? 'entry-field-error' : undefined} role={errorField ? undefined : 'alert'}>{error}</p>}<div className="modal-actions"><button className="secondary" type="button" onClick={onClose}>Cancelar</button><button className="primary" disabled={busy}>{busy ? 'Guardando...' : 'Guardar registro'}</button></div></form></div>
 }
 
 function PetFormModal({ pet, onClose, onSaved }: { pet?: Mascota; onClose: () => void; onSaved: (id: string) => Promise<void> }) {
+  useModalFocus(onClose, 'input')
   const [form, setForm] = useState({ nombre: pet?.nombre || '', especie: pet?.especie || 'Perro', raza: pet?.raza || '', sexo: pet?.sexo || 'desconocido', fecha_nacimiento: pet?.fecha_nacimiento?.slice(0, 10) || '' })
   const [error, setError] = useState('')
+  const [errorField, setErrorField] = useState('')
   const [busy, setBusy] = useState(false)
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
     const parsed = petDetailsSchema.safeParse(form)
-    if (!parsed.success) { setError(parsed.error.issues[0]?.message || 'Revisa los datos de tu mascota'); return }
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0]
+      const field = String(issue?.path[0] || '')
+      setError(issue?.message || 'Revisa los datos de tu mascota'); setErrorField(field)
+      requestAnimationFrame(() => document.getElementById(`pet-${field}`)?.focus())
+      return
+    }
     const d = parsed.data
     const body = { nombre: d.nombre, especie: d.especie, sexo: d.sexo, ...(d.raza ? { raza: d.raza } : {}), ...(d.fecha_nacimiento ? { fecha_nacimiento: d.fecha_nacimiento } : {}) }
     setBusy(true)
     try {
       const saved = pet ? await api<{ id: string }>(`/mascotas/${pet.id}`, { method: 'PATCH', body }) : await api<{ id: string }>('/mascotas', { method: 'POST', body })
       await onSaved(saved.id)
-    } catch (e) { setError(errorText(e)); setBusy(false) }
+    } catch (e) { setError(errorText(e)); setErrorField(''); setBusy(false) }
   }
-  const set = (key: string, value: string) => setForm({ ...form, [key]: value })
-  return <div className="modal-backdrop"><form className="modal" onSubmit={submit} noValidate><button type="button" className="close" aria-label="Cerrar" onClick={onClose}><X size={20} /></button><p className="eyebrow">{pet ? 'EDITAR FICHA' : 'NUEVA FICHA'}</p><h2>{pet ? `Datos de ${pet.nombre}` : 'Agrega un compañero'}</h2><p className="muted">{pet ? 'Actualiza su información básica.' : 'Se creará su Ficha Única de Salud.'}</p><div className="form-grid"><label>Nombre<input value={form.nombre} onChange={e => set('nombre', e.target.value)} /></label><label>Especie<select value={form.especie} onChange={e => set('especie', e.target.value)}><option>Perro</option><option>Gato</option><option>Otro</option></select></label><label>Raza<input value={form.raza} onChange={e => set('raza', e.target.value)} /></label><label>Sexo<select value={form.sexo} onChange={e => set('sexo', e.target.value)}><option value="desconocido">Desconocido</option><option value="macho">Macho</option><option value="hembra">Hembra</option></select></label><label>Fecha de nacimiento (aprox.)<input type="date" max={new Date().toISOString().slice(0, 10)} value={form.fecha_nacimiento} onChange={e => set('fecha_nacimiento', e.target.value)} /></label></div>{error && <div className="form-error" role="alert">{error}</div>}<div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Cancelar</button><button className="primary" disabled={busy}>{busy ? 'Guardando...' : 'Guardar ficha'}</button></div></form></div>
+  const set = (key: string, value: string) => { setForm({ ...form, [key]: value }); if (errorField === key) { setError(''); setErrorField('') } }
+  const fieldProps = (key: string) => ({ id: `pet-${key}`, 'aria-invalid': errorField === key, 'aria-describedby': errorField === key ? 'pet-field-error' : undefined })
+  return <div className="modal-backdrop"><form className="modal" onSubmit={submit} noValidate><button type="button" className="close" aria-label="Cerrar" onClick={onClose}><X size={20} /></button><p className="eyebrow">{pet ? 'EDITAR FICHA' : 'NUEVA FICHA'}</p><h2>{pet ? `Datos de ${pet.nombre}` : 'Agrega un compañero'}</h2><p className="muted">{pet ? 'Actualiza su información básica.' : 'Se creará su Ficha Única de Salud.'}</p><div className="form-grid"><label>Nombre<input {...fieldProps('nombre')} value={form.nombre} onChange={e => set('nombre', e.target.value)} /></label><label>Especie<select {...fieldProps('especie')} value={form.especie} onChange={e => set('especie', e.target.value)}><option>Perro</option><option>Gato</option><option>Otro</option></select></label><label>Raza<input {...fieldProps('raza')} value={form.raza} onChange={e => set('raza', e.target.value)} /></label><label>Sexo<select {...fieldProps('sexo')} value={form.sexo} onChange={e => set('sexo', e.target.value)}><option value="desconocido">Desconocido</option><option value="macho">Macho</option><option value="hembra">Hembra</option></select></label><label>Fecha de nacimiento (aprox.)<input {...fieldProps('fecha_nacimiento')} type="date" max={new Date().toISOString().slice(0, 10)} value={form.fecha_nacimiento} onChange={e => set('fecha_nacimiento', e.target.value)} /></label></div>{error && <div className="form-error" id={errorField ? 'pet-field-error' : undefined} role={errorField ? undefined : 'alert'}>{error}</div>}<div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Cancelar</button><button className="primary" disabled={busy}>{busy ? 'Guardando...' : 'Guardar ficha'}</button></div></form></div>
 }
 
 // UC-04 · Generar, reemplazar o desactivar la medalla. El QR lleva un token opaco, no datos.
 function QrModal({ pet, onClose, onChanged }: { pet: Mascota; onClose: () => void; onChanged: () => Promise<void> }) {
+  useModalFocus(onClose)
   const [src, setSrc] = useState('')
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
@@ -289,7 +319,7 @@ function QrModal({ pet, onClose, onChanged }: { pet: Mascota; onClose: () => voi
       <p className="muted">Funciona sin iniciar sesión ni instalar nada, desde cualquier teléfono.</p>
       <div className="qr-display">{src ? <img src={src} alt={`Código QR de emergencia de ${pet.nombre}`} /> : <span>{error || 'Generando QR...'}</span>}</div>
       <div className="qr-actions"><button className="primary" disabled={!src} onClick={download}><Download size={16} /> Descargar PNG</button><button className="secondary" disabled={!src} onClick={() => window.print()}><Printer size={16} /> Imprimir</button></div>
-      <div className="qr-link-actions"><button className="secondary" onClick={copy}><Copy size={16} /> {copied ? 'Enlace copiado' : 'Copiar enlace'}</button><a className="text-button" href={url} target="_blank" rel="noopener noreferrer">Ver ficha pública <ArrowRight size={16} /></a></div>
+      <div className="qr-link-actions"><button className="secondary" onClick={copy}><Copy size={16} /> {copied ? 'Enlace copiado' : 'Copiar enlace'}</button><a className="text-button" href={url} target="_blank" rel="noopener noreferrer">Ver ficha pública <ArrowRight size={16} /></a></div><span className="sr-only" role="status" aria-live="polite">{copied ? 'Enlace del QR copiado' : ''}</span>
       <div className="qr-actions"><button className="secondary" disabled={busy} onClick={issue}>Reemplazar medalla</button><button className="secondary danger-button" disabled={busy} onClick={disable}>Desactivar</button></div>
       <p className="qr-disclaimer">Reemplazar o desactivar invalida el QR anterior al instante, aunque ya esté impreso.</p>
     </> : <>
@@ -310,6 +340,7 @@ export function EmergencyView({ token }: { token: string | null }) {
   const [place, setPlace] = useState<{ latitud: number; longitud: number } | null>(null)
   const [sent, setSent] = useState(false)
   const [error, setError] = useState('')
+  const [messageError, setMessageError] = useState('')
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
@@ -342,8 +373,8 @@ export function EmergencyView({ token }: { token: string | null }) {
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
     const result = emergencyContactSchema.safeParse({ message: form.message })
-    if (!result.success) { setError(result.error.issues[0]?.message || 'Revisa tu mensaje'); document.getElementById('emergency-message')?.focus(); return }
-    setBusy(true); setError('')
+    if (!result.success) { setMessageError(result.error.issues[0]?.message || 'Revisa tu mensaje'); requestAnimationFrame(() => document.getElementById('emergency-message')?.focus()); return }
+    setBusy(true); setError(''); setMessageError('')
     try {
       await api(`/qr/${token}/mensajes`, { method: 'POST', body: { mensaje: result.data.message, ...(form.name.trim() ? { nombre: form.name.trim() } : {}), ...(form.contact.trim() ? { contacto: form.contact.trim() } : {}), ...(place || {}) } })
       setSent(true)
@@ -356,6 +387,6 @@ export function EmergencyView({ token }: { token: string | null }) {
     {pet.alertasCriticas.length > 0 && <div className="emergency-alert"><TriangleAlert size={22} aria-hidden="true" /><div><strong>Atención</strong><p>{pet.alertasCriticas.join(' · ')}</p></div></div>}
     <div className="public-emergency-facts"><div><strong>Alergias</strong><p>{pet.alergias.length ? pet.alergias.map(a => a.agente).join(', ') : 'No registradas'}</p></div><div><strong>Condiciones médicas</strong><p>{pet.condiciones.length ? pet.condiciones.join(', ') : 'No registradas'}</p></div>{pet.notaEmergencia && <div><strong>Indicación importante</strong><p>{pet.notaEmergencia}</p></div>}</div>
     <p className="privacy-note"><ShieldCheck size={18} aria-hidden="true" /> Esta ficha no muestra RUT, teléfono, dirección ni correo del tutor.</p>
-    <section className="public-contact-demo" id="contacto-tutor"><h2>¿Encontraste a {pet.nombre}?</h2><p>Envía un aviso seguro: el tutor lo recibe sin que se revelen sus datos. Tus datos son opcionales y solo se usarán para coordinar la entrega.</p>
-      <form onSubmit={submit} noValidate><label htmlFor="emergency-message">Mensaje<textarea id="emergency-message" rows={4} maxLength={500} value={form.message} aria-invalid={!!error && !emergencyContactSchema.safeParse({ message: form.message }).success} aria-describedby={error ? 'emergency-error' : undefined} onChange={e => { setForm({ ...form, message: e.target.value }); setError('') }} placeholder="Cuéntale dónde y cómo la encontraste..." /></label><label>Tu nombre (opcional)<input maxLength={80} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></label><label>Cómo contactarte (opcional)<input maxLength={120} value={form.contact} onChange={e => setForm({ ...form, contact: e.target.value })} placeholder="Teléfono o correo" /></label><button type="button" className="secondary full" onClick={locate}><MessageCircle size={16} aria-hidden="true" /> {place ? 'Ubicación aproximada incluida' : 'Incluir mi ubicación aproximada'}</button>{error && <p className="form-error" role="alert" id="emergency-error">{error}</p>}<button className="primary full" disabled={busy}>{busy ? 'Enviando...' : 'Avisar al tutor'}</button></form></section></main><div className="emergency-contact-bar"><button type="button" className="primary" onClick={() => { document.getElementById('contacto-tutor')?.scrollIntoView(); document.getElementById('emergency-message')?.focus({ preventScroll: true }) }}>Contactar al tutor</button></div></div>
+    <section className="public-contact-demo"><h2>¿Encontraste a {pet.nombre}?</h2><p>Envía un aviso seguro: el tutor lo recibe sin que se revelen sus datos. Tus datos son opcionales y solo se usarán para coordinar la entrega.</p>
+      <form onSubmit={submit} noValidate><label htmlFor="emergency-message">Mensaje<textarea id="emergency-message" rows={4} maxLength={500} value={form.message} aria-invalid={!!messageError} aria-describedby={messageError ? 'emergency-message-error' : undefined} onChange={e => { setForm({ ...form, message: e.target.value }); setMessageError(''); setError('') }} placeholder="Cuéntale dónde y cómo la encontraste..." /></label>{messageError && <p className="form-error" id="emergency-message-error">{messageError}</p>}<label>Tu nombre (opcional)<input maxLength={80} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></label><label>Cómo contactarte (opcional)<input maxLength={120} value={form.contact} onChange={e => setForm({ ...form, contact: e.target.value })} placeholder="Teléfono o correo" /></label><button type="button" className="secondary full" onClick={locate}><MessageCircle size={16} aria-hidden="true" /> {place ? 'Ubicación aproximada incluida' : 'Incluir mi ubicación aproximada'}</button>{error && <p className="form-error" role="alert">{error}</p>}<button className="primary full" disabled={busy}>{busy ? 'Enviando...' : 'Avisar al tutor'}</button></form></section></main></div>
 }

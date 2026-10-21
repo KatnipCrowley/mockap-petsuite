@@ -5,6 +5,7 @@ import { api, emptyFicha, errorText, fechaCorta, type FichaDatos, type RegistroM
 import { usePyme } from './business'
 import { BusinessContacts } from './business-contacts'
 import { EmptyState, ErrorState, LoadingState, PermissionState } from './feedback'
+import { useModalFocus } from './accessibility'
 
 type Paciente = { id: string; nombre: string; especie: string; raza: string | null; foto_url?: string | null; tutor: string; permiso: 'lectura' | 'escritura'; vigente_hasta: string; alertas: string[] | null }
 type FichaResp = { id: string; datos_clinicos: FichaDatos; version: number }
@@ -59,6 +60,7 @@ export function ClinicalArea({ active }: { active: string }) {
 const vacio = () => ({ tipo: 'atencion' as Tipo, fecha: new Date().toISOString().slice(0, 10), titulo: '', notas: '', proxima: '' })
 
 function FichaModal({ paciente, clinicaId, onClose }: { paciente: Paciente; clinicaId: string; onClose: () => void }) {
+  useModalFocus(onClose)
   const [ficha, setFicha] = useState<FichaResp | null>(null)
   const [error, setError] = useState('')
   const [form, setForm] = useState(vacio)

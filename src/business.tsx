@@ -10,6 +10,7 @@ import { DIAS_GRACIA, PLANES, planPorId, type Limites, type Plan } from './plans
 import { moduloLabel, type ModuloPyme } from './permissions'
 import { registerPymeSchema } from './validators'
 import { EmptyState, ErrorState, LoadingState, PermissionState } from './feedback'
+import { useModalFocus } from './accessibility'
 
 export type MiPyme = {
   id: string; nombre_comercial: string; rubro: string; estado_verificacion: 'pendiente' | 'aprobada' | 'rechazada' | 'suspendida'; comuna_id: number; solicitud_pendiente?: boolean
@@ -46,41 +47,49 @@ export function RegisterPyme({ onDone }: { onDone: () => void }) {
   const [comunas, setComunas] = useState<Comuna[]>([])
   const [form, setForm] = useState({ nombre_comercial: '', rut_empresa: '', rubro: 'tienda', comuna_id: 1, direccion: '', telefono: '', whatsapp: '', descripcion: '', plan_id: PLANES[0].id, canal_pago: 'transferencia', referencia_pago: '', latitud: '', longitud: '' })
   const [error, setError] = useState('')
+  const [errorField, setErrorField] = useState('')
   const [busy, setBusy] = useState(false)
   const [codigo, setCodigo] = useState('')
   useEffect(() => { api<Comuna[]>('/comunas').then(setComunas).catch(() => undefined) }, [])
-  const set = (key: string, value: string | number) => setForm({ ...form, [key]: value })
+  const set = (key: string, value: string | number) => { setForm({ ...form, [key]: value }); if (errorField === key) { setError(''); setErrorField('') } }
+  const fieldProps = (key: string) => ({ id: `register-${key}`, 'aria-invalid': errorField === key, 'aria-describedby': errorField === key ? 'register-field-error' : undefined })
   const plan = planPorId(form.plan_id)
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
     const parsed = registerPymeSchema.safeParse({ ...form, latitud: form.latitud.trim() ? Number(form.latitud) : null, longitud: form.longitud.trim() ? Number(form.longitud) : null })
-    if (!parsed.success) { setError(parsed.error.issues[0]?.message || 'Revisa los datos del negocio'); return }
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0]
+      const field = String(issue?.path[0] || '')
+      setError(issue?.message || 'Revisa los datos del negocio'); setErrorField(field)
+      requestAnimationFrame(() => document.getElementById(`register-${field}`)?.focus())
+      return
+    }
     const d = parsed.data
-    if (plan.precio_mensual_clp > 0 && form.canal_pago === 'transferencia' && form.referencia_pago.trim().length < 3) { setError('Ingresa la referencia de la transferencia o elige pagar con Orcob'); return }
+    if (plan.precio_mensual_clp > 0 && form.canal_pago === 'transferencia' && form.referencia_pago.trim().length < 3) { setError('Ingresa la referencia de la transferencia o elige pagar con Orcob'); setErrorField('referencia_pago'); requestAnimationFrame(() => document.getElementById('register-referencia_pago')?.focus()); return }
     setBusy(true); setError('')
     try {
       const r = await api<{ codigo_orcob: string | null }>('/pymes', { method: 'POST', body: { nombre_comercial: d.nombre_comercial, rut_empresa: d.rut_empresa, rubro: d.rubro, comuna_id: d.comuna_id, plan_id: d.plan_id, canal_pago: form.canal_pago, ...(d.direccion && { direccion: d.direccion }), ...(d.telefono && { telefono: d.telefono }), ...(d.whatsapp && { whatsapp: d.whatsapp }), ...(d.descripcion && { descripcion: d.descripcion }), ...(d.referencia_pago && { referencia_pago: d.referencia_pago }), ...(d.latitud !== null && { latitud: d.latitud }), ...(d.longitud !== null && { longitud: d.longitud }) } })
       if (r.codigo_orcob) { setCodigo(r.codigo_orcob); setBusy(false) } else onDone()
-    } catch (e) { setError(errorText(e)); setBusy(false) }
+    } catch (e) { setError(errorText(e)); setErrorField(''); setBusy(false) }
   }
   if (codigo) return <section className="page role-page"><div className="alert-card"><div className="alert-icon"><ShoppingBag size={22} /></div><div><strong>Negocio enviado a verificación. Tu código de pago Orcob es {codigo}</strong><p>Paga {clp(plan.precio_mensual_clp)} con ese código en los canales de recaudación de Orcob. Cuando Orcob confirme el pago y el asesor verifique tu negocio, se activará el plan {plan.nombre}.</p><button className="primary" onClick={onDone}>Ir a mi panel</button></div></div></section>
   return <section className="page role-page"><div className="page-title"><div><p className="eyebrow">ALTA DE NEGOCIO</p><h1>Registra tu negocio</h1><p className="muted">Veterinarias, tiendas y peluquerías se publican en el directorio cuando un asesor PetSuite verifica el negocio. Empieza gratis y sube de plan cuando quieras. Sin comisiones por venta.</p></div></div>
     <div className="settings-card"><div className="settings-card-heading"><div><p className="eyebrow">PASO 1</p><h2>Elige tu plan</h2><p className="muted">Plan elegido: <strong>{plan.nombre}</strong>{plan.precio_mensual_clp ? ` · ${clp(plan.precio_mensual_clp)} al mes` : ' · sin costo'}.</p></div></div><PlanGrid actual={form.plan_id} onChoose={p => set('plan_id', p.id)} chooseLabel="Quiero" /></div>
     <form className="settings-card" onSubmit={submit} noValidate><div className="settings-card-heading"><div><p className="eyebrow">PASO 2</p><h2>Datos del negocio</h2></div></div><div className="settings-form-grid">
-      <label>Nombre comercial<input value={form.nombre_comercial} onChange={e => set('nombre_comercial', e.target.value)} /></label>
-      <label>RUT de la empresa<input value={form.rut_empresa} onChange={e => set('rut_empresa', e.target.value)} placeholder="76123456-7" /></label>
-      <label>Rubro<select value={form.rubro} onChange={e => set('rubro', e.target.value)}><option value="veterinaria">Veterinaria</option><option value="tienda">Tienda</option><option value="peluqueria">Peluquería</option><option value="otro">Otro servicio Pet-Care</option></select></label>
-      <label>Comuna<select value={form.comuna_id} onChange={e => set('comuna_id', Number(e.target.value))}>{comunas.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select></label>
-      <label>Dirección<input value={form.direccion} onChange={e => set('direccion', e.target.value)} /></label>
-      <label>Teléfono<input value={form.telefono} onChange={e => set('telefono', e.target.value)} /></label>
-      <label>WhatsApp<input value={form.whatsapp} onChange={e => set('whatsapp', e.target.value)} placeholder="56912345678" /></label>
-      <label>Latitud (mapa, opcional)<input value={form.latitud} onChange={e => set('latitud', e.target.value)} placeholder="-40.5735" /></label>
-      <label>Longitud (mapa, opcional)<input value={form.longitud} onChange={e => set('longitud', e.target.value)} placeholder="-73.1335" /></label>
+      <label>Nombre comercial<input {...fieldProps('nombre_comercial')} value={form.nombre_comercial} onChange={e => set('nombre_comercial', e.target.value)} /></label>
+      <label>RUT de la empresa<input {...fieldProps('rut_empresa')} value={form.rut_empresa} onChange={e => set('rut_empresa', e.target.value)} placeholder="76123456-7" /></label>
+      <label>Rubro<select {...fieldProps('rubro')} value={form.rubro} onChange={e => set('rubro', e.target.value)}><option value="veterinaria">Veterinaria</option><option value="tienda">Tienda</option><option value="peluqueria">Peluquería</option><option value="otro">Otro servicio Pet-Care</option></select></label>
+      <label>Comuna<select {...fieldProps('comuna_id')} value={form.comuna_id} onChange={e => set('comuna_id', Number(e.target.value))}>{comunas.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select></label>
+      <label>Dirección<input {...fieldProps('direccion')} value={form.direccion} onChange={e => set('direccion', e.target.value)} /></label>
+      <label>Teléfono<input {...fieldProps('telefono')} value={form.telefono} onChange={e => set('telefono', e.target.value)} /></label>
+      <label>WhatsApp<input {...fieldProps('whatsapp')} value={form.whatsapp} onChange={e => set('whatsapp', e.target.value)} placeholder="56912345678" /></label>
+      <label>Latitud (mapa, opcional)<input {...fieldProps('latitud')} value={form.latitud} onChange={e => set('latitud', e.target.value)} placeholder="-40.5735" /></label>
+      <label>Longitud (mapa, opcional)<input {...fieldProps('longitud')} value={form.longitud} onChange={e => set('longitud', e.target.value)} placeholder="-73.1335" /></label>
       {plan.precio_mensual_clp > 0 && <><label>Forma de pago<select value={form.canal_pago} onChange={e => set('canal_pago', e.target.value)}><option value="transferencia">Transferencia (la verifica un asesor)</option><option value="orcob">Código de recaudación Orcob</option></select></label>
-        {form.canal_pago === 'transferencia' && <label>Referencia de la transferencia<input value={form.referencia_pago} onChange={e => set('referencia_pago', e.target.value)} placeholder="N.º o glosa" /></label>}</>}
+        {form.canal_pago === 'transferencia' && <label>Referencia de la transferencia<input {...fieldProps('referencia_pago')} value={form.referencia_pago} onChange={e => set('referencia_pago', e.target.value)} placeholder="N.º o glosa" /></label>}</>}
     </div>
-      <label className="composer-label">Descripción<textarea rows={3} maxLength={1000} value={form.descripcion} onChange={e => set('descripcion', e.target.value)} /></label>
-      {error && <div className="form-error" role="alert">{error}</div>}<div className="settings-actions"><span className="muted">Plan {plan.nombre}{plan.precio_mensual_clp ? ` · ${clp(plan.precio_mensual_clp)}/mes` : ''}</span><button className="primary" disabled={busy}>{busy ? 'Enviando...' : 'Enviar para verificación'}</button></div></form></section>
+      <label className="composer-label">Descripción<textarea {...fieldProps('descripcion')} rows={3} maxLength={1000} value={form.descripcion} onChange={e => set('descripcion', e.target.value)} /></label>
+      {error && <div className="form-error" id={errorField ? 'register-field-error' : undefined} role={errorField ? undefined : 'alert'}>{error}</div>}<div className="settings-actions"><span className="muted">Plan {plan.nombre}{plan.precio_mensual_clp ? ` · ${clp(plan.precio_mensual_clp)}/mes` : ''}</span><button className="primary" disabled={busy}>{busy ? 'Enviando...' : 'Enviar para verificación'}</button></div></form></section>
 }
 
 function StatusBanner({ pyme }: { pyme: MiPyme }) {
@@ -174,6 +183,7 @@ function Catalog({ pyme }: { pyme: MiPyme }) {
 }
 
 function ItemModal({ item, categorias, onClose, onSave }: { item: ItemCatalogo; categorias: string[]; onClose: () => void; onSave: (changes: Record<string, unknown>) => Promise<void> }) {
+  useModalFocus(onClose, 'input')
   const [form, setForm] = useState({
     tipo: item.tipo, nombre: item.nombre, descripcion: item.descripcion || '', categoria: item.categoria || '', precio: item.precio_referencial_clp != null ? String(item.precio_referencial_clp) : '',
     sin_stock: !!item.sin_stock, en_oferta: !!item.oferta, oferta_precio: item.oferta ? String(item.oferta.precio_clp) : '', desde: item.oferta?.desde || hoy(), hasta: item.oferta?.hasta || '',

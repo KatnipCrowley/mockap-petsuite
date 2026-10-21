@@ -292,3 +292,23 @@ Antes de finalizar cualquier cambio, se debe agregar una entrada con:
 - Cambio realizado: se integraron en `fe-01-a-fe-05-frontend` los cinco cambios de frontend sobre `main`. Se conservaron conjuntamente la guía y las acciones de primer uso, la ficha pública, la impresión QR y los estados de recuperación; la bitácora reúne sus cinco entradas.
 - Motivo: preparar una sola rama para revisión e integración sin perder funcionalidades ni capturas de las tareas.
 - Verificación ejecutada: `npx tsc -b`, `npm run build -- --base=/mockap-petsuite/`, `node --test src/*.test.mjs backend/*.test.mjs` (13/13), `git diff --check main...HEAD` y recorrido integrado con Chromium a 390 px claro y 1366 px oscuro (tutor, salud, PNG, impresión, QR público, contacto, estados vacíos y salida del mapa), además de registro de cuenta nueva hasta medalla QR y panel de privacidad a 768 px oscuro/Océano. Sin errores de JavaScript ni desplazamiento horizontal.
+
+## 2026-10-20
+
+### Desplazamiento dentro de la ficha del directorio
+
+- Fecha: 2026-10-20.
+- Archivos modificados: `src/directory.tsx`, `src/design-polish.css`, `Agents.md`.
+- Cambio realizado: se quitó la X de la ficha de negocio del directorio; la tarjeta ahora contiene su propio desplazamiento y el fondo queda fijo. Se conserva «Seguir explorando», Escape y el clic fuera de la tarjeta para cerrarla.
+- Motivo: evitar la barra de desplazamiento externa y el control superpuesto a la portada al abrir un negocio desde la lista o el mapa.
+- Verificación ejecutada: Chromium a 628 × 470 en claro, 390 × 844 en oscuro y 1366 × 768 en claro: desplazamiento interno de la tarjeta, fondo fijo, cierre con Escape y botón, sin errores de JavaScript. `npx tsc -b`, `npm run build -- --base=/mockap-petsuite/`, `node --test src/*.test.mjs backend/*.test.mjs` (13/13) y `git diff --check` correctos.
+
+## 2026-10-21
+
+### Un solo botón de aviso en la ficha pública
+
+- Fecha: 2026-10-21.
+- Archivos modificados: `src/tutor.tsx`, `src/design-pages.css`, `Agents.md`.
+- Cambio realizado: se eliminó el botón fijo «Contactar al tutor» y el espacio reservado para su barra; «Avisar al tutor» permanece como única acción para enviar el formulario.
+- Motivo: evitar dos botones de contacto simultáneos al llegar al final de la ficha pública.
+- Verificación ejecutada: `npm run build -- --base=/mockap-petsuite/` y `git diff --check` correctos. Chromium a 390 y 1366 px, en claro y oscuro: un solo botón de aviso, envío correcto, sin errores de JavaScript ni desbordamiento horizontal.

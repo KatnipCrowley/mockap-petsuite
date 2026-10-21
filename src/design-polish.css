@@ -92,6 +92,9 @@ button.pet-card:hover, button.business-card:hover { transform: translateY(-2px);
 /* Un modal más alto que la pantalla se desplaza en lugar de quedar cortado. */
 .modal-backdrop { overflow-y: auto; place-items: start center; }
 .modal-backdrop > .modal { margin-block: auto; }
+/* La ficha del directorio se desplaza dentro de la tarjeta, sin barra externa. */
+.modal-backdrop.directory-profile-backdrop { display: flex; align-items: center; justify-content: center; overflow: hidden; padding: var(--space-4); }
+.directory-profile-backdrop > .directory-profile-modal { margin: 0; max-height: min(90dvh, calc(100dvh - 2rem)); min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; scrollbar-width: thin; }
 .form-note { grid-column: 1 / -1; margin: 0; font-size: 0.85rem; font-weight: 650; color: var(--color-accent-strong); }
 .form-actions-inline { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: var(--space-2); justify-content: flex-end; }
 

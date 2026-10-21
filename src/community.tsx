@@ -5,6 +5,7 @@ import { Photo } from './media'
 import { moderationMessageSchema } from './validators'
 import { BannerStrip } from './promotions'
 import { EmptyState, ErrorState, LoadingState } from './feedback'
+import { useModalFocus } from './accessibility'
 
 type Tipo = 'extravio' | 'encuentro' | 'recomendacion' | 'alerta' | 'evento' | 'adopcion'
 type Comentario = { id: string; autor: string; texto: string; es_mio: boolean; editado: boolean }
@@ -48,6 +49,7 @@ export function CommunityView({ onAdoption, onPyme }: { onAdoption?: () => void;
   const [reporting, setReporting] = useState<Reportable | null>(null)
   const [commenting, setCommenting] = useState<string | null>(null)
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
 
   const guardadas = filter === 'Guardadas'
   const load = useCallback(async () => {
@@ -67,6 +69,7 @@ export function CommunityView({ onAdoption, onPyme }: { onAdoption?: () => void;
   const remove = (p: Post) => { if (window.confirm('¿Eliminar esta publicación? No se puede deshacer.')) void act(() => api(`/muro/${p.id}`, { method: 'DELETE' })) }
 
   return <section className="page community-page"><div className="page-title"><div><p className="eyebrow">COMUNIDAD PETSUITE · {guardadas ? 'GUARDADAS' : comunaName.toUpperCase()}</p><h1>Muro comunal</h1><p className="muted">Comparte, encuentra y ayuda a otros tutores de tu comuna.</p></div><button className="primary" onClick={() => setComposer('new')}><CirclePlus size={17} /> Publicar</button></div>
+    <p className="sr-only" role="status" aria-live="polite">{notice}</p>{notice && <p className="save-message">{notice}</p>}
     <BannerStrip ubicacion="muro" onPyme={onPyme} />
     <div className="community-intro"><div className="intro-icon"><Users size={20} /></div><div><strong>Una comunidad que se cuida</strong><p>Las publicaciones aparecen solo en el muro de la comuna de su autor. No se permiten enlaces externos.</p></div>{comunas.length > 0 && <select aria-label="Ver muro de otra comuna" value={comuna} disabled={guardadas} onChange={e => setComuna(Number(e.target.value))}>{comunas.map(c => <option key={c.id} value={c.id}>{c.nombre}{c.id === session?.comunaId ? ' (tu comuna)' : ''}</option>)}</select>}</div>
     <div className="list-toolbar"><label className="search-field"><Search size={17} aria-hidden="true" /><span className="sr-only">Buscar en el muro</span><input type="search" value={query} onChange={e => setQuery(e.target.value)} placeholder="Busca por texto, sector, autor o mascota" /></label><select aria-label="Ordenar publicaciones" value={orden} onChange={e => setOrden(e.target.value as 'recientes' | 'apoyadas')}><option value="recientes">Más recientes (urgentes primero)</option><option value="apoyadas">Más apoyadas</option></select></div>
@@ -86,7 +89,7 @@ export function CommunityView({ onAdoption, onPyme }: { onAdoption?: () => void;
         onEditComment={(c, text) => act(() => api(`/muro/comentarios/${c.id}`, { method: 'PATCH', body: { texto: text } }))}
         onDeleteComment={c => { if (window.confirm('¿Eliminar tu comentario?')) void act(() => api(`/muro/comentarios/${c.id}`, { method: 'DELETE' })) }} />)}
       {posts && visible.length === 0 && <EmptyState title={guardadas ? 'Sin publicaciones guardadas' : 'Sin publicaciones'} description={guardadas ? 'Guarda publicaciones del muro para volver a ellas después.' : q ? 'Ninguna publicación coincide con tu búsqueda.' : `Todavía no hay publicaciones de este tipo en ${comunaName || 'esta comuna'}.`} action={guardadas || q || filter !== 'Todos' ? 'Ver todas' : 'Publicar en el muro'} onAction={() => { if (guardadas || q || filter !== 'Todos') { setFilter('Todos'); setQuery('') } else setComposer('new') }} />}</div>
-    {composer && <Composer post={composer === 'new' ? null : composer} onClose={() => setComposer(null)} onSaved={async () => { const nuevo = composer === 'new'; setComposer(null); if (nuevo && guardadas) setFilter('Todos'); if (nuevo && !own && session?.comunaId) setComuna(session.comunaId); else await load() }} />}
+    {composer && <Composer post={composer === 'new' ? null : composer} onClose={() => setComposer(null)} onSaved={async () => { const nuevo = composer === 'new'; setComposer(null); setNotice(nuevo ? 'Publicación creada en el muro comunal.' : 'Publicación actualizada.'); if (nuevo && guardadas) setFilter('Todos'); if (nuevo && !own && session?.comunaId) setComuna(session.comunaId); else await load() }} />}
     {reporting && <ReportModal target={reporting} onClose={() => setReporting(null)} onSaved={() => setReporting(null)} />}
   </section>
 }
@@ -120,44 +123,48 @@ function PostCard({ post, showComment, comunaAjena, onReact, onSave, onComment, 
 }
 
 function Composer({ post, onClose, onSaved }: { post: Post | null; onClose: () => void; onSaved: () => Promise<void> }) {
+  useModalFocus(onClose, post ? 'textarea' : 'select')
   const [form, setForm] = useState({ tipo: post?.tipo || 'recomendacion' as Tipo, texto: post?.texto || '', mascota_id: '', sector: post?.sector || '', fecha_evento: post?.fecha_evento || '' })
   const [pets, setPets] = useState<Mascota[]>([])
   const [error, setError] = useState('')
+  const [errorField, setErrorField] = useState('')
   const [busy, setBusy] = useState(false)
   useEffect(() => { if (!post) api<Mascota[]>('/mascotas').then(setPets).catch(() => undefined) }, [post])
   const conSector = form.tipo !== 'recomendacion' && form.tipo !== 'adopcion'
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
-    if (form.texto.trim().length < 15) { setError('Cuéntanos un poco más para ayudar a la comunidad (mínimo 15 caracteres)'); return }
-    if (form.tipo === 'evento' && !form.fecha_evento) { setError('Indica la fecha del evento'); return }
+    if (form.texto.trim().length < 15) { setError('Cuéntanos un poco más para ayudar a la comunidad (mínimo 15 caracteres)'); setErrorField('texto'); requestAnimationFrame(() => document.getElementById('wall-text')?.focus()); return }
+    if (form.tipo === 'evento' && !form.fecha_evento) { setError('Indica la fecha del evento'); setErrorField('fecha'); requestAnimationFrame(() => document.getElementById('wall-date')?.focus()); return }
     setBusy(true)
     const campos = { texto: form.texto.trim(), ...(conSector && form.sector.trim() && { sector: form.sector.trim() }), ...(form.tipo === 'evento' && { fecha_evento: form.fecha_evento }) }
     try {
       if (post) await api(`/muro/${post.id}`, { method: 'PATCH', body: campos })
       else await api('/muro', { method: 'POST', body: { tipo: form.tipo, ...campos, ...(form.mascota_id && form.tipo === 'extravio' ? { mascota_id: form.mascota_id } : {}) } })
       await onSaved()
-    } catch (e) { setError(errorText(e)); setBusy(false) }
+    } catch (e) { setError(errorText(e)); setErrorField(''); setBusy(false) }
   }
   return <div className="modal-backdrop"><form className="modal" onSubmit={submit} noValidate><button type="button" className="close" aria-label="Cerrar" onClick={onClose}><X size={20} /></button><p className="eyebrow">{post ? 'EDITAR PUBLICACIÓN' : 'NUEVA PUBLICACIÓN'}</p><h2>{post ? 'Corrige tu publicación' : 'Comparte con tu comunidad'}</h2><p className="muted">{ayuda[form.tipo] || 'Se publicará en el muro de tu comuna. No se permiten enlaces externos.'}</p>
     <div className="form-grid"><label>Tipo<select value={form.tipo} disabled={!!post} onChange={e => setForm({ ...form, tipo: e.target.value as Tipo })}>{(post ? [post.tipo] : tiposTutor).map(t => <option key={t} value={t}>{tipoLabel[t]}</option>)}</select></label>
       {!post && form.tipo === 'extravio' && pets.length > 0 && <label>Mascota extraviada<select value={form.mascota_id} onChange={e => setForm({ ...form, mascota_id: e.target.value })}><option value="">Ninguna en particular</option>{pets.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}</select></label>}
       {conSector && <label>Sector o referencia<input maxLength={80} value={form.sector} onChange={e => setForm({ ...form, sector: e.target.value })} placeholder="Ej. Plaza de Armas, sin dirección exacta" /></label>}
-      {form.tipo === 'evento' && <label>Fecha del evento<input type="date" min={hoy()} value={form.fecha_evento} onChange={e => setForm({ ...form, fecha_evento: e.target.value })} /></label>}</div>
-    <label className="composer-label">Descripción<textarea rows={5} maxLength={1000} value={form.texto} onChange={e => { setForm({ ...form, texto: e.target.value }); setError('') }} /></label>
-    {error && <div className="form-error" role="alert">{error}</div>}<div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Cancelar</button><button className="primary" disabled={busy}>{busy ? 'Guardando...' : post ? 'Guardar cambios' : 'Publicar'}</button></div></form></div>
+      {form.tipo === 'evento' && <label>Fecha del evento<input id="wall-date" type="date" min={hoy()} value={form.fecha_evento} aria-invalid={errorField === 'fecha'} aria-describedby={errorField === 'fecha' ? 'wall-field-error' : undefined} onChange={e => { setForm({ ...form, fecha_evento: e.target.value }); if (errorField === 'fecha') { setError(''); setErrorField('') } }} /></label>}</div>
+    <label className="composer-label">Descripción<textarea id="wall-text" rows={5} maxLength={1000} value={form.texto} aria-invalid={errorField === 'texto'} aria-describedby={errorField === 'texto' ? 'wall-field-error' : undefined} onChange={e => { setForm({ ...form, texto: e.target.value }); setError(''); setErrorField('') }} /></label>
+    {error && <div className="form-error" id={errorField ? 'wall-field-error' : undefined} role={errorField ? undefined : 'alert'}>{error}</div>}<div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Cancelar</button><button className="primary" disabled={busy}>{busy ? 'Guardando...' : post ? 'Guardar cambios' : 'Publicar'}</button></div></form></div>
 }
 
 function ReportModal({ target, onClose, onSaved }: { target: Reportable; onClose: () => void; onSaved: () => void }) {
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+  const [fieldError, setFieldError] = useState(false)
   const [done, setDone] = useState(false)
+  useModalFocus(onClose, done ? undefined : '#report-post-reason', done ? 'sent' : 'editing')
   const que = target.tipo === 'comentario' ? 'el comentario' : 'la publicación'
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
     const result = moderationMessageSchema.safeParse(message)
-    if (!result.success) { setError(result.error.issues[0]?.message || 'Explica el reporte'); return }
-    try { await api('/reportes', { method: 'POST', body: { objeto_tipo: target.tipo, objeto_id: target.id, motivo: result.data.slice(0, 200) } }); setDone(true) } catch (e) { setError(errorText(e)) }
+    if (!result.success) { setError(result.error.issues[0]?.message || 'Explica el reporte'); setFieldError(true); requestAnimationFrame(() => document.getElementById('report-post-reason')?.focus()); return }
+    try { await api('/reportes', { method: 'POST', body: { objeto_tipo: target.tipo, objeto_id: target.id, motivo: result.data.slice(0, 200) } }); setDone(true) } catch (e) { setError(errorText(e)); setFieldError(false) }
   }
-  if (done) return <div className="modal-backdrop"><div className="modal report-post-modal"><p className="eyebrow">REPORTE ENVIADO</p><h2>Gracias por avisar</h2><p className="muted">El equipo de moderación revisará {que} en un plazo objetivo de 24 horas.</p><div className="modal-actions"><button className="primary" onClick={onSaved}>Listo</button></div></div></div>
-  return <div className="modal-backdrop"><form className="modal report-post-modal" onSubmit={submit} noValidate><button type="button" className="close" aria-label="Cerrar reporte" onClick={onClose}><X size={20} /></button><p className="eyebrow">REPORTAR {target.tipo === 'comentario' ? 'COMENTARIO' : 'PUBLICACIÓN'}</p><h2>Cuéntanos qué pasó</h2><p className="muted">Tu mensaje ayudará al equipo de moderación a revisar {que} de {target.autor}.</p><label htmlFor="report-post-reason">Motivo del reporte<textarea id="report-post-reason" rows={5} maxLength={200} value={message} onChange={e => { setMessage(e.target.value); setError('') }} placeholder="Describe lo sucedido..." /></label>{error && <p className="form-error" role="alert">{error}</p>}<div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Cancelar</button><button className="primary" type="submit">Enviar reporte</button></div></form></div>
+  if (done) return <div className="modal-backdrop"><div className="modal report-post-modal"><p className="eyebrow">REPORTE ENVIADO</p><h2>Gracias por avisar</h2><p className="muted" role="status">El equipo de moderación revisará {que} en un plazo objetivo de 24 horas.</p><div className="modal-actions"><button className="primary" onClick={onSaved}>Listo</button></div></div></div>
+  return <div className="modal-backdrop"><form className="modal report-post-modal" onSubmit={submit} noValidate><button type="button" className="close" aria-label="Cerrar reporte" onClick={onClose}><X size={20} /></button><p className="eyebrow">REPORTAR {target.tipo === 'comentario' ? 'COMENTARIO' : 'PUBLICACIÓN'}</p><h2>Cuéntanos qué pasó</h2><p className="muted">Tu mensaje ayudará al equipo de moderación a revisar {que} de {target.autor}.</p><label htmlFor="report-post-reason">Motivo del reporte<textarea id="report-post-reason" rows={5} maxLength={200} value={message} aria-invalid={fieldError} aria-describedby={fieldError ? 'report-post-error' : undefined} onChange={e => { setMessage(e.target.value); setError(''); setFieldError(false) }} placeholder="Describe lo sucedido..." /></label>{error && <p className="form-error" id={fieldError ? 'report-post-error' : undefined} role={fieldError ? undefined : 'alert'}>{error}</p>}<div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Cancelar</button><button className="primary" type="submit">Enviar reporte</button></div></form></div>
 }

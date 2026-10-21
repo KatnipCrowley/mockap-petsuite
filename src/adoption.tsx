@@ -5,6 +5,7 @@ import { api, errorText, iniciales, type Comuna, type FichaDatos } from './api'
 import { OngProfileEditor } from './ong-profile'
 import { AdsManager, OngAgreements } from './promotions'
 import { EmptyState, ErrorState, LoadingState } from './feedback'
+import { useModalFocus } from './accessibility'
 
 type AnimalResumen = { id: string; nombre: string; especie: string; raza: string | null; edad_estimada: string | null; estado_salud: string | null; foto_url: string | null; ong: string; comuna: string }
 type OrgResumen = { id: string; nombre: string; tipo: string; comuna: string; mision: string | null; animales: number; cupones: number }
@@ -46,6 +47,7 @@ export function AdoptionCatalog({ standalone }: { standalone?: boolean }) {
 }
 
 function AnimalModal({ id, onClose }: { id: string; onClose: () => void }) {
+  useModalFocus(onClose)
   const [animal, setAnimal] = useState<AnimalDetalle | null>(null)
   const [error, setError] = useState('')
   const [form, setForm] = useState({ mensaje: '', nombre: '', contacto: '' })
@@ -173,6 +175,7 @@ function Animals({ ong }: { ong: Ong }) {
 
 // Publica el animal en el muro de la comuna de la ONG, con su foto y un acceso al catálogo de adopción.
 function DiffuseModal({ animal, onClose, onDone }: { animal: MiAnimal; onClose: () => void; onDone: () => void }) {
+  useModalFocus(onClose, 'textarea')
   const [texto, setTexto] = useState(`${animal.nombre} busca un hogar${animal.edad_estimada ? ` (${animal.edad_estimada})` : ''}. ${animal.estado_salud ? `${animal.estado_salud}. ` : ''}Si puedes darle una familia, envía tu solicitud desde Adopciones.`)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -188,6 +191,7 @@ function DiffuseModal({ animal, onClose, onDone }: { animal: MiAnimal; onClose: 
 }
 
 function AnimalForm({ animal, onClose, onSaved }: { animal: MiAnimal | null; onClose: () => void; onSaved: () => Promise<void> }) {
+  useModalFocus(onClose, 'input')
   const [form, setForm] = useState({ nombre: animal?.nombre || '', especie: animal?.especie || 'perro', raza: animal?.raza || '', edad_estimada: animal?.edad_estimada || '', estado_salud: animal?.estado_salud || '', historia: animal?.historia || '', vacunas: linesOf(animal?.historial_salud) })
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -212,6 +216,7 @@ function AnimalForm({ animal, onClose, onSaved }: { animal: MiAnimal | null; onC
 
 // SP5.3 / UC-29 · Revisar solicitudes, coordinar y concretar la adopción con traspaso de la Ficha Única.
 function Review({ animal, onClose }: { animal: MiAnimal; onClose: () => void }) {
+  useModalFocus(onClose)
   const [items, setItems] = useState<Solicitud[] | null>(null)
   const [correo, setCorreo] = useState('')
   const [result, setResult] = useState('')

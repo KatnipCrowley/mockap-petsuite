@@ -1,0 +1,11 @@
+/* Indicador perceptible aun sobre paneles claros u oscuros. */
+:root :is(button, a, input, select, textarea, [tabindex="0"], [role="dialog"]):focus-visible {
+  outline: 2px solid var(--color-accent-solid);
+  outline-offset: 3px;
+}
+@media (forced-colors: active) {
+  :root :is(button, a, input, select, textarea, [tabindex="0"], [role="dialog"]):focus-visible {
+    outline: 2px solid Highlight;
+    box-shadow: none;
+  }
+}
