@@ -312,3 +312,31 @@ Antes de finalizar cualquier cambio, se debe agregar una entrada con:
 - Cambio realizado: se eliminó el botón fijo «Contactar al tutor» y el espacio reservado para su barra; «Avisar al tutor» permanece como única acción para enviar el formulario.
 - Motivo: evitar dos botones de contacto simultáneos al llegar al final de la ficha pública.
 - Verificación ejecutada: `npm run build -- --base=/mockap-petsuite/` y `git diff --check` correctos. Chromium a 390 y 1366 px, en claro y oscuro: un solo botón de aviso, envío correcto, sin errores de JavaScript ni desbordamiento horizontal.
+
+## 2026-10-23
+
+### Scroll integrado en la ficha del directorio
+
+- Fecha: 2026-10-23.
+- Archivos modificados: `src/directory.tsx`, `src/design-polish.css`, `AGENTS.md`.
+- Cambio realizado: se separó el marco visual de la ficha de negocio de su contenido desplazable mediante un contenedor interno; el fondo y el marco mantienen el overflow oculto, y el desplazamiento queda únicamente dentro de la tarjeta, incluyendo el comportamiento en viewport móvil.
+- Motivo: evitar que la barra de desplazamiento de la ficha parezca externa o se superponga al fondo al seleccionar una ubicación.
+- Verificación ejecutada: `npx tsc -b`, `npm run build -- --base=/mockap-petsuite/`, `node --test src/*.test.mjs backend/*.test.mjs` (13/13) y `git diff --check` correctamente.
+
+### Corrección de color en la navegación lateral
+
+- Fecha: 2026-10-23.
+- Archivos modificados: `src/styles.css`, `AGENTS.md`.
+- Cambio realizado: se reemplazó el texto rosado heredado de la barra lateral por texto blanco; el elemento activo conserva texto oscuro sobre su fondo seleccionado y su icono usa el color cálido amarillo/naranja de la marca. También se aclaró el texto secundario del perfil.
+- Motivo: recuperar la jerarquía visual original de la navegación y evitar que los temas tiñan las etiquetas de rojo o rosado sin intención.
+- Verificación ejecutada: `npx tsc -b`, `npm run build -- --base=/mockap-petsuite/` y `git diff --check` correctamente.
+
+## 2026-10-23
+
+### FE-10 · Próximas vacunas en el Inicio del tutor
+
+- Fecha: 2026-10-23.
+- Archivos modificados: `src/tutor.tsx`, `src/design-polish.css`, `AGENTS.md`.
+- Cambio realizado: se agregó al Inicio del tutor el bloque «Próximas vacunas», derivado de las dosis registradas en las Fichas Únicas. Muestra mascota, vacuna, fecha y días restantes; ordena primero las vencidas, limita las próximas a 30 días, ofrece estado vacío y abre la ficha de la mascota al seleccionar una fila.
+- Motivo: hacer visibles las próximas dosis sin obligar al tutor a revisar individualmente el historial médico.
+- Verificación ejecutada: `npx tsc -b`, `npm run build -- --base=/mockap-petsuite/`, `node --test src/*.test.mjs backend/*.test.mjs` (13/13) y `git diff --check` correctamente.

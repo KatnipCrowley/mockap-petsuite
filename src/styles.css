@@ -235,11 +235,12 @@ body { color: var(--color-text-primary); font-size: 14px; line-height: 1.5; }
 .sidebar .brand-mark { background: var(--color-sidebar-selected); color: var(--color-sidebar-bg); }
 .profile-mini { margin: 36px 8px 24px; padding-block: 20px; border-color: color-mix(in srgb, var(--color-sidebar-selected) 35%, transparent); }
 .profile-mini strong { font-size: 14px; }
-.profile-mini small { color: #f3d7d9; font-size: 12px; }
+.profile-mini small { color: rgb(255 255 255 / 70%); font-size: 12px; }
 .sidebar .avatar { background: var(--color-sidebar-selected); color: var(--color-sidebar-bg); }
 .sidebar nav { gap: 6px; }
-.sidebar .nav-item { color: #f3d7d9; font-size: 14px; min-height: 48px; padding: 12px 14px; }
+.sidebar .nav-item { color: #fff; font-size: 14px; min-height: 48px; padding: 12px 14px; }
 .sidebar .nav-item:hover, .sidebar .nav-item.active { background: var(--color-sidebar-selected); color: var(--color-sidebar-bg); }
+.sidebar .nav-item.active .nav-icon { color: var(--color-warm); }
 .topbar { height: 72px; padding-inline: clamp(24px, 3vw, 48px); background: var(--color-bg-surface-adjusted); border-bottom: 1px solid var(--color-border-subtle); }
 .topbar-context { font-size: 13px; }
 .topbar .avatar { width: 40px; height: 40px; font-size: 13px; }

@@ -4,7 +4,7 @@ import { AlertCircle, ArrowRight, CalendarDays, Check, ChevronRight, CirclePlus,
 import QRCode from 'qrcode'
 import { LogoMark, Photo } from './media'
 import { EmptyState, ErrorState, LoadingState } from './feedback'
-import { ApiError, api, edadDesde, emptyFicha, errorText, iniciales, type FichaDatos, type Mascota, type PublicaEmergencia, type PymeResumen, type RegistroMeta } from './api'
+import { ApiError, api, edadDesde, emptyFicha, errorText, fechaLarga, iniciales, type FichaDatos, type Mascota, type PublicaEmergencia, type PymeResumen, type RegistroMeta } from './api'
 import { emergencyContactSchema, medicalEntrySchema, petDetailsSchema, petHealthSchema } from './validators'
 import { AdoptionCatalog } from './adoption'
 import { CommunityView } from './community'
@@ -107,12 +107,14 @@ function Dashboard({ pets, name, banner, onSelect, onMissing, onPets, onCommunit
   const [latest, setLatest] = useState<{ autor: string; tipo: string; texto: string } | null>(null)
   useEffect(() => { api<{ autor: string; tipo: string; texto: string }[]>('/muro').then(p => setLatest(p[0] || null)).catch(() => setLatest(null)) }, [])
   const sinQr = pets.filter(p => !p.token_activo).length
+  const vaccines = upcomingVaccines(pets)
   return <section className="page home-page">
     <div className="welcome"><div><p className="eyebrow">TU ESPACIO PETSUITE</p><h1>Hola, {name.split(' ')[0]}</h1><p className="muted">Todo lo importante para tus mascotas, en un solo lugar.</p></div><button className="primary" onClick={onAdd}><CirclePlus size={17} /> Agregar mascota</button></div>
     {!pets.length && <section className="onboarding-panel" aria-labelledby="onboarding-title"><p className="eyebrow">PRIMEROS PASOS</p><h2 id="onboarding-title">Prepara su ficha de emergencia</h2><p>Desde la Ficha Única puedes compartir datos críticos sin mostrar tu información personal.</p><ol><li><strong>Registra tu mascota</strong><span>Comienza con su nombre y especie.</span><button className="primary" onClick={onAdd}>Registrar mascota <ArrowRight size={16} /></button></li><li><strong>Completa alergias y condiciones</strong><span>Después del registro, agrega lo que quien la encuentre debe saber.</span></li><li><strong>Genera su medalla QR</strong><span>Abre su ficha y activa el código de emergencia.</span></li></ol></section>}
     {banner}
     {pets[0] && <PetHero pet={pets[0]} onOpen={() => onSelect(pets[0])} />}
     {pets.length > 0 && <div className="alert-card"><div className="alert-icon"><QrCode size={22} /></div><div><strong>{sinQr ? `${sinQr} ${sinQr === 1 ? 'mascota sin' : 'mascotas sin'} medalla QR activa` : 'Su ficha de emergencia, siempre lista'}</strong><p>{sinQr ? 'Activa su QR para que quien la encuentre pueda avisarte sin ver tus datos personales.' : 'Revisa los datos de tus mascotas y accede a su QR cuando lo necesites.'}</p></div><button className="text-button" onClick={onPets}>Ver fichas <ArrowRight size={16} /></button></div>}
+    <section className="content-panel upcoming-vaccines" aria-labelledby="upcoming-vaccines-title"><div className="section-heading"><div><p className="eyebrow">SALUD Y PREVENCIÓN</p><h2 id="upcoming-vaccines-title">Próximas vacunas</h2></div>{vaccines.length > 0 && <span className="pet-count">{vaccines.length}</span>}</div>{vaccines.length > 0 ? <div className="vaccination-list">{vaccines.map(vaccine => <button type="button" className={vaccine.days < 0 ? 'vaccination-row overdue' : 'vaccination-row'} key={`${vaccine.pet.id}-${vaccine.name}-${vaccine.date}`} onClick={() => onSelect(vaccine.pet)}><span className="vaccination-icon"><CalendarDays size={18} /></span><span className="vaccination-main"><strong>{vaccine.name}</strong><small>{vaccine.pet.nombre} · {fechaLarga(vaccine.date)}</small></span><span className="vaccination-status">{vaccine.days < 0 ? `Vencida hace ${Math.abs(vaccine.days)} días` : vaccine.days === 0 ? 'Vence hoy' : `Faltan ${vaccine.days} días`}<ChevronRight size={17} aria-hidden="true" /></span></button>)}</div> : <div className="vaccination-empty"><CalendarDays size={22} aria-hidden="true" /><div><strong>No hay vacunas próximas</strong><p>Cuando una vacuna tenga próxima dosis dentro de 30 días, aparecerá aquí.</p></div></div>}</section>
     {pets.length > 0 && <section className="content-panel"><div className="section-heading"><div><p className="eyebrow">MIS MASCOTAS</p><h2>Sus fichas</h2></div><button className="text-button" onClick={onPets}>Ver todas <ArrowRight size={16} /></button></div>
       <div className="pet-grid">{pets.map(pet => <PetCardWithNext key={pet.id} pet={pet} onClick={() => onSelect(pet)} onMissing={() => onMissing(pet)} />)}<button className="add-card" onClick={onAdd}><CirclePlus size={25} /><strong>Agregar mascota</strong><small>Registra a un nuevo compañero</small></button></div>
     </section>}
@@ -235,6 +237,16 @@ function HealthModal({ pet, initialField, onClose, onSave }: { pet: Mascota; ini
   const fieldProps = (key: keyof typeof form) => ({ id: `health-${key}`, 'aria-invalid': errorField === key, 'aria-describedby': errorField === key ? 'health-field-error' : undefined })
   return <div className="modal-backdrop"><form className="modal health-form-modal" onSubmit={submit} noValidate><button type="button" className="close" aria-label="Cerrar" onClick={onClose}><X size={20} /></button><p className="eyebrow">FICHA DE {pet.nombre.toUpperCase()}</p><h2>Editar datos de salud</h2><p className="muted">Separa varios elementos con comas. Alergias, condiciones y nota de emergencia aparecerán en el QR.</p><div className="health-form-fields"><label>Alergias<input {...fieldProps('allergies')} value={form.allergies} onChange={e => update('allergies', e.target.value)} placeholder="Ej.: pollo, penicilina" /></label><label>Condiciones médicas<input {...fieldProps('conditions')} value={form.conditions} onChange={e => update('conditions', e.target.value)} placeholder="Ej.: diabetes" /></label><label>Medicamentos (privado)<input {...fieldProps('medications')} value={form.medications} onChange={e => update('medications', e.target.value)} placeholder="Ej.: tratamiento indicado por veterinaria" /></label><label>Nota pública de emergencia<textarea {...fieldProps('emergencyNotes')} rows={3} maxLength={160} value={form.emergencyNotes} onChange={e => update('emergencyNotes', e.target.value)} placeholder="Indicación importante para quien encuentre a tu mascota" /></label></div>{error && <p className="form-error" id={errorField ? 'health-field-error' : undefined} role={errorField ? undefined : 'alert'}>{error}</p>}<div className="modal-actions"><button className="secondary" type="button" onClick={onClose}>Cancelar</button><button className="primary" disabled={busy}>{busy ? 'Guardando...' : 'Guardar salud'}</button></div></form></div>
 }
+
+type UpcomingVaccine = { pet: Mascota; name: string; date: string; days: number }
+
+const localDay = (date: Date) => Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())
+const daysUntil = (iso: string) => Math.round((localDay(new Date(`${iso}T12:00:00`)) - localDay(new Date())) / 86400000)
+const upcomingVaccines = (pets: Mascota[]): UpcomingVaccine[] => pets.flatMap(pet => ficha(pet).vacunas.flatMap(vaccine => {
+  if (!vaccine.proxima || Number.isNaN(new Date(`${vaccine.proxima}T12:00:00`).getTime())) return []
+  const days = daysUntil(vaccine.proxima)
+  return days <= 30 ? [{ pet, name: vaccine.nombre, date: vaccine.proxima, days }] : []
+})).sort((a, b) => a.days - b.days || a.date.localeCompare(b.date) || a.pet.nombre.localeCompare(b.pet.nombre))
 
 function EntryModal({ entry, onClose, onSave }: { entry: Entry | null; onClose: () => void; onSave: (entry: Entry) => Promise<void> }) {
   useModalFocus(onClose, 'input[type="date"]')

@@ -93,8 +93,9 @@ button.pet-card:hover, button.business-card:hover { transform: translateY(-2px);
 .modal-backdrop { overflow-y: auto; place-items: start center; }
 .modal-backdrop > .modal { margin-block: auto; }
 /* La ficha del directorio se desplaza dentro de la tarjeta, sin barra externa. */
-.modal-backdrop.directory-profile-backdrop { display: flex; align-items: center; justify-content: center; overflow: hidden; padding: var(--space-4); }
-.directory-profile-backdrop > .directory-profile-modal { margin: 0; max-height: min(90dvh, calc(100dvh - 2rem)); min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; scrollbar-width: thin; }
+.modal-backdrop.directory-profile-backdrop { display: flex; align-items: center; justify-content: center; width: 100%; max-width: 100vw; height: 100%; max-height: 100dvh; overflow: hidden; padding: var(--space-4); }
+.directory-profile-backdrop > .directory-profile-modal { width: min(100%, 560px); max-height: calc(100dvh - 2rem); min-height: 0; margin: 0; padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+.directory-profile-scroll { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; scrollbar-width: thin; padding: var(--space-6); }
 .form-note { grid-column: 1 / -1; margin: 0; font-size: 0.85rem; font-weight: 650; color: var(--color-accent-strong); }
 .form-actions-inline { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: var(--space-2); justify-content: flex-end; }
 
@@ -302,3 +303,17 @@ button.pet-card:hover, button.business-card:hover { transform: translateY(-2px);
 .account-review-side-note .primary { justify-self: start; margin-top: var(--space-3); }
 @media (max-width: 900px) { .account-review-grid { grid-template-columns: 1fr; } .account-review-complaints { max-height: 280px; } }
 @media (max-width: 600px) { .account-review-backdrop { padding: var(--space-2); } .account-review-modal { padding: var(--space-4); } .account-review-evidence, .account-review-form, .account-review-side-note { padding: var(--space-4); } .account-suspension-types { grid-template-columns: 1fr; } .account-review-actions button { flex: 1; } .account-review-modal input[type="number"], .account-review-modal textarea { font-size: 16px; } }
+.vaccination-list { display: grid; gap: var(--space-2); }
+.vaccination-row { display: flex; align-items: center; gap: var(--space-3); width: 100%; padding: var(--space-3) var(--space-4); border: 1px solid var(--color-border-subtle); border-radius: var(--radius-md); background: var(--color-bg-surface); color: var(--color-text-primary); text-align: start; transition: border-color .15s, background .15s; }
+.vaccination-row:hover, .vaccination-row:focus-visible { border-color: var(--color-accent-solid); background: var(--color-bg-subtle); }
+.vaccination-row.overdue { border-color: color-mix(in srgb, var(--color-danger) 42%, var(--color-border-subtle)); background: var(--color-danger-soft); }
+.vaccination-icon { display: grid; place-items: center; flex: none; width: 38px; height: 38px; border-radius: var(--radius-md); background: var(--color-bg-subtle); color: var(--color-accent-solid); }
+.vaccination-row.overdue .vaccination-icon, .vaccination-row.overdue .vaccination-status { color: var(--color-danger); }
+.vaccination-main { display: grid; gap: 2px; min-width: 0; flex: 1; }
+.vaccination-main strong, .vaccination-main small { overflow-wrap: anywhere; }
+.vaccination-main small { color: var(--color-text-secondary); }
+.vaccination-status { display: inline-flex; align-items: center; gap: var(--space-2); flex: none; color: var(--color-accent-strong); font-size: .82rem; font-weight: 700; text-align: end; }
+.vaccination-empty { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-4); border: 1px dashed var(--color-border-subtle); border-radius: var(--radius-md); color: var(--color-accent-solid); }
+.vaccination-empty strong, .vaccination-empty p { display: block; margin: 0; }
+.vaccination-empty p { margin-top: 2px; color: var(--color-text-secondary); }
+@media (max-width: 600px) { .vaccination-row { align-items: flex-start; } .vaccination-status { flex-direction: column; align-items: flex-end; gap: 0; font-size: .75rem; } .vaccination-status svg { display: none; } }
