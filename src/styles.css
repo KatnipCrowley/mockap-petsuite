@@ -791,6 +791,27 @@ button:disabled { cursor: not-allowed; opacity: .55; }
   .qr-print-medal span { font-size: 9pt; line-height: 1.2; }
 }
 
+@media print {
+  html:has(.lost-poster-print-page), body:has(.lost-poster-print-page) { min-width: 0; margin: 0; background: #fff !important; }
+  body:has(.lost-poster-print-page) > #root { display: none !important; }
+  .lost-poster-print-page { display: block !important; width: 186mm; height: 273mm; color: #111; background: #fff; font-family: Arial, sans-serif; }
+  .lost-poster-print-page > .lost-poster-sheet { box-sizing: border-box; width: 186mm; height: 273mm; padding: 4mm; display: grid; grid-template-rows: auto 72mm auto auto minmax(35mm, 1fr) auto; align-content: stretch; justify-items: center; gap: 3mm; overflow: hidden; border: 1mm solid #1a2422; background: #fff; color: #111; text-align: center; break-inside: avoid; box-shadow: none; }
+  .lost-poster-print-page .lost-poster-heading { margin: 0; color: #a20e19 !important; font-family: Arial, sans-serif; font-size: 34pt; line-height: 1; font-weight: 900; letter-spacing: .04em; }
+  .lost-poster-print-page .lost-poster-photo { width: 100%; height: 72mm; display: grid; place-items: center; overflow: hidden; background: #eef1f0; color: #343a38; }
+  .lost-poster-print-page .lost-poster-photo img { width: 100%; height: 100%; object-fit: cover; }
+  .lost-poster-print-page .lost-poster-sheet h1 { margin: 0; color: #101716 !important; font-family: Arial, sans-serif; font-size: 27pt; line-height: 1.05; overflow-wrap: anywhere; }
+  .lost-poster-print-page .lost-poster-details { width: 100%; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3mm; }
+  .lost-poster-print-page .lost-poster-details p { margin: 0; padding: 2mm; display: grid; gap: 1mm; border: .4mm solid #aab4b1; color: #111; text-align: start; }
+  .lost-poster-print-page .lost-poster-details strong, .lost-poster-print-page .lost-poster-description > strong { color: #333 !important; font-family: Arial, sans-serif; font-size: 9pt; letter-spacing: .08em; }
+  .lost-poster-print-page .lost-poster-details span { color: #111 !important; font-size: 14pt; font-weight: 700; overflow-wrap: anywhere; }
+  .lost-poster-print-page .lost-poster-description { width: 100%; min-height: 0; text-align: start; }
+  .lost-poster-print-page .lost-poster-description p { margin: 1mm 0 0; color: #111 !important; font-family: Arial, sans-serif; font-size: 11pt; line-height: 1.2; overflow-wrap: anywhere; white-space: pre-wrap; }
+  .lost-poster-print-page .lost-poster-qr { min-height: 45mm; display: flex; align-items: center; justify-content: center; gap: 4mm; color: #111; font-size: 11pt; font-weight: 700; }
+  .lost-poster-print-page .lost-poster-qr img { width: 45mm; height: 45mm; image-rendering: pixelated; }
+  .lost-poster-print-page .lost-poster-qr span { max-width: 55mm; text-align: start; }
+  .lost-poster-print-page .lost-poster-qr strong { font-size: 13pt; }
+}
+
 /* Mapa Leaflet + OpenStreetMap del directorio */
 .leaflet-box { height: 420px; width: 100%; z-index: 0; }
 .leaflet-num-pin span { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--color-accent-solid, #dc2d32); color: #fff; font-weight: 700; font-size: 13px; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,.35); }

@@ -22,6 +22,8 @@ Este principio debe considerarse antes de cualquier decisión de arquitectura, f
 
 ## Regla de trabajo
 
+Este repositorio se trabaja directamente en `main`. Nunca crear, cambiar ni usar otra rama para las tareas solicitadas; conservar la rama `main` activa.
+
 Antes de finalizar cualquier cambio, se debe agregar una entrada con:
 
 - Fecha.
@@ -322,6 +324,34 @@ Antes de finalizar cualquier cambio, se debe agregar una entrada con:
 - Cambio realizado: se separó el marco visual de la ficha de negocio de su contenido desplazable mediante un contenedor interno; el fondo y el marco mantienen el overflow oculto, y el desplazamiento queda únicamente dentro de la tarjeta, incluyendo el comportamiento en viewport móvil.
 - Motivo: evitar que la barra de desplazamiento de la ficha parezca externa o se superponga al fondo al seleccionar una ubicación.
 - Verificación ejecutada: `npx tsc -b`, `npm run build -- --base=/mockap-petsuite/`, `node --test src/*.test.mjs backend/*.test.mjs` (13/13) y `git diff --check` correctamente.
+
+## 2026-10-24
+
+### FE-11 · Cartel de mascota perdida
+
+- Fecha: 2026-10-24.
+- Archivos modificados: `src/community.tsx`, `src/design-polish.css`, `src/styles.css`, `AGENTS.md`.
+- Cambio realizado: las publicaciones propias de extravío incluyen «Generar cartel». El cartel A4 vertical presenta «SE BUSCA», foto, nombre, sector, fecha y señas; incorpora el QR opaco de la medalla activa para abrir la ficha pública. Si la medalla está desactivada, se muestra «Activa la medalla para incluir el QR». La impresión no contiene teléfono, correo ni dirección del tutor. La relación entre publicación y mascota elegida se conserva en el frontend, sin cambiar el API.
+- Motivo: permitir difundir una búsqueda en papel con la información necesaria y una vía segura para contactar al tutor mediante la Ficha Única.
+- Verificación ejecutada: `npx tsc -b`, `npm run build -- --base=/mockap-petsuite/`, `node --test src/*.test.mjs backend/*.test.mjs` (13/13) y `git diff --check` correctamente. No se ejecutó revisión visual en navegador en esa sesión.
+
+### FE-12 · «Abierto ahora» y «Cómo llegar» en el directorio
+
+- Fecha: 2026-10-24.
+- Archivos modificados o agregados: `src/directory.tsx`, `src/directory-hours.ts`, `src/directory-hours.test.mjs`, `src/design-polish.css`, `AGENTS.md`.
+- Cambio realizado: se calcula el estado de apertura con la hora local de Chile usando el horario semanal del negocio y sus sucursales. Se agregó el filtro «Abierto ahora» sobre resultados cargados, el estado en resultados y fichas, y enlaces a Google Maps para la casa matriz y sucursales con coordenadas válidas.
+- Motivo: permitir identificar negocios abiertos en la hora local de Chile y abrir rutas hasta la casa matriz o una sucursal georreferenciada.
+- Verificación ejecutada: `npx tsc -b`, `npm run build -- --base=/mockap-petsuite/`, `node --test src/directory-hours.test.mjs` (6/6), `node --test src/*.test.mjs backend/*.test.mjs` (19/19) y `git diff --check` correctamente.
+
+## 2026-10-24
+
+### FE-11 · Cartel de mascota perdida
+
+- Fecha: 2026-10-24.
+- Archivos modificados: `src/community.tsx`, `src/design-polish.css`, `src/styles.css`, `AGENTS.md`.
+- Cambio realizado: las publicaciones propias de extravío incluyen «Generar cartel». El cartel A4 vertical presenta «SE BUSCA», foto, nombre, sector, fecha y señas; incorpora el QR opaco de la medalla activa para abrir la ficha pública. Si la medalla está desactivada, se muestra «Activa la medalla para incluir el QR». La impresión no contiene teléfono, correo ni dirección del tutor. La relación entre publicación y mascota elegida se conserva en el frontend, sin cambiar el API.
+- Motivo: permitir difundir una búsqueda en papel con la información necesaria y una vía segura para contactar al tutor mediante la Ficha Única.
+- Verificación ejecutada: `npx tsc -b`, `npm run build -- --base=/mockap-petsuite/`, `node --test src/*.test.mjs backend/*.test.mjs` (13/13) y `git diff --check` correctamente. No se ejecutó revisión visual en navegador en esta sesión.
 
 ### Corrección de color en la navegación lateral
 
