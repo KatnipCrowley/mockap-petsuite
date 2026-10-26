@@ -617,3 +617,15 @@ Cada entrada va al final del archivo, bajo el encabezado `## AAAA-MM-DD` de su d
     - Build con `VITE_API_URL` contra `backend/server.mjs`: sin cuentas de prueba, sin atajo al correo simulado, enlace a `APP_URL` y Configuración sin «Datos de demostración».
     - Recorrido general por las 9 cuentas demo, sin errores de JavaScript ni desplazamiento horizontal.
   - `git diff --check` correcto.
+
+### Ramas fusionadas en `main` y scripts personales eliminados
+
+- Fecha: 2026-10-26.
+- Archivos eliminados: `fe06-audit-local.mjs` y `fe06-keyboard-local.mjs`.
+- Archivos modificados: `Agents.md`.
+- Cambio realizado:
+  - `mejoras-qr-y-compartir` y `usuarios-reales` se fusionaron en `main`, en ese orden y sin conflictos, porque `main` ya era ancestro de ambas. Con eso se cumple la regla de fusionar una rama antes de la tarea siguiente.
+  - Se quitaron de la raíz los dos scripts de auditoría del commit `56193cb` («avances del F-06»). Usaban rutas del computador de un integrante (`C:/Users/arman/...`) y no corrían en otro equipo. Siguen disponibles en el historial de Git.
+- Motivo: dejar `main` con la última versión del proyecto y sin archivos personales, como piden las reglas de trabajo.
+- Pendiente: borrar en GitHub (pestaña **Branches**) las ramas ya incluidas en `main`: `aaaaa`, `benja-1`, `benja-2`, `benja-base-datos`, `fe-01-a-fe-05-frontend`, las cinco `fe-0x` individuales, `mejoras-qr-y-compartir` y `usuarios-reales`. Desde esta terminal no hay credenciales para hacerlo.
+- Verificación ejecutada: `npx tsc -b`, `npm run build -- --base=/mockap-petsuite/`, `npm test` y `git diff --check`.
