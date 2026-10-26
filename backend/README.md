@@ -1,6 +1,26 @@
-# API compartida de PetSuite (demostración)
+# API de PetSuite
 
-Este servidor Node 24 expone el mismo contrato que `src/mock/server.ts` en `/api/v1`. A diferencia del mock del navegador, guarda los datos en un archivo del servidor: un QR con token opaco se abre desde otro teléfono, el visitante puede dejar un aviso, el tutor lo ve en su bandeja y reemplazar/desactivar la medalla invalida el código anterior.
+Este servidor Node 24 expone en `/api/v1` el mismo contrato que `src/mock/server.ts` (rutas, validaciones, mensajes y forma de las respuestas). Con él, un QR con token opaco se abre desde otro teléfono, el visitante deja un aviso, el tutor lo ve en su bandeja y reemplazar o desactivar la medalla invalida el código anterior.
+
+## Origen de los datos
+
+| `.env` | Datos |
+| --- | --- |
+| Con `DATABASE_URL` | PostgreSQL en Supabase, mediante las rutas de `backend/api/`. Ver `backend/db/README.md` para configurar la base. |
+| Sin `DATABASE_URL` | El mock del navegador, con el estado guardado en `data/petsuite.json`. |
+
+`npm run api:start` lee `.env` si existe y muestra al iniciar qué datos usa.
+
+## Cómo está hecho el API sobre PostgreSQL
+
+- Cada solicitud corre en una transacción: si la ruta falla, no queda nada a medias.
+- Las sesiones se guardan en la tabla `sesiones` como SHA-256 del token, con 30 días de vigencia. Las claves se verifican con bcrypt.
+- Las reglas de negocio reutilizan lo compartido con el frontend: validaciones Zod de `src/shared/validators.ts`, planes de `src/modules/plans/plans.ts` y permisos de `src/shared/permissions.ts`.
+- **Paridad con el mock.** `backend/api/paridad.test.mjs` corre los mismos guiones contra el mock y contra una base PGlite (PostgreSQL en memoria) con los mismos datos, y exige respuestas idénticas.
+  - Una prueba de cobertura falla si alguna ruta queda sin guion.
+  - Si cambias una regla, cámbiala en `src/mock` y en `backend/api`. La prueba indica el paso exacto que difiere.
+
+Pruebas: `npm test` ejecuta las del mock, las del servidor HTTP (con archivo y con PGlite) y las de paridad. No necesita Supabase ni Docker.
 
 ## Probar en la misma computadora
 
@@ -39,6 +59,12 @@ npm run dev -- --host 0.0.0.0
 
 Abre `http://192.168.1.10:5173` en ambos dispositivos. La URL del API debe usar la IP de la computadora, nunca `127.0.0.1` en el teléfono.
 
-El servidor reutiliza las cuentas y contraseñas conocidas de la demostración. `PETSUITE_ALLOW_DEMO_API=1` habilita explícitamente su acceso desde la red; esta versión sirve para probar el flujo compartido, no para alojar cuentas reales. Para producción hacen falta autenticación y almacenamiento de credenciales adecuados y una infraestructura persistente. El archivo `data/` queda fuera de Git.
+El servidor reutiliza las cuentas y contraseñas conocidas de la demostración. `PETSUITE_ALLOW_DEMO_API=1` habilita explícitamente su acceso desde la red; esta versión sirve para probar el flujo compartido, no para alojar cuentas reales. El archivo `data/` queda fuera de Git.
 
-Verificación local: `node --test backend/server.test.mjs`.
+Antes de alojar cuentas reales faltan:
+
+- cambiar las claves demo;
+- reemplazar las claves temporales del correo simulado por un enlace de activación;
+- verificar el certificado TLS de Supabase en lugar de `sslmode=no-verify`.
+
+Verificación local: `npm test`.

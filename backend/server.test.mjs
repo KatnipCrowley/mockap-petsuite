@@ -8,7 +8,7 @@ import { createApiServer } from './server.mjs'
 
 test('a shared API serves a QR and its message to different clients, and revokes the old token', async () => {
   const file = join(tmpdir(), 'opencode', `petsuite-api-${randomUUID()}.json`)
-  let server = await createApiServer({ file, origins: 'http://localhost:5173' })
+  let server = await createApiServer({ file, origins: 'http://localhost:5173', databaseUrl: '' })
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
   const base = `http://127.0.0.1:${server.address().port}/api/v1`
   const call = async (path, { method = 'GET', token, body, origin } = {}) => {
@@ -45,7 +45,7 @@ test('a shared API serves a QR and its message to different clients, and revokes
     assert.equal((await call('/mascotas', { origin: 'https://no-autorizado.example', token: tutorToken })).status, 403)
 
     await new Promise(resolve => server.close(resolve))
-    server = await createApiServer({ file, origins: 'http://localhost:5173' })
+    server = await createApiServer({ file, origins: 'http://localhost:5173', databaseUrl: '' })
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
     const restarted = await fetch(`http://127.0.0.1:${server.address().port}/api/v1/qr/${newToken}`)
     assert.equal(restarted.status, 200) // la ficha sigue disponible tras reiniciar el servidor

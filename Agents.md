@@ -243,6 +243,100 @@ Antes de finalizar cualquier cambio, se debe agregar una entrada con:
 - Limitaciones declaradas: los límites por plan son una propuesta (el equipo solo fijó los precios). Orcob y el correo son simulados. Las claves temporales viajan en texto en el correo demo; en producción se usaría un enlace de activación de un solo uso. El cumplimiento de la Ley 21.719 debe validarlo una asesoría legal.
 - Verificación ejecutada: `npx tsc -b` sin errores y `npm run build -- --base=/mockap-petsuite/` correcto. `node --test src/admin-suspension.test.mjs src/business.test.mjs src/business-rules.test.mjs backend/server.test.mjs`: 13 de 13 pruebas (7 nuevas de reglas de negocio). Recorrido con Playwright (Chromium) por las 9 cuentas demo y todas sus vistas a 1366 px y 390 px, más `#planes`, `#adopciones` y `#ong/<id>`: sin errores de consola ni desplazamiento horizontal. `git diff --check` correcto.
 
+## 2026-10-17
+
+### Archivos ordenados en carpetas por módulo
+
+- Fecha: 2026-10-17.
+- Archivos movidos (con `git mv`, sin cambios de contenido salvo las rutas de importación):
+  - `src/shared/`: `api.ts`, `validators.ts`, `permissions.ts`, `media.tsx`.
+  - `src/styles/`: `styles.css`, `design.css`, `design-pages.css`, `design-polish.css`, `design-suite.css`.
+  - `src/modules/auth/`: `Login.tsx`.
+  - `src/modules/tutor/`: `tutor.tsx`.
+  - `src/modules/community/`: `community.tsx`.
+  - `src/modules/directory/`: `directory.tsx`.
+  - `src/modules/business/`: `business.tsx`, `business-profile.tsx`, `business-contacts.tsx`, `team.tsx`, `business.test.mjs`, `business-rules.test.mjs`.
+  - `src/modules/plans/`: `plans.ts`, `plans-ui.tsx`.
+  - `src/modules/promotions/`: `promotions.tsx`.
+  - `src/modules/clinical/`: `clinical.tsx`.
+  - `src/modules/ong/`: `adoption.tsx`, `ong-profile.tsx`.
+  - `src/modules/advisor/`: `advisor.tsx`.
+  - `src/modules/admin/`: `admin.tsx`, `admin-suspension.tsx`, `admin-suspension.test.mjs`.
+  - `src/modules/privacy/`: `privacy.tsx`.
+  - Sin mover: `src/main.tsx`, `src/App.tsx` y `src/mock/*`.
+- Archivos modificados: importaciones de todos los anteriores, `src/main.tsx`, `src/App.tsx`, `src/mock/db.ts`, `src/mock/server.ts`, `src/mock/suite.ts`, `backend/server.mjs`; rutas citadas en `docs/modelo-de-negocio.md`; `AGENTS.md`.
+- Cambio realizado: el código de `src/` deja de estar en una sola carpeta y se agrupa en núcleo compartido, estilos, mock y un módulo por área funcional. No cambia el comportamiento.
+- Motivo: facilitar la navegación del proyecto y ubicar cada funcionalidad por módulo.
+- Verificación ejecutada: `tsc -b` sin errores, `node --test src/modules/admin/admin-suspension.test.mjs src/modules/business/business.test.mjs src/modules/business/business-rules.test.mjs backend/server.test.mjs` (13 de 13) y `vite build --base=/mockap-petsuite/` correcto. Sin revisión visual en navegador en esta sesión.
+
+### Base de datos PostgreSQL: paso 1, esquema y migraciones
+
+- Fecha: 2026-10-17.
+- Archivos agregados: `backend/db/migrations/001_esquema_inicial.sql`, `backend/db/migrations/002_datos_referencia.sql`, `backend/db/migrate.mjs`, `backend/db/pool.mjs`, `backend/db/README.md`.
+- Archivos modificados: `package.json` y `package-lock.json` (dependencia `pg` y script `db:migrate`), `.env.example` (`DATABASE_URL`, `DATABASE_URL_UNPOOLED`), `AGENTS.md`.
+- Cambio realizado:
+  - Esquema PostgreSQL de 35 tablas que traduce el modelo de `src/mock/db.ts`, con claves foráneas, restricciones CHECK e índices para el directorio, el muro y la moderación. La Ficha Única va en JSONB.
+  - Datos de referencia (comunas y planes).
+  - Ejecutor de migraciones con transacción por archivo, checksum y bloqueo contra ejecuciones simultáneas.
+  - El API y el frontend todavía usan el mock: la conexión de las rutas a la base es un paso posterior.
+- Motivo: comenzar la base de datos real que reemplazará al mock, como paso previo al despliegue en Vercel, conservando la Ficha Única y el QR como núcleo.
+- Verificación ejecutada: migraciones aplicadas en PGlite (Postgres en WebAssembly, instalado fuera del proyecto). La segunda ejecución no aplica nada. Se rechazan 11 casos inválidos: correo repetido, rol desconocido, dos medallas activas, oferta mayor o incompleta, permiso desconocido, plan inexistente, evento sin fecha, reporte sin objeto, mes inválido y suspensión sin días. El borrado de una mascota elimina sus medallas y desvincula sus publicaciones.
+
+### Base de datos en Supabase: RLS y datos de demostración (paso 2)
+
+- Fecha: 2026-10-17.
+- Archivos agregados: `backend/db/migrations/003_rls_supabase.sql`, `backend/db/seed.mjs`.
+- Archivos modificados: `backend/db/migrate.mjs` (aviso de tablas sin RLS), `backend/db/pool.mjs`, `backend/db/README.md`, `.env.example`, `package.json` y `package-lock.json` (dependencia `bcryptjs` y script `db:seed`), `AGENTS.md`.
+- Cambio realizado:
+  - La base se aloja en Supabase (proyecto `pet-suite-dat`, plan gratuito), creado desde el Marketplace de Vercel en vez de Neon. Se aplicaron las migraciones 001 a 003 desde `.env` local, que no se sube a Git.
+  - La migración 003 activa RLS sin políticas en todas las tablas: cierra la API REST pública de Supabase, mientras el backend sigue accediendo como dueño de las tablas. `db:migrate` avisa si alguna tabla queda sin RLS.
+  - `npm run db:seed` carga en la base el mismo seed del mock (`src/mock/db.ts`), con claves bcrypt. Consentimientos, ofertas, premios, banners y reportes se traducen a sus columnas y tablas. Se niega a cargar sobre una base con usuarios salvo con `--reset`, que vacía todo menos comunas, planes y migraciones.
+  - Las conexiones usan `sslmode=no-verify` porque Supabase firma su certificado con una CA propia. Queda pendiente verificar ese certificado en el paso del API.
+- Motivo: tener en la base real las mismas cuentas y datos de la demostración, sin exponer la base por la API pública de Supabase.
+- Verificación ejecutada:
+  - En PGlite: las 3 migraciones, sin tablas sin RLS; el seed, el rechazo de la recarga sin `--reset` y la recarga con `--reset` con los mismos conteos; además, la clave bcrypt, la ficha de Luna con su medalla activa, la oferta, el banner de la ONG, el premio y los consentimientos.
+  - En Supabase (PostgreSQL 17.11): migración 003 aplicada y 0 tablas sin RLS. Seed con 11 usuarios, 44 consentimientos, 3 Pymes, 6 animales, 5 publicaciones, 162 canjes y demás colecciones. Las 11 cuentas validan `petsuite123` contra su hash. La API REST con la clave pública devuelve 0 filas en `comunas`, `planes` y `usuarios`.
+
+### API sobre PostgreSQL con el mismo contrato que el mock (paso 3)
+
+- Fecha: 2026-10-17.
+- Archivos agregados:
+  - Rutas: `backend/api/index.ts`, `core.ts`, `db.ts`, `auth.ts`, `negocio.ts`, `cuentas.ts`, `ficha.ts`, `pymes.ts`, `muro.ts`, `adopcion.ts`, `admin.ts`, `equipo.ts`, `promocion.ts`, `asesoria.ts`, `privacidad.ts`.
+  - Pruebas: `backend/api/pglite.ts`, `backend/api/paridad.test.mjs`, `backend/api/servidor.test.mjs`.
+  - Otros: `tsconfig.backend.json`, `src/shared/errors.ts`, `src/shared/legal.ts`.
+- Archivos modificados:
+  - Backend: `backend/server.mjs`, `backend/server.test.mjs`, `backend/db/seed.mjs`.
+  - Mock: `src/mock/db.ts`, `src/mock/server.ts`, `src/mock/suite.ts`.
+  - Otros: `src/shared/api.ts`, `tsconfig.json`, `package.json` y `package-lock.json` (`@types/pg` y `@electric-sql/pglite` como dependencias de desarrollo; scripts `test` y `api:start`), `backend/README.md`, `AGENTS.md`.
+- Cambio realizado:
+  - Las ~115 rutas del mock se reescribieron sobre PostgreSQL en `backend/api/`, por módulos: cuentas, Ficha Única y QR, Pymes, muro, adopción y ONG, administración, sucursales y equipo, publicidad y convenios, asesoría y cobranza, y privacidad.
+  - Cada solicitud corre en una transacción. Las sesiones se guardan como SHA-256 del token con 30 días de vigencia, y las claves se verifican con bcrypt (también cuando el correo no existe, para no revelar qué cuentas hay).
+  - Las validaciones Zod, los planes y los permisos se reutilizan desde `src/`. Las respuestas tienen la misma forma que en el mock, así el frontend solo cambia `VITE_API_URL`.
+  - `backend/server.mjs` usa PostgreSQL cuando hay `DATABASE_URL` y el mock con archivo cuando no. `npm run api:start` lee `.env`.
+  - `tsc -b` revisa también el backend (`tsconfig.backend.json`).
+  - Ajustes en el mock para que mock y base coincidan:
+    - `now()` es estrictamente creciente y el seed usa horas consecutivas, para que el orden de los empates sea el mismo en ambos.
+    - El alta de Pymes y los banners validan que la comuna exista (antes el mock aceptaba una inexistente).
+    - `ApiError` y `VERSION_PRIVACIDAD` pasan a módulos compartidos.
+- Motivo: que los datos se lean y escriban en la base real manteniendo el contrato del API, como paso previo al despliegue en Vercel.
+- Verificación ejecutada:
+  - `tsc -b` sin errores y `vite build --base=/mockap-petsuite/` correcto.
+  - `npm test`: 21 de 21 pruebas. Son las 13 anteriores más:
+    - 6 guiones de paridad, en los que mock y PGlite responden igual en código HTTP y contenido (casos válidos y rechazos 400, 401, 403, 404, 409 y 422);
+    - una prueba de cobertura que confirma que cada ruta tiene guion;
+    - el servidor HTTP con PostgreSQL: QR entre clientes, CORS, sesión persistente tras reiniciar y token nunca guardado en claro.
+  - Contra Supabase:
+    - inicio de sesión de las 11 cuentas demo y 25 vistas de todos los roles;
+    - flujo del QR completo (aviso, reemplazo de medalla e invalidación del token anterior);
+    - el QR público tarda unos 320 ms desde Chile.
+  - Luego `npm run db:seed -- --reset` dejó la demo limpia.
+  - `git diff --check` correcto.
+- Limitaciones declaradas:
+  - Los integrantes del equipo no tienen acceso a la cuenta de Vercel de la base. `backend/db/README.md` indica que deben pedir las líneas de conexión por privado y explica que la base es compartida. Quienes tengan acceso al panel de Supabase como Developer pueden ver y consultar las tablas, pero igual necesitan esas líneas, porque el panel no muestra la contraseña. No deben cambiar la estructura desde el panel ni la contraseña de la base.
+  - El frontend publicado en GitHub Pages sigue usando el mock hasta desplegar el API y configurar `VITE_API_URL`.
+  - La conexión usa `sslmode=no-verify` hasta incorporar el certificado de Supabase.
+  - El plan gratuito de Supabase se pausa tras una semana sin uso.
+
 ## 2026-10-19
 
 ### FE-01 · Ficha pública de emergencia
@@ -325,6 +419,22 @@ Antes de finalizar cualquier cambio, se debe agregar una entrada con:
 - Motivo: evitar que la barra de desplazamiento de la ficha parezca externa o se superponga al fondo al seleccionar una ubicación.
 - Verificación ejecutada: `npx tsc -b`, `npm run build -- --base=/mockap-petsuite/`, `node --test src/*.test.mjs backend/*.test.mjs` (13/13) y `git diff --check` correctamente.
 
+### Corrección de color en la navegación lateral
+
+- Fecha: 2026-10-23.
+- Archivos modificados: `src/styles.css`, `AGENTS.md`.
+- Cambio realizado: se reemplazó el texto rosado heredado de la barra lateral por texto blanco; el elemento activo conserva texto oscuro sobre su fondo seleccionado y su icono usa el color cálido amarillo/naranja de la marca. También se aclaró el texto secundario del perfil.
+- Motivo: recuperar la jerarquía visual original de la navegación y evitar que los temas tiñan las etiquetas de rojo o rosado sin intención.
+- Verificación ejecutada: `npx tsc -b`, `npm run build -- --base=/mockap-petsuite/` y `git diff --check` correctamente.
+
+### FE-10 · Próximas vacunas en el Inicio del tutor
+
+- Fecha: 2026-10-23.
+- Archivos modificados: `src/tutor.tsx`, `src/design-polish.css`, `AGENTS.md`.
+- Cambio realizado: se agregó al Inicio del tutor el bloque «Próximas vacunas», derivado de las dosis registradas en las Fichas Únicas. Muestra mascota, vacuna, fecha y días restantes; ordena primero las vencidas, limita las próximas a 30 días, ofrece estado vacío y abre la ficha de la mascota al seleccionar una fila.
+- Motivo: hacer visibles las próximas dosis sin obligar al tutor a revisar individualmente el historial médico.
+- Verificación ejecutada: `npx tsc -b`, `npm run build -- --base=/mockap-petsuite/`, `node --test src/*.test.mjs backend/*.test.mjs` (13/13) y `git diff --check` correctamente.
+
 ## 2026-10-24
 
 ### FE-11 · Cartel de mascota perdida
@@ -343,30 +453,27 @@ Antes de finalizar cualquier cambio, se debe agregar una entrada con:
 - Motivo: permitir identificar negocios abiertos en la hora local de Chile y abrir rutas hasta la casa matriz o una sucursal georreferenciada.
 - Verificación ejecutada: `npx tsc -b`, `npm run build -- --base=/mockap-petsuite/`, `node --test src/directory-hours.test.mjs` (6/6), `node --test src/*.test.mjs backend/*.test.mjs` (19/19) y `git diff --check` correctamente.
 
-## 2026-10-24
+## 2026-10-26
 
-### FE-11 · Cartel de mascota perdida
+### Integración de la base de datos y de FE-01 a FE-12 en `main`
 
-- Fecha: 2026-10-24.
-- Archivos modificados: `src/community.tsx`, `src/design-polish.css`, `src/styles.css`, `AGENTS.md`.
-- Cambio realizado: las publicaciones propias de extravío incluyen «Generar cartel». El cartel A4 vertical presenta «SE BUSCA», foto, nombre, sector, fecha y señas; incorpora el QR opaco de la medalla activa para abrir la ficha pública. Si la medalla está desactivada, se muestra «Activa la medalla para incluir el QR». La impresión no contiene teléfono, correo ni dirección del tutor. La relación entre publicación y mascota elegida se conserva en el frontend, sin cambiar el API.
-- Motivo: permitir difundir una búsqueda en papel con la información necesaria y una vía segura para contactar al tutor mediante la Ficha Única.
-- Verificación ejecutada: `npx tsc -b`, `npm run build -- --base=/mockap-petsuite/`, `node --test src/*.test.mjs backend/*.test.mjs` (13/13) y `git diff --check` correctamente. No se ejecutó revisión visual en navegador en esta sesión.
-
-### Corrección de color en la navegación lateral
-
-- Fecha: 2026-10-23.
-- Archivos modificados: `src/styles.css`, `AGENTS.md`.
-- Cambio realizado: se reemplazó el texto rosado heredado de la barra lateral por texto blanco; el elemento activo conserva texto oscuro sobre su fondo seleccionado y su icono usa el color cálido amarillo/naranja de la marca. También se aclaró el texto secundario del perfil.
-- Motivo: recuperar la jerarquía visual original de la navegación y evitar que los temas tiñan las etiquetas de rojo o rosado sin intención.
-- Verificación ejecutada: `npx tsc -b`, `npm run build -- --base=/mockap-petsuite/` y `git diff --check` correctamente.
-
-## 2026-10-23
-
-### FE-10 · Próximas vacunas en el Inicio del tutor
-
-- Fecha: 2026-10-23.
-- Archivos modificados: `src/tutor.tsx`, `src/design-polish.css`, `AGENTS.md`.
-- Cambio realizado: se agregó al Inicio del tutor el bloque «Próximas vacunas», derivado de las dosis registradas en las Fichas Únicas. Muestra mascota, vacuna, fecha y días restantes; ordena primero las vencidas, limita las próximas a 30 días, ofrece estado vacío y abre la ficha de la mascota al seleccionar una fila.
-- Motivo: hacer visibles las próximas dosis sin obligar al tutor a revisar individualmente el historial médico.
-- Verificación ejecutada: `npx tsc -b`, `npm run build -- --base=/mockap-petsuite/`, `node --test src/*.test.mjs backend/*.test.mjs` (13/13) y `git diff --check` correctamente.
+- Fecha: 2026-10-26.
+- Archivos modificados o agregados:
+  - Desde `benja-base-datos`: `backend/api/`, `backend/db/`, `src/shared/`, `src/styles/`, `src/modules/`, `src/mock/*`, `backend/server.mjs`, `backend/server.test.mjs`, `backend/README.md`, `tsconfig.json`, `tsconfig.backend.json`, `package.json`, `package-lock.json`, `.env.example` y `docs/modelo-de-negocio.md`.
+  - Importaciones resueltas: `src/main.tsx` y los 16 módulos con conflicto.
+  - Movidos con `git mv`: `src/feedback.tsx` y `src/accessibility.ts` a `src/shared/`; `src/feedback.css` y `src/accessibility.css` a `src/styles/`; `src/directory-hours.ts` y `src/directory-hours.test.mjs` a `src/modules/directory/`.
+  - También: `package.json` (script `test`), `backend/db/README.md` y `Agents.md`.
+- Cambio realizado:
+  - La rama `benja-base-datos` (base PostgreSQL, API con paridad y carpetas por módulo, del 17 de octubre) no estaba en `main`, y FE-01 a FE-12 se hicieron sobre la estructura anterior. Se unieron ambas líneas en `main`.
+  - Los conflictos eran solo de importaciones: se conservaron los componentes de `main` con las rutas nuevas. Los archivos nuevos de esta semana se ubicaron en la estructura por módulos y `npm test` incluye la prueba de horarios.
+  - Se incorporaron las instrucciones de acceso a la base para el equipo, que habían quedado sin commit en un stash de GitHub Desktop.
+  - La bitácora quedó en orden cronológico y sin la entrada duplicada de FE-11.
+  - El commit `56193cb` («avances del F-06») agregó `useModalFocus` y `accessibility.css` sin entrada propia; ahora están en `src/shared/accessibility.ts` y `src/styles/accessibility.css`.
+- Motivo: dejar en `main` la última versión de todo el proyecto sin perder trabajo de ninguna rama.
+- Verificación ejecutada:
+  - Los 32 archivos movidos son idénticos a su versión en `main`, salvo las importaciones. Las ramas `fe-01` a `fe-05` no tienen líneas que falten en `main`, salvo las que se reescribieron después al consolidar.
+  - `npx tsc -b` sin errores y `npm run build -- --base=/mockap-petsuite/` correcto.
+  - `npm test`: 27 de 27 (las 21 de la base de datos y la paridad, más las 6 de horarios).
+  - Recorrido con Chromium sobre la build de Pages: las 9 cuentas demo y sus 72 vistas a 1366 px, las 6 del tutor a 390 px y la ficha pública del QR. Sin errores de JavaScript ni desbordamiento horizontal.
+  - `git diff --check` correcto.
+  - Las rutas citadas en entradas anteriores (`src/tutor.tsx`, `src/*.test.mjs`) corresponden a la estructura previa.
