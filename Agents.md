@@ -22,15 +22,58 @@ Este principio debe considerarse antes de cualquier decisión de arquitectura, f
 
 ## Regla de trabajo
 
-Este repositorio se trabaja directamente en `main`. Nunca crear, cambiar ni usar otra rama para las tareas solicitadas; conservar la rama `main` activa.
+Estas reglas resumen errores que ya ocurrieron. Léelas antes de cada tarea.
 
-Antes de finalizar cualquier cambio, se debe agregar una entrada con:
+### Ramas y sincronización
+
+- El trabajo se hace en `main`. Solo se crea otra rama cuando el usuario lo pide expresamente. En ese caso se publica, se abre un Pull Request y se fusiona en `main` antes de empezar otra tarea.
+- Antes de empezar, trae lo último de `origin/main` (Pull) y revisa si hay ramas sin fusionar (`git branch -a --no-merged main`). Si alguna tiene trabajo que no está en `main`, avisa al usuario antes de seguir.
+  - Motivo: en octubre de 2026 el equipo trabajó una semana en `main` mientras la base de datos estaba en `benja-base-datos`, y hubo que unir ambas líneas a mano.
+- No cambies de rama con cambios sin commit. GitHub Desktop los guarda en un stash que después se olvida; así quedaron fuera las instrucciones de acceso a la base.
+
+### Estructura del código
+
+- `src/shared/`: núcleo común (`api`, `validators`, `permissions`, `media`, `feedback`, `accessibility`, `share`, `errors`, `legal`).
+- `src/styles/`: hojas de estilo.
+- `src/modules/<área>/`: una carpeta por área (tutor, community, directory, business, clinical, ong, plans, promotions, advisor, admin, privacy, auth).
+- `src/mock/`: API simulada en el navegador.
+- `backend/api/` y `backend/db/`: API sobre PostgreSQL y migraciones.
+- Todo archivo nuevo va en la carpeta de su módulo, nunca suelto en `src/`.
+- No subas scripts personales ni archivos con rutas de tu computador (por ejemplo `C:/Users/...`). Déjalos fuera del repositorio.
+
+### API: mock y base de datos
+
+- Toda ruta o regla nueva o modificada se implementa a la vez en `src/mock/` y en `backend/api/`, con un paso en el guion de `backend/api/paridad.test.mjs`. La prueba de cobertura falla si una ruta queda sin guion.
+- Una tarea «solo frontend» no toca `src/mock/` ni `backend/`. Si necesita un dato nuevo, se anota como dependencia.
+- Las respuestas públicas (QR, adopciones, ONG) son lista blanca: nunca datos del tutor, medicamentos, historial ni ids internos. Un id interno solo se devuelve al dueño del recurso.
+- La estructura de la base cambia solo con migraciones nuevas en `backend/db/migrations/`, nunca desde el panel de Supabase.
+- La base es compartida: `npm run db:seed -- --reset` borra los datos de todo el equipo. No lo uses sin avisar.
+- `.env` nunca se sube al repositorio ni se pega en el chat.
+
+### Frontend
+
+- Los enlaces usan `import.meta.env.BASE_URL` o rutas relativas (`./`), nunca `/`: en GitHub Pages la app vive en `/mockap-petsuite/`.
+- La sesión está en `sessionStorage`; borrarlo cierra la sesión. Los datos del mock están en `localStorage` (`petsuite-mock-db-vN`); si cambia el modelo, sube la versión de la clave.
+- Si cambias `public/sw.js`, sube la versión del caché.
+- Para carga, vacío, error y permiso insuficiente usa los componentes de `src/shared/feedback.tsx`.
+
+### Verificación antes de terminar
+
+- Ejecuta `npx tsc -b`, `npm run build -- --base=/mockap-petsuite/`, `npm test` y `git diff --check`.
+- `npm test` enumera los archivos de prueba en `package.json`: cada prueba nueva se agrega ahí o no se ejecuta.
+- Si cambias la interfaz, revísala en el navegador a 390 px y a 1366 px, en modo claro y oscuro. Si no la revisaste, dilo en la entrada.
+
+### Bitácora
+
+Antes de finalizar cualquier cambio, agrega una entrada con:
 
 - Fecha.
 - Archivos modificados o agregados.
 - Cambio realizado.
 - Motivo.
 - Verificación ejecutada.
+
+Cada entrada va al final del archivo, bajo el encabezado `## AAAA-MM-DD` de su día; no repitas ese encabezado ni dupliques entradas. Las rutas citadas son las vigentes al momento del cambio.
 
 ## 2026-09-16
 
@@ -477,3 +520,18 @@ Antes de finalizar cualquier cambio, se debe agregar una entrada con:
   - Recorrido con Chromium sobre la build de Pages: las 9 cuentas demo y sus 72 vistas a 1366 px, las 6 del tutor a 390 px y la ficha pública del QR. Sin errores de JavaScript ni desbordamiento horizontal.
   - `git diff --check` correcto.
   - Las rutas citadas en entradas anteriores (`src/tutor.tsx`, `src/*.test.mjs`) corresponden a la estructura previa.
+
+### Reglas de trabajo para evitar errores repetidos
+
+- Fecha: 2026-10-26.
+- Archivos modificados: `Agents.md`.
+- Cambio realizado: la sección «Regla de trabajo» se reorganizó en ramas y sincronización, estructura del código, API (mock y base de datos), frontend, verificación y bitácora. Cada regla viene de un error ya ocurrido:
+  - una rama sin fusionar durante una semana;
+  - un stash olvidado;
+  - scripts personales subidos al repositorio;
+  - un enlace a `/` que fallaba en GitHub Pages;
+  - una prueba que no estaba en `npm test`;
+  - una entrada duplicada en la bitácora.
+  - La regla «nunca crear otra rama» pasa a «solo si el usuario lo pide, y se fusiona antes de la siguiente tarea», porque el usuario pidió la rama `mejoras-qr-y-compartir`.
+- Motivo: que cualquier persona o agente del equipo evite repetir estos errores.
+- Verificación ejecutada: revisión del texto y `git diff --check` correcto. No cambia código.
