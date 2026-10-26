@@ -222,6 +222,7 @@ test('Ficha Única: mascotas, accesos clínicos, registros con autoría, medalla
     const { data: nueva } = await call('POST', `/mascotas/${luna}/medallas`, undefined, 'tutor')
     await call('POST', `/mascotas/${luna}/medallas`, undefined, 'tutor2')
     await call('GET', `/qr/${token}`)
+    await call('POST', `/qr/${token}/mensajes`, { mensaje: 'Sigue cerca de la plaza.' })
     await call('GET', `/qr/${nueva.token_publico}`)
     await call('DELETE', `/mascotas/${luna}/medallas/activa`, undefined, 'tutor')
     await call('DELETE', `/mascotas/${luna}/medallas/activa`, undefined, 'tutor')
@@ -372,6 +373,11 @@ test('muro comunal y moderación: publicaciones, comentarios, reacciones, report
 
     await call('POST', `/muro/${extravio.id}/reacciones`, undefined, 'tutor2')
     await call('POST', `/muro/${extravio.id}/guardar`, undefined, 'tutor2')
+    // Solo el autor recibe el id de la mascota del extravío (para su cartel); quien lo guardó, no.
+    const { data: delAutor } = await call('GET', '/muro', undefined, 'tutor')
+    assert.equal(delAutor.find(p => p.id === extravio.id).mascota_id, luna)
+    const { data: guardadas } = await call('GET', '/muro?guardadas=1', undefined, 'tutor2')
+    assert.equal(guardadas.find(p => p.id === extravio.id).mascota_id, null)
     await call('POST', `/muro/${evento.id}/reacciones`, undefined, 'tutor2')
     await call('POST', `/muro/${evento.id}/reacciones`, undefined, 'tutor2')
     await call('POST', '/muro/no-existe/guardar', undefined, 'tutor2')

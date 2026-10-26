@@ -252,8 +252,10 @@ on('PATCH', '/mascotas/mensajes/:id', async req => {
 async function medallaActiva(req: Req) {
   const token = req.params.token
   if (!QR_TOKEN.test(token)) return fail(404, 'Medalla no válida')
-  const r = await una<Mascota & { medalla_id: string }>(req.sql, `select md.id as medalla_id, ${MASCOTA} from medallas md join mascotas m on m.id = md.mascota_id where md.token = $1 and md.estado = 'activa'`, [token])
+  const r = await una<Mascota & { medalla_id: string; medalla_estado: string }>(req.sql, `select md.id as medalla_id, md.estado as medalla_estado, ${MASCOTA} from medallas md join mascotas m on m.id = md.mascota_id where md.token = $1`, [token])
   if (!r) return fail(404, 'Medalla no válida')
+  // Reemplazada o desactivada por el tutor: 410 para que quien la escanea sepa qué pasó, sin datos de la mascota.
+  if (r.medalla_estado !== 'activa') return fail(410, 'Medalla desactivada')
   return r
 }
 

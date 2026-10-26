@@ -38,7 +38,8 @@ test('a shared API serves a QR and its message to different clients, and revokes
     assert.equal(inbox.data[0].mensaje, 'Encontré a Luna cerca de la plaza.')
 
     assert.equal((await call(`/mascotas/${luna.id}/medallas`, { method: 'POST', token: tutorToken })).status, 200)
-    assert.equal((await call(`/qr/${oldToken}`)).status, 404)
+    assert.equal((await call(`/qr/${oldToken}`)).status, 410)
+    assert.equal((await call('/qr/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')).status, 404)
     const { data: updated } = await call('/mascotas', { token: tutorToken })
     const newToken = updated.find(p => p.id === luna.id).token_activo
     assert.equal((await call(`/qr/${newToken}`)).status, 200)

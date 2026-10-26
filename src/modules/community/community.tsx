@@ -8,12 +8,13 @@ import { moderationMessageSchema } from '../../shared/validators'
 import { BannerStrip } from '../promotions/promotions'
 import { EmptyState, ErrorState, LoadingState } from '../../shared/feedback'
 import { useModalFocus } from '../../shared/accessibility'
+import { ShareButton } from '../../shared/share'
 
 type Tipo = 'extravio' | 'encuentro' | 'recomendacion' | 'alerta' | 'evento' | 'adopcion'
 type Comentario = { id: string; autor: string; texto: string; es_mio: boolean; editado: boolean }
 type Post = {
   id: string; tipo: Tipo; texto: string; creado_en: string; editado: boolean; autor: string; es_mio: boolean; comuna_id: number
-  sector: string | null; foto_url: string | null; fecha_evento: string | null; resuelto: boolean; urgente: boolean; mascota: string | null
+  sector: string | null; foto_url: string | null; fecha_evento: string | null; resuelto: boolean; urgente: boolean; mascota: string | null; mascota_id: string | null
   animal: { id: string; nombre: string; ong: string } | null
   reacciones: number; reaccione: boolean; guardado: boolean; comentarios: Comentario[]
 }
@@ -54,10 +55,6 @@ export function CommunityView({ onAdoption, onPyme }: { onAdoption?: () => void;
   const [commenting, setCommenting] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
-  const posterStorageKey = `petsuite-lost-poster-pets:${session?.id || 'guest'}`
-  const [posterPetIds, setPosterPetIds] = useState<Record<string, string>>(() => {
-    try { return JSON.parse(sessionStorage.getItem(posterStorageKey) || '{}') as Record<string, string> } catch { return {} }
-  })
 
   const guardadas = filter === 'Guardadas'
   const load = useCallback(async () => {
@@ -85,7 +82,7 @@ export function CommunityView({ onAdoption, onPyme }: { onAdoption?: () => void;
     {error && !posts && <ErrorState message={error} onRetry={() => void load()} />}
     {error && posts && <p className="form-error" role="alert">{error}</p>}
     <div className="community-feed">{!posts && !error && <LoadingState label="Cargando publicaciones" />}
-      {visible.map(post => <PostCard key={post.id} post={post} posterPetId={posterPetIds[post.id]} onGeneratePoster={setPoster} showComment={commenting === post.id} comunaAjena={guardadas && post.comuna_id !== session?.comunaId ? comunas.find(c => c.id === post.comuna_id)?.nombre : undefined}
+      {visible.map(post => <PostCard key={post.id} post={post} onGeneratePoster={setPoster} showComment={commenting === post.id} comunaAjena={guardadas && post.comuna_id !== session?.comunaId ? comunas.find(c => c.id === post.comuna_id)?.nombre : undefined}
         onReact={() => act(() => api(`/muro/${post.id}/reacciones`, { method: 'POST' }))}
         onSave={() => act(() => api(`/muro/${post.id}/guardar`, { method: 'POST' }))}
         onComment={() => setCommenting(commenting === post.id ? null : post.id)}
@@ -97,20 +94,20 @@ export function CommunityView({ onAdoption, onPyme }: { onAdoption?: () => void;
         onEditComment={(c, text) => act(() => api(`/muro/comentarios/${c.id}`, { method: 'PATCH', body: { texto: text } }))}
         onDeleteComment={c => { if (window.confirm('¿Eliminar tu comentario?')) void act(() => api(`/muro/comentarios/${c.id}`, { method: 'DELETE' })) }} />)}
       {posts && visible.length === 0 && <EmptyState title={guardadas ? 'Sin publicaciones guardadas' : 'Sin publicaciones'} description={guardadas ? 'Guarda publicaciones del muro para volver a ellas después.' : q ? 'Ninguna publicación coincide con tu búsqueda.' : `Todavía no hay publicaciones de este tipo en ${comunaName || 'esta comuna'}.`} action={guardadas || q || filter !== 'Todos' ? 'Ver todas' : 'Publicar en el muro'} onAction={() => { if (guardadas || q || filter !== 'Todos') { setFilter('Todos'); setQuery('') } else setComposer('new') }} />}</div>
-    {composer && <Composer post={composer === 'new' ? null : composer} onClose={() => setComposer(null)} onSaved={async created => { const nuevo = composer === 'new'; if (created) { const next = { ...posterPetIds, [created.id]: created.mascotaId }; setPosterPetIds(next); try { sessionStorage.setItem(posterStorageKey, JSON.stringify(next)) } catch { /* asociación en memoria sigue disponible */ } } setComposer(null); setNotice(nuevo ? 'Publicación creada en el muro comunal.' : 'Publicación actualizada.'); if (nuevo && guardadas) setFilter('Todos'); if (nuevo && !own && session?.comunaId) setComuna(session.comunaId); else await load() }} />}
+    {composer && <Composer post={composer === 'new' ? null : composer} onClose={() => setComposer(null)} onSaved={async () => { const nuevo = composer === 'new'; setComposer(null); setNotice(nuevo ? 'Publicación creada en el muro comunal.' : 'Publicación actualizada.'); if (nuevo && guardadas) setFilter('Todos'); if (nuevo && !own && session?.comunaId) setComuna(session.comunaId); else await load() }} />}
     {reporting && <ReportModal target={reporting} onClose={() => setReporting(null)} onSaved={() => setReporting(null)} />}
     {poster && <LostPosterModal post={poster.post} petId={poster.petId} onClose={() => setPoster(null)} />}
   </section>
 }
 
 type CardProps = {
-  post: Post; showComment: boolean; comunaAjena?: string; posterPetId?: string
+  post: Post; showComment: boolean; comunaAjena?: string
   onGeneratePoster: (poster: { post: Post; petId?: string }) => void
   onReact: () => void; onSave: () => void; onComment: () => void; onReport: (t: Reportable) => void; onEdit: () => void; onDelete: () => void; onResolve: () => void; onAdoption?: () => void
   onAddComment: (text: string) => Promise<void> | void; onEditComment: (c: Comentario, text: string) => Promise<void> | void; onDeleteComment: (c: Comentario) => void
 }
 
-function PostCard({ post, showComment, comunaAjena, posterPetId, onGeneratePoster, onReact, onSave, onComment, onReport, onEdit, onDelete, onResolve, onAdoption, onAddComment, onEditComment, onDeleteComment }: CardProps) {
+function PostCard({ post, showComment, comunaAjena, onGeneratePoster, onReact, onSave, onComment, onReport, onEdit, onDelete, onResolve, onAdoption, onAddComment, onEditComment, onDeleteComment }: CardProps) {
   const [text, setText] = useState('')
   const [editing, setEditing] = useState<{ id: string; text: string } | null>(null)
   const submit = async (event: React.FormEvent) => { event.preventDefault(); if (text.trim().length < 3) return; await onAddComment(text.trim()); setText('') }
@@ -124,7 +121,7 @@ function PostCard({ post, showComment, comunaAjena, posterPetId, onGeneratePoste
     {(post.sector || post.fecha_evento || post.mascota) && <div className="post-meta">{post.mascota && <span>Mascota: {post.mascota}</span>}{post.sector && <span><MapPin size={14} /> {post.sector}</span>}{post.fecha_evento && <span className={post.fecha_evento < hoy() ? 'is-past' : ''}><CalendarDays size={14} /> {post.fecha_evento < hoy() ? 'Fue el' : 'Fecha:'} {fechaCorta(post.fecha_evento)}</span>}</div>}
     {post.tipo === 'adopcion' && <div className="post-adoption">{post.animal ? <><span>Conoce a <strong>{post.animal.nombre}</strong> · {post.animal.ong}</span>{onAdoption && <button className="secondary" onClick={onAdoption}>Ver en Adopciones</button>}</> : <span>Este animal ya encontró un hogar o no está disponible.</span>}</div>}
     <div className="post-actions"><button className={post.reaccione ? 'reacted' : ''} onClick={onReact} aria-pressed={post.reaccione}><Heart size={16} fill={post.reaccione ? 'currentColor' : 'none'} /> {post.reacciones}</button><button onClick={onComment}><MessageCircle size={16} /> {post.comentarios.length} comentarios</button><button onClick={onSave} aria-pressed={post.guardado}>{post.guardado ? <BookmarkCheck size={16} /> : <Bookmark size={16} />} {post.guardado ? 'Guardada' : 'Guardar'}</button>{!post.es_mio && <button onClick={() => onReport({ tipo: 'publicacion', id: post.id, autor: post.autor })}>Reportar</button>}</div>
-    {post.es_mio && <div className="post-owner-actions">{post.tipo === 'extravio' && <button className="text-button" onClick={() => onGeneratePoster({ post, petId: posterPetId })}><Printer size={15} /> Generar cartel</button>}{cerrable && <button className="text-button" onClick={onResolve}><Check size={15} /> {post.resuelto ? 'Reabrir' : post.tipo === 'extravio' ? 'Marcar como encontrada' : 'Marcar como resuelto'}</button>}<button className="text-button" onClick={onEdit}><Pencil size={15} /> Editar</button><button className="text-button danger-text" onClick={onDelete}><Trash2 size={15} /> Eliminar</button></div>}
+    {post.es_mio && <div className="post-owner-actions">{post.tipo === 'extravio' && <button className="text-button" onClick={() => onGeneratePoster({ post, petId: post.mascota_id ?? undefined })}><Printer size={15} /> Generar cartel</button>}{cerrable && <button className="text-button" onClick={onResolve}><Check size={15} /> {post.resuelto ? 'Reabrir' : post.tipo === 'extravio' ? 'Marcar como encontrada' : 'Marcar como resuelto'}</button>}<button className="text-button" onClick={onEdit}><Pencil size={15} /> Editar</button><button className="text-button danger-text" onClick={onDelete}><Trash2 size={15} /> Eliminar</button></div>}
     {post.comentarios.length > 0 && <div className="comments">{post.comentarios.map(c => <div className="comment" key={c.id}><strong>{c.autor}</strong>
       {editing?.id === c.id ? <form className="comment-form" onSubmit={e => saveComment(e, c)}><input aria-label="Editar comentario" maxLength={1000} value={editing.text} onChange={e => setEditing({ id: c.id, text: e.target.value })} /><button className="primary">Guardar comentario</button><button type="button" className="secondary" onClick={() => setEditing(null)}>Cancelar</button></form> : <span>{c.texto}{c.editado ? ' (editado)' : ''}</span>}
       {editing?.id !== c.id && <span className="comment-actions">{c.es_mio ? <><button className="text-button" onClick={() => setEditing({ id: c.id, text: c.texto })}>Editar</button><button className="text-button danger-text" onClick={() => onDeleteComment(c)}>Eliminar</button></> : <button className="text-button" onClick={() => onReport({ tipo: 'comentario', id: c.id, autor: c.autor })}>Reportar</button>}</span>}</div>)}</div>}
@@ -132,7 +129,7 @@ function PostCard({ post, showComment, comunaAjena, posterPetId, onGeneratePoste
   </article>
 }
 
-function Composer({ post, onClose, onSaved }: { post: Post | null; onClose: () => void; onSaved: (created?: { id: string; mascotaId: string }) => Promise<void> }) {
+function Composer({ post, onClose, onSaved }: { post: Post | null; onClose: () => void; onSaved: () => Promise<void> }) {
   useModalFocus(onClose, post ? 'textarea' : 'select')
   const [form, setForm] = useState({ tipo: post?.tipo || 'recomendacion' as Tipo, texto: post?.texto || '', mascota_id: '', sector: post?.sector || '', fecha_evento: post?.fecha_evento || '' })
   const [pets, setPets] = useState<Mascota[]>([])
@@ -149,11 +146,7 @@ function Composer({ post, onClose, onSaved }: { post: Post | null; onClose: () =
     const campos = { texto: form.texto.trim(), ...(conSector && form.sector.trim() && { sector: form.sector.trim() }), ...(form.tipo === 'evento' && { fecha_evento: form.fecha_evento }) }
     try {
       if (post) await api(`/muro/${post.id}`, { method: 'PATCH', body: campos })
-      else {
-        const created = await api<{ id: string }>('/muro', { method: 'POST', body: { tipo: form.tipo, ...campos, ...(form.mascota_id && form.tipo === 'extravio' ? { mascota_id: form.mascota_id } : {}) } })
-        await onSaved(form.tipo === 'extravio' && form.mascota_id ? { id: created.id, mascotaId: form.mascota_id } : undefined)
-        return
-      }
+      else await api('/muro', { method: 'POST', body: { tipo: form.tipo, ...campos, ...(form.mascota_id && form.tipo === 'extravio' ? { mascota_id: form.mascota_id } : {}) } })
       await onSaved()
     } catch (e) { setError(errorText(e)); setErrorField(''); setBusy(false) }
   }
@@ -183,13 +176,9 @@ function LostPosterModal({ post, petId, onClose }: { post: Post; petId?: string;
       const available = rows.map(({ id, nombre, foto_url, token_activo }) => ({ id, nombre, foto_url, token_activo }))
       setPets(available)
       if (petId && available.some(pet => pet.id === petId)) setSelectedPetId(petId)
-      else if (post.mascota) {
-        const matches = available.filter(pet => pet.nombre === post.mascota && (!post.foto_url || pet.foto_url === post.foto_url))
-        if (matches.length === 1) setSelectedPetId(matches[0].id)
-      }
     }).catch(e => { if (active) setError(errorText(e)) }).finally(() => { if (active) setLoading(false) })
     return () => { active = false }
-  }, [petId, post.mascota, post.foto_url])
+  }, [petId])
   const pet = pets.find(row => row.id === selectedPetId) || null
   useEffect(() => {
     let active = true
@@ -208,7 +197,7 @@ function LostPosterModal({ post, petId, onClose }: { post: Post; petId?: string;
     {!loading && !error && !pets.length && <p className="form-error" role="alert">No se encontraron mascotas en tu cuenta. Para generar el cartel con foto y QR, publica el extravío asociado a una mascota.</p>}
     {!loading && pet && !pet.token_activo && <p className="lost-poster-warning" role="status">Activa la medalla para incluir el QR</p>}
     {!loading && pet && pet.token_activo && !qr && !error && <p className="muted" role="status">Generando QR de la medalla…</p>}
-    <div className="lost-poster-preview">{content}</div><div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Cerrar</button><button type="button" className="primary" onClick={() => window.print()} disabled={loading || !pet || (!!pet.token_activo && !qr)}><Printer size={16} /> Imprimir cartel</button></div>
+    <div className="lost-poster-preview">{content}</div><div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Cerrar</button>{pet?.token_activo && <ShareButton hash={`#qr/${pet.token_activo}`} title={`Se busca: ${name}`} text={`Se busca a ${name}${post.sector ? ` (sector ${post.sector})` : ''}. Si sabes dónde está, avisa a su tutor desde su ficha PetSuite.`} label="Compartir búsqueda" />}<button type="button" className="primary" onClick={() => window.print()} disabled={loading || !pet || (!!pet.token_activo && !qr)}><Printer size={16} /> Imprimir cartel</button></div>
     </article>{createPortal(<div className="lost-poster-print-page" aria-hidden="true">{content}</div>, document.body)}</div>
 }
 

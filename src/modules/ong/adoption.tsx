@@ -6,6 +6,7 @@ import { OngProfileEditor } from './ong-profile'
 import { AdsManager, OngAgreements } from '../promotions/promotions'
 import { EmptyState, ErrorState, LoadingState } from '../../shared/feedback'
 import { useModalFocus } from '../../shared/accessibility'
+import { ShareButton } from '../../shared/share'
 
 type AnimalResumen = { id: string; nombre: string; especie: string; raza: string | null; edad_estimada: string | null; estado_salud: string | null; foto_url: string | null; ong: string; comuna: string }
 type OrgResumen = { id: string; nombre: string; tipo: string; comuna: string; mision: string | null; animales: number; cupones: number }
@@ -33,7 +34,7 @@ export function AdoptionCatalog({ standalone }: { standalone?: boolean }) {
 
   const content = <section className="page directory-page">
     <div className="directory-hero"><div><p className="eyebrow">ADOPCIÓN RESPONSABLE</p><h1>Animales que buscan un hogar</h1><p>Organizaciones de rescate de la Región de Los Lagos publican aquí a los animales en adopción. No necesitas una cuenta para explorar ni para pedir información.</p></div></div>
-    <div className="directory-toolbar"><select aria-label="Especie" value={especie} onChange={e => setEspecie(e.target.value)}><option value="">Todas las especies</option><option value="perro">Perros</option><option value="gato">Gatos</option><option value="otro">Otros</option></select><select aria-label="Comuna" value={comuna} onChange={e => setComuna(e.target.value)}><option value="">Todas las comunas</option>{comunas.map(c => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}</select></div>
+    <div className="directory-toolbar"><select aria-label="Especie" value={especie} onChange={e => setEspecie(e.target.value)}><option value="">Todas las especies</option><option value="perro">Perros</option><option value="gato">Gatos</option><option value="otro">Otros</option></select><select aria-label="Comuna" value={comuna} onChange={e => setComuna(e.target.value)}><option value="">Todas las comunas</option>{comunas.map(c => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}</select><span className="toolbar-share"><ShareButton hash="#adopciones" title="Adopciones en PetSuite" text="Animales de organizaciones de rescate de Los Lagos que buscan un hogar." /></span></div>
     {error && <ErrorState message={error} onRetry={load} />}
     <div className="pet-grid adoption-grid">{animals?.map(a => <button key={a.id} className="pet-card" onClick={() => setSelected(a.id)}><Photo src={a.foto_url} nombre={a.nombre} className="pet-photo adoption-photo" /><div className="pet-info"><strong>{a.nombre}</strong><span>{a.especie[0].toUpperCase() + a.especie.slice(1)}{a.raza ? ` · ${a.raza}` : ''}{a.edad_estimada ? ` · ${a.edad_estimada}` : ''}</span><small><MapPin size={13} /> {a.comuna} · {a.ong}</small></div></button>)}</div>
     {animals && animals.length === 0 && <EmptyState title="Sin animales para estos filtros" description="Prueba otra especie o comuna, o vuelve más tarde." action="Quitar filtros" onAction={() => { setComuna(''); setEspecie('') }} />}
@@ -43,7 +44,7 @@ export function AdoptionCatalog({ standalone }: { standalone?: boolean }) {
   </section>
 
   if (!standalone) return content
-  return <div className="emergency-page adoption-public"><main style={{ width: 'min(1100px, 100%)' }}><div className="public-emergency-brand" style={{ justifyContent: 'space-between' }}><span><span className="brand-mark"><LogoMark /></span> PetSuite <span>ADOPCIONES</span></span><a className="secondary" href="/">Ingresar a PetSuite</a></div>{content}</main></div>
+  return <div className="emergency-page adoption-public"><main style={{ width: 'min(1100px, 100%)' }}><div className="public-emergency-brand" style={{ justifyContent: 'space-between' }}><span><span className="brand-mark"><LogoMark /></span> PetSuite <span>ADOPCIONES</span></span><a className="secondary" href={import.meta.env.BASE_URL}>Ingresar a PetSuite</a></div>{content}</main></div>
 }
 
 function AnimalModal({ id, onClose }: { id: string; onClose: () => void }) {

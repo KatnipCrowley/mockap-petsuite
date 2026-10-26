@@ -1,6 +1,7 @@
 import { Check, Crown, Minus } from 'lucide-react'
 import { clp } from '../../shared/api'
 import { LogoMark } from '../../shared/media'
+import { ShareButton } from '../../shared/share'
 import { PLANES, destacadoTexto, etiquetasLimite, limiteTexto, metricasTexto, type Limites, type Plan } from './plans'
 
 const filasLimite = Object.keys(etiquetasLimite) as (keyof Limites)[]
@@ -39,7 +40,7 @@ export function UsageMeters({ plan, uso }: { plan: Plan; uso: Record<keyof Limit
 
 // Página pública de planes (#planes): se comparte con negocios antes de crear la cuenta.
 export function PublicPlans() {
-  return <div className="emergency-page adoption-public"><main style={{ width: 'min(1180px, 100%)' }}><div className="public-emergency-brand" style={{ justifyContent: 'space-between' }}><span><span className="brand-mark"><LogoMark /></span> PetSuite <span>PLANES PARA NEGOCIOS</span></span><a className="secondary" href="./">Crear cuenta o ingresar</a></div>
+  return <div className="emergency-page adoption-public"><main style={{ width: 'min(1180px, 100%)' }}><div className="public-emergency-brand" style={{ justifyContent: 'space-between' }}><span><span className="brand-mark"><LogoMark /></span> PetSuite <span>PLANES PARA NEGOCIOS</span></span><div className="public-actions"><ShareButton hash="#planes" title="Planes PetSuite para negocios" text="Planes Gratis, Bronce, Plata y Oro para veterinarias, tiendas y peluquerías." /><a className="secondary" href="./">Crear cuenta o ingresar</a></div></div>
     <section className="page"><div className="page-title"><div><p className="eyebrow">TARIFA PLANA, SIN COMISIONES POR VENTA</p><h1>Elige cómo quieres crecer con PetSuite</h1><p className="muted">Veterinarias, tiendas y peluquerías aparecen gratis en el directorio. Los planes pagados suman sucursales, equipo, ofertas, publicidad y convenios con ONG. Pagas por transferencia o con el código de recaudación de Orcob; puedes cambiar de plan en cualquier momento.</p></div></div>
       <PlanGrid />
       <div className="plan-rules role-panel"><p className="eyebrow">REGLAS CLARAS</p><ul>

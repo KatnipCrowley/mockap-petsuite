@@ -181,7 +181,13 @@
   .suite-table .user-identity strong { font-size: 0.9rem; }
   .suite-table .user-identity small, .suite-table .user-role { font-size: 0.78rem; line-height: 1.4; }
 }
+/* Botón «Compartir» en páginas públicas y en la barra de filtros de Adopciones. */
+.public-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-2); }
+.toolbar-share { display: flex; margin-inline-start: auto; }
 @media (max-width: 560px) {
+  .adoption-public .public-actions > a, .adoption-public .public-actions > button { min-height: 44px; }
+  .toolbar-share { margin-inline-start: 0; }
+  .toolbar-share > button { width: 100%; justify-content: center; }
   .moderation-identity:has(.promo-preview) { flex-direction: column; align-items: stretch; }
   .moderation-identity .promo-preview { flex: none; width: 100%; max-width: none; }
   .adoption-public .public-emergency-brand { flex-wrap: wrap; gap: var(--space-3); }

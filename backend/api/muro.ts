@@ -17,7 +17,7 @@ const urgente = (p: Publicacion) => (p.tipo === 'extravio' && !p.resuelto_en) ||
 
 // Publicaciones con sus datos de vista en una consulta; los comentarios visibles, en otra.
 async function vistas(sql: Sql, u: Usuario, filtro: string, params: unknown[]) {
-  const filas = await sql<Publicacion & Row>(`select ${PUBLICACION}, a.nombre_visible as autor, m.nombre as mascota,
+  const filas = await sql<Publicacion & Row>(`select ${PUBLICACION}, a.nombre_visible as autor, m.nombre as mascota, m.tutor_id as mascota_tutor_id,
       an.id as an_id, an.nombre as an_nombre, an.estado as an_estado, o.nombre as an_ong, o.estado_verificacion as an_ong_estado,
       (select count(*)::int from reacciones r where r.publicacion_id = p.id) as n_reacciones,
       exists (select 1 from reacciones r where r.publicacion_id = p.id and r.usuario_id = $1) as reaccione,
@@ -32,6 +32,8 @@ async function vistas(sql: Sql, u: Usuario, filtro: string, params: unknown[]) {
     id: p.id, tipo: p.tipo, texto: p.texto, creado_en: p.creado_en, editado: !!p.editado_en, autor: p.autor, es_mio: p.autor_id === u.id,
     comuna_id: p.comuna_id, sector: p.sector, foto_url: p.foto_url, fecha_evento: p.fecha_evento, resuelto: !!p.resuelto_en, urgente: urgente(p),
     mascota: p.mascota_id ? p.mascota ?? null : null,
+    // Solo el autor, y mientras la mascota siga siendo suya, recibe el id para armar el cartel con su medalla.
+    mascota_id: p.mascota_id && p.autor_id === u.id && p.mascota_tutor_id === u.id ? p.mascota_id : null,
     // La adopción solo se enlaza mientras el animal siga publicado.
     animal: p.an_id && p.an_estado === 'disponible' && p.an_ong_estado === 'aprobada' ? { id: p.an_id, nombre: p.an_nombre, ong: p.an_ong } : null,
     reacciones: p.n_reacciones, reaccione: p.reaccione, guardado: p.guardado,

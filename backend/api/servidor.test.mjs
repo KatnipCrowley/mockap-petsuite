@@ -43,7 +43,8 @@ test('con PostgreSQL, el QR y su aviso funcionan entre clientes distintos y sobr
     assert.equal((await call(`/qr/${luna.token_activo}/mensajes`, { method: 'POST', body: { mensaje: 'Encontré a Luna cerca de la plaza.', nombre: 'Vecina' } })).status, 200)
     assert.equal((await call(`/mascotas/${luna.id}/mensajes`, { token })).data[0].mensaje, 'Encontré a Luna cerca de la plaza.')
     assert.equal((await call(`/mascotas/${luna.id}/medallas`, { method: 'POST', token })).status, 200)
-    assert.equal((await call(`/qr/${luna.token_activo}`)).status, 404)
+    assert.equal((await call(`/qr/${luna.token_activo}`)).status, 410)
+    assert.equal((await call(`/qr/${luna.token_activo}/mensajes`, { method: 'POST', body: { mensaje: 'Sigue cerca de la plaza.' } })).status, 410)
     const nueva = (await call('/mascotas', { token })).data.find(p => p.id === luna.id).token_activo
     assert.equal((await call('/mascotas', { origin: 'https://no-autorizado.example', token })).status, 403)
     assert.equal((await call('/mascotas', { token: 'inventado' })).status, 401)

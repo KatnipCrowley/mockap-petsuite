@@ -477,3 +477,34 @@ Antes de finalizar cualquier cambio, se debe agregar una entrada con:
   - Recorrido con Chromium sobre la build de Pages: las 9 cuentas demo y sus 72 vistas a 1366 px, las 6 del tutor a 390 px y la ficha pública del QR. Sin errores de JavaScript ni desbordamiento horizontal.
   - `git diff --check` correcto.
   - Las rutas citadas en entradas anteriores (`src/tutor.tsx`, `src/*.test.mjs`) corresponden a la estructura previa.
+
+### Medalla desactivada, botón «Compartir» y cartel sin `sessionStorage`
+
+- Fecha: 2026-10-26.
+- Rama: `mejoras-qr-y-compartir`, creada a pedido del usuario.
+- Archivos agregados: `src/shared/share.tsx`.
+- Archivos modificados:
+  - Mock y API: `src/mock/server.ts`, `backend/api/ficha.ts` y `backend/api/muro.ts`.
+  - Pruebas: `backend/server.test.mjs`, `backend/api/servidor.test.mjs` y `backend/api/paridad.test.mjs`.
+  - Interfaz: `src/modules/tutor/tutor.tsx`, `src/modules/community/community.tsx`, `src/modules/ong/adoption.tsx`, `src/modules/ong/ong-profile.tsx`, `src/modules/plans/plans-ui.tsx` y `src/styles/design-suite.css`.
+  - Bitácora: `Agents.md`.
+- Cambio realizado:
+  - QR: una medalla reemplazada o desactivada responde 410 «Medalla desactivada», tanto en el mock como en el API con PostgreSQL. Un token inexistente sigue respondiendo 404.
+  - La ficha pública explica que el tutor reemplazó o desactivó la medalla y orienta a quien encontró la mascota: llevarla a una veterinaria para revisar si tiene microchip o avisar en el muro. Así se cierra la dependencia que dejó FE-01.
+  - FE-13: nuevo botón reutilizable `ShareButton`. En el teléfono abre el menú del sistema para compartir; en escritorio copia el enlace y muestra «Enlace copiado».
+    - Está en `#adopciones` (también dentro de la app), `#ong/<id>` y `#planes`.
+    - En el cartel de extravío comparte el enlace de la ficha pública de la medalla.
+    - Los enlaces se arman con `import.meta.env.BASE_URL`.
+  - Cartel (FE-11): el muro devuelve `mascota_id` solo al autor y solo mientras la mascota siga siendo suya. El cartel ya no guarda la relación en `sessionStorage` ni deduce la mascota por nombre y foto, lo que podía elegir otra si la mascota había sido traspasada.
+  - Corrección: en la página pública de adopciones, «Ingresar a PetSuite» apuntaba a `/`, que en GitHub Pages lleva fuera de `/mockap-petsuite/`.
+- Motivo: completar los pendientes de FE-01, FE-11 y FE-13 alrededor del QR de emergencia, sin exponer ids internos a otros vecinos.
+- Verificación ejecutada:
+  - `npx tsc -b` sin errores y `npm run build -- --base=/mockap-petsuite/` correcto.
+  - `npm test`: 27 de 27. La paridad compara el aviso enviado a una medalla reemplazada y comprueba que el autor recibe `mascota_id` y otro vecino, `null`.
+  - Recorrido con Chromium sobre la build de Pages:
+    - Extravío publicado con Luna; el cartel elige su mascota y su QR sin selector, y copia el enlace con la base de Pages.
+    - Medalla desactivada y token inexistente muestran mensajes distintos.
+    - «Compartir» en las tres páginas públicas, a 1366 px (copia el enlace) y a 390 px (menú del teléfono).
+    - Recorrido general por las 9 cuentas demo.
+    - Sin errores de JavaScript ni desplazamiento horizontal.
+  - `git diff --check` correcto.

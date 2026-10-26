@@ -4,6 +4,7 @@ import { api, errorText, type CuponPublico } from '../../shared/api'
 import { LogoMark, Photo } from '../../shared/media'
 import { CouponList } from '../promotions/promotions'
 import { EmptyState, ErrorState, LoadingState } from '../../shared/feedback'
+import { ShareButton } from '../../shared/share'
 
 export type OngPerfil = {
   mision: string; como_ayudar: string; necesidades: string[]; voluntariado: string; horario_visitas: string
@@ -77,7 +78,7 @@ export function PublicOngProfile({ id }: { id: string }) {
   const load = useCallback(() => api<Publica>(`/ongs/${id}`).then(value => { setOng(value); setError('') }).catch(e => setError(errorText(e))), [id])
   useEffect(() => { void load() }, [load])
   const perfil = ong?.perfil ?? { ...vacio, mision: ong?.descripcion ?? '' }
-  return <div className="emergency-page adoption-public"><main style={{ width: 'min(1100px, 100%)' }}><div className="public-emergency-brand" style={{ justifyContent: 'space-between' }}><span><span className="brand-mark"><LogoMark /></span> PetSuite <span>ORGANIZACIONES</span></span><button className="secondary" onClick={() => { if (window.history.length > 1) window.history.back(); else window.location.hash = '#adopciones' }}><X size={15} /> Volver</button></div>
+  return <div className="emergency-page adoption-public"><main style={{ width: 'min(1100px, 100%)' }}><div className="public-emergency-brand" style={{ justifyContent: 'space-between' }}><span><span className="brand-mark"><LogoMark /></span> PetSuite <span>ORGANIZACIONES</span></span><div className="public-actions">{ong && <ShareButton hash={`#ong/${id}`} title={ong.nombre} text={`Conoce a ${ong.nombre} en PetSuite: animales en adopción y cómo ayudar.`} />}<button className="secondary" onClick={() => { if (window.history.length > 1) window.history.back(); else window.location.hash = '#adopciones' }}><X size={15} /> Volver</button></div></div>
     {!ong ? (error ? <ErrorState message={error} onRetry={() => void load()} /> : <LoadingState label="Cargando organización pública" />) : <section className="page">
       <OngHero nombre={ong.nombre} sub={`${tipoOng[ong.tipo] || ong.tipo} · ${ong.comuna}`.toUpperCase()} perfil={perfil} />
       <div className="business-stats"><div className="metric-card"><small>Animales en adopción</small><strong>{ong.animales.length}</strong><span><MapPin size={13} /> {ong.comuna}</span></div><div className="metric-card"><small>Compras con sus cupones este mes</small><strong>{ong.impacto.canjes_mes}</strong><span>{ong.impacto.aliados} negocios aliados</span></div><div className="metric-card"><small>Impacto acumulado</small><strong>{ong.impacto.canjes_total}</strong><span>Canjes en negocios Pet-Care</span></div></div>

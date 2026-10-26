@@ -424,9 +424,11 @@ on('PATCH', '/mascotas/mensajes/:id', req => {
 // QR público (sin sesión). LISTA BLANCA: nunca medicamentos, historial, datos del tutor ni ids internos.
 function medallaActiva(token: string) {
   if (!QR_TOKEN.test(token)) return fail(404, 'Medalla no válida')
-  const md = db.medallas.find(x => x.token === token && x.estado === 'activa')
+  const md = db.medallas.find(x => x.token === token)
   const m = md && db.mascotas.find(x => x.id === md.mascota_id)
   if (!md || !m) return fail(404, 'Medalla no válida')
+  // Reemplazada o desactivada por el tutor: 410 para que quien la escanea sepa qué pasó, sin datos de la mascota.
+  if (md.estado !== 'activa') return fail(410, 'Medalla desactivada')
   return { md, m }
 }
 
@@ -764,10 +766,13 @@ const urgente = (p: Publicacion) => (p.tipo === 'extravio' && !p.resuelto_en) ||
 function vistaPublicacion(p: Publicacion, u: Usuario) {
   const a = p.animal_id ? db.animales.find(x => x.id === p.animal_id) : undefined
   const o = a && ongDe(a)
+  const mascota = p.mascota_id ? db.mascotas.find(m => m.id === p.mascota_id) : undefined
   return {
     id: p.id, tipo: p.tipo, texto: p.texto, creado_en: p.creado_en, editado: !!p.editado_en, autor: nombreUsuario(p.autor_id), es_mio: p.autor_id === u.id,
     comuna_id: p.comuna_id, sector: p.sector, foto_url: p.foto_url, fecha_evento: p.fecha_evento, resuelto: !!p.resuelto_en, urgente: urgente(p),
-    mascota: p.mascota_id ? db.mascotas.find(m => m.id === p.mascota_id)?.nombre ?? null : null,
+    mascota: mascota?.nombre ?? null,
+    // Solo el autor, y mientras la mascota siga siendo suya, recibe el id para armar el cartel con su medalla.
+    mascota_id: mascota && p.autor_id === u.id && mascota.tutor_id === u.id ? mascota.id : null,
     // La adopción solo se enlaza mientras el animal siga publicado.
     animal: a && o && visible(a) ? { id: a.id, nombre: a.nombre, ong: o.nombre } : null,
     reacciones: db.reacciones.filter(r => r.publicacion_id === p.id).length,
