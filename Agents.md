@@ -26,10 +26,12 @@ Estas reglas resumen errores que ya ocurrieron. Léelas antes de cada tarea.
 
 ### Ramas y sincronización
 
-- El trabajo se hace en `main`. Solo se crea otra rama cuando el usuario lo pide expresamente. En ese caso se publica, se abre un Pull Request y se fusiona en `main` antes de empezar otra tarea.
-- Antes de empezar, trae lo último de `origin/main` (Pull) y revisa si hay ramas sin fusionar (`git branch -a --no-merged main`). Si alguna tiene trabajo que no está en `main`, avisa al usuario antes de seguir.
+- Cada tarea o cambio se trabaja siempre en una rama nueva creada desde `origin/main`; nunca se modifica `main` directamente.
+- Todas las ramas usan el formato `<nombredeusuario>/<cambio-branch>`, por ejemplo `arman/fe-12-abierto-ahora-branch`. `cambio-branch` es el texto descriptivo completo del nombre de la rama; no se añade `-branch` automáticamente al final de otro nombre. El nombredeusuario identifica a quien trabaja y la regla aplica a todas las personas del equipo.
+- Antes de cada tarea, confirma que el árbol de trabajo esté limpio, actualiza `main` desde `origin/main` (Pull), revisa ramas sin fusionar (`git branch -a --no-merged main`) y crea una rama nueva con ese formato. Si aparece trabajo en una rama anterior que no está integrado, avisa al usuario antes de seguir.
+- Publica la rama, abre un Pull Request y fusiónalo en `main` antes de empezar otra tarea.
   - Motivo: en octubre de 2026 el equipo trabajó una semana en `main` mientras la base de datos estaba en `benja-base-datos`, y hubo que unir ambas líneas a mano.
-- No cambies de rama con cambios sin commit. GitHub Desktop los guarda en un stash que después se olvida; así quedaron fuera las instrucciones de acceso a la base.
+- No cambies de rama con cambios sin commit. GitHub Desktop los guarda en un stash que después se olvida; así quedaron fuera las instrucciones de acceso a la base. Termina y fusiona la tarea actual antes de crear la rama de la siguiente.
 
 ### Estructura del código
 
@@ -629,3 +631,11 @@ Cada entrada va al final del archivo, bajo el encabezado `## AAAA-MM-DD` de su d
 - Motivo: dejar `main` con la última versión del proyecto y sin archivos personales, como piden las reglas de trabajo.
 - Pendiente: borrar en GitHub (pestaña **Branches**) las ramas ya incluidas en `main`: `aaaaa`, `benja-1`, `benja-2`, `benja-base-datos`, `fe-01-a-fe-05-frontend`, las cinco `fe-0x` individuales, `mejoras-qr-y-compartir` y `usuarios-reales`. Desde esta terminal no hay credenciales para hacerlo.
 - Verificación ejecutada: `npx tsc -b`, `npm run build -- --base=/mockap-petsuite/`, `npm test` y `git diff --check`.
+
+### Formato obligatorio de ramas por usuario
+
+- Fecha: 2026-10-26.
+- Archivos modificados: `AGENTS.md`.
+- Cambio realizado: cada tarea debe usar una rama creada desde `origin/main`, nombrada `<nombredeusuario>/<cambio-branch>`, donde `cambio-branch` es el texto descriptivo completo. Esta convención aplica a todos los usuarios del equipo. Por solicitud expresa del usuario, esta actualización de las instrucciones se hizo directamente en `main`.
+- Motivo: identificar claramente quién trabaja en cada rama y qué cambio contiene, manteniendo una rama separada por tarea.
+- Verificación ejecutada: revisión del texto y `git diff --check`.
