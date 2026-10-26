@@ -62,10 +62,15 @@ function cliente(handle) {
     registro.push({ paso: `${method} ${plantilla(path)}${quien ? ` (${quien})` : ''}`, status: r.status, data: r.status === 200 ? comparar(structuredClone(r.data)) : r.data })
     return r
   }
-  call.login = async (quien, correo, clave = 'petsuite123') => {
-    const r = await call('POST', '/auth/login', { correo, clave }, null)
+  call.sesion = (quien, r) => {
     if (r.status === 200) sesiones[quien] = { token: r.data.token, id: r.data.usuario.id, rol: r.data.usuario.rol, nombre: r.data.usuario.nombre_visible, comunaId: r.data.usuario.comuna_id }
     return r
+  }
+  call.login = async (quien, correo, clave = 'petsuite123') => call.sesion(quien, await call('POST', '/auth/login', { correo, clave }, null))
+  // Token del último enlace (#verificar/… o #restablecer/…) enviado a un correo, leído en la bandeja del administrador.
+  call.token = async (para, ruta) => {
+    const { data } = await call('GET', '/admin/correos', undefined, 'admin')
+    return new RegExp(`#${ruta}/([0-9a-f]{32})`).exec(data.find(c => c.para === para && c.cuerpo.includes(`#${ruta}/`)).cuerpo)[1]
   }
   call.registro = registro
   return call
@@ -123,12 +128,38 @@ test('cuentas: login, registro, sesión y catálogos', async () => {
     await call('POST', '/auth/registro', { ...nuevo, rol: 'admin' })
     await call('POST', '/auth/registro', nuevo)
     await call('POST', '/auth/registro', nuevo)
+
+    // Confirmación del correo: sin ella no hay ingreso; el enlace sirve una sola vez.
     await call.login('nueva', 'nueva@petsuite.cl', 'secreta123')
+    await call.login('nueva', 'nueva@petsuite.cl', 'otra')
+    await call('POST', '/auth/reenviar-verificacion', { correo: 'NUEVA@petsuite.cl' })
+    await call('POST', '/auth/reenviar-verificacion', { correo: 'nadie@petsuite.cl' })
+    await call('POST', '/auth/reenviar-verificacion', { correo: 'tutor@petsuite.cl' })
+    await call('POST', '/auth/reenviar-verificacion', { correo: 'no es correo' })
+    await call('POST', '/auth/verificar', { token: 'a'.repeat(32) })
+    const verificacion = await call.token('nueva@petsuite.cl', 'verificar')
+    call.sesion('nueva', await call('POST', '/auth/verificar', { token: verificacion }))
+    await call('POST', '/auth/verificar', { token: verificacion })
     await call('GET', '/auth/yo', undefined, 'nueva')
+    await call.login('nueva', 'nueva@petsuite.cl', 'secreta123')
     await call('GET', '/mascotas', undefined, 'nueva')
     await call('GET', '/mascotas', undefined, 'clinico')
+
+    // Recuperación de contraseña: misma respuesta exista o no la cuenta; el enlace cierra las sesiones abiertas.
+    await call('POST', '/auth/recuperar', { correo: 'nadie@petsuite.cl' })
+    await call('POST', '/auth/recuperar', { correo: 'Nueva@petsuite.cl' })
+    await call('POST', '/auth/recuperar', { correo: 'nueva@petsuite.cl' })
+    const recuperacion = await call.token('nueva@petsuite.cl', 'restablecer')
+    await call('POST', '/auth/restablecer', { token: recuperacion, clave: 'corta' })
+    await call('POST', '/auth/restablecer', { token: 'b'.repeat(32), clave: 'nuevaClave123' })
+    await call('POST', '/auth/restablecer', { token: recuperacion, clave: 'nuevaClave123' })
+    await call('POST', '/auth/restablecer', { token: recuperacion, clave: 'otraClave123' })
+    await call('GET', '/auth/yo', undefined, 'nueva')
+    await call.login('nueva', 'nueva@petsuite.cl', 'secreta123')
+    await call.login('nueva', 'nueva@petsuite.cl', 'nuevaClave123')
+    await call('GET', '/auth/yo', undefined, 'nueva')
   })
-  assert.ok(pasos > 20)
+  assert.ok(pasos > 40)
 })
 
 test('Ficha Única: mascotas, accesos clínicos, registros con autoría, medallas y QR público', async () => {
@@ -317,7 +348,7 @@ test('directorio y Pymes: perfil, consultas, catálogo, métricas, suscripción,
 
     // Alta de una Pyme nueva y verificación del asesor.
     await call('POST', '/auth/registro', { correo: 'gato@petsuite.cl', clave: 'secreta123', nombre_visible: 'Gatería', comuna_id: 3, rol: 'pyme', acepta_terminos: true, acepta_privacidad: true })
-    await call.login('nueva', 'gato@petsuite.cl', 'secreta123')
+    call.sesion('nueva', await call('POST', '/auth/verificar', { token: await call.token('gato@petsuite.cl', 'verificar') }))
     const alta = { nombre_comercial: 'Gatería Castro', rut_empresa: '76999888-K', rubro: 'tienda', comuna_id: 3, direccion: 'Blanco 10', latitud: -42.48, longitud: -73.76 }
     await call('POST', '/pymes', { ...alta, rut_empresa: '123' }, 'nueva')
     await call('POST', '/pymes', { ...alta, comuna_id: 99 }, 'nueva')
@@ -493,7 +524,7 @@ test('adopción y ONG: catálogo, solicitudes, traspaso de la ficha, registro, p
     // Registro de una ONG nueva, verificación y CMS del perfil público.
     await call('POST', '/ong', { nombre: 'Otra', tipo: 'refugio', comuna_id: 1 }, 'ong')
     await call('POST', '/auth/registro', { correo: 'refugio@petsuite.cl', clave: 'secreta123', nombre_visible: 'Refugio Castro', comuna_id: 3, rol: 'ong', acepta_terminos: true, acepta_privacidad: true })
-    await call.login('refugio', 'refugio@petsuite.cl', 'secreta123')
+    call.sesion('refugio', await call('POST', '/auth/verificar', { token: await call.token('refugio@petsuite.cl', 'verificar') }))
     await call('GET', '/ong/animales', undefined, 'refugio')
     await call('POST', '/ong', { nombre: 'Refugio Castro', tipo: 'refugio', comuna_id: 99 }, 'refugio')
     const { data: refugio } = await call('POST', '/ong', { nombre: 'Refugio Castro', tipo: 'refugio', comuna_id: 3, contacto: 'refugio@petsuite.cl' }, 'refugio')
@@ -558,14 +589,16 @@ test('suite: sucursales, equipo, publicidad, convenios y canjes, cobranza, cuent
     await call('DELETE', `/pymes/${shop}/sucursales/${valdivia.id}`, undefined, 'tienda')
     await call('GET', `/pymes/${shop}/equipo`, undefined, 'tienda')
     await call('GET', '/correos/mios', undefined, 'tienda')
-    const { data: correos } = await call('GET', '/admin/correos', undefined, 'admin')
-    const clave = /Clave temporal: (\S+)/.exec(correos.find(c => c.para === 'vendedor@petsuite.cl').cuerpo)[1]
-    await call.login('vendedor', 'vendedor@petsuite.cl', clave)
+    // La invitación no trae clave: el integrante crea la suya con el enlace, que además confirma su correo.
+    const invitacion = await call.token('vendedor@petsuite.cl', 'restablecer')
+    await call.login('vendedor', 'vendedor@petsuite.cl', 'vendedor123')
+    await call('POST', '/auth/restablecer', { token: invitacion, clave: 'vendedor123' })
+    await call.login('vendedor', 'vendedor@petsuite.cl', 'vendedor123')
     await call('GET', '/pymes/mias', undefined, 'vendedor')
     await call('DELETE', `/pymes/${shop}/equipo/${vendedor.id}`, undefined, 'tienda')
     await call('DELETE', `/pymes/${shop}/equipo/${vendedor.id}`, undefined, 'tienda')
     await call('GET', '/pymes/mias', undefined, 'vendedor')
-    await call.login('vendedor', 'vendedor@petsuite.cl', clave)
+    await call.login('vendedor', 'vendedor@petsuite.cl', 'vendedor123')
 
     // Publicidad con aprobación del asesor.
     const banner = { titulo: 'Semana del gato', texto: 'Descuentos en arena y rascadores.', destino: 'perfil', ubicacion: 'directorio', desde: dia(0), hasta: dia(10) }

@@ -1,7 +1,9 @@
 // Multitenant: sucursales de cada Pyme y su equipo interno (jefes de local y personal clínico) con permisos por módulo.
+import { randomBytes } from 'node:crypto'
 import { z } from 'zod'
+import { correoEquipo } from '../../src/shared/cuentas'
 import { ROLES_EQUIPO, type ModuloPyme, type Rol } from '../../src/shared/permissions'
-import { auth, cerrarSesiones, cifrarClave, enviarCorreo } from './auth'
+import { auth, cerrarSesiones, cifrarClave, emitirToken, enviarCorreo } from './auth'
 import { comunasDe, fail, idDe, now, on, parse, sinEnlaces, uid, una, type Req } from './core'
 import type { Sql } from './db'
 import { exigirCupo, miPyme, permisosEnPyme, planDe, type Miembro, type Pyme, type Sucursal } from './negocio'
@@ -15,17 +17,15 @@ async function conModulo(req: Req, ...modulos: ModuloPyme[]): Promise<Pyme> {
   throw error
 }
 
-const claveTemporal = () => `Pet-${uid().replace(/-/g, '').slice(0, 8)}`
-
-// Cuenta creada por terceros (dueño de la Pyme o asesor): recibe una clave temporal por correo.
+// Cuenta creada por terceros (dueño de la Pyme o asesor): sin clave conocida, la persona crea la suya con el
+// enlace de invitación que recibe por correo, y ese enlace también confirma su correo.
 export async function nuevaCuenta(sql: Sql, correo: string, nombre: string, rol: Rol, comuna_id: number | null) {
   const c = correo.trim().toLowerCase()
   if (await una(sql, 'select 1 from usuarios where lower(correo) = $1', [c])) fail(409, 'Ese correo ya tiene una cuenta en PetSuite')
-  const clave = claveTemporal()
   const u = { id: uid(), correo: c, nombre_visible: nombre.trim() }
   await sql("insert into usuarios (id, correo, clave_hash, rol, nombre_visible, comuna_id, estado, creado_en) values ($1, $2, $3, $4, $5, $6, 'activo', $7)",
-    [u.id, u.correo, await cifrarClave(clave), rol, u.nombre_visible, comuna_id, now()])
-  return { u, clave }
+    [u.id, u.correo, await cifrarClave(randomBytes(32).toString('hex')), rol, u.nombre_visible, comuna_id, now()])
+  return { u, enlace: await emitirToken(sql, u.id, 'invitacion') }
 }
 
 // ---------- Sucursales ----------
@@ -131,17 +131,18 @@ on('GET', '/pymes/:id/equipo', async req => {
   return req.sql(`select ${MIEMBRO_VISTA} from miembros m join usuarios u on u.id = m.usuario_id left join sucursales s on s.id = m.sucursal_id where m.pyme_id = $1 order by m.creado_en`, [p.id])
 })
 
-// Crea la cuenta del integrante y le envía sus credenciales temporales por correo.
+// Crea la cuenta del integrante y le envía por correo el enlace para crear su contraseña.
 on('POST', '/pymes/:id/equipo', async req => {
   const p = await miPyme(req, 'equipo')
   const d = parse(miembroSchema, req.body)
   await exigirCupo(req.sql, p.id, 'usuarios')
   const permisos = await permisosValidos(req.sql, p, d.rol, d.permisos, d.sucursal_id)
-  const { u, clave } = await nuevaCuenta(req.sql, d.correo, d.nombre_visible, d.rol, p.comuna_id)
+  const { u, enlace } = await nuevaCuenta(req.sql, d.correo, d.nombre_visible, d.rol, p.comuna_id)
   const m: Miembro = { id: uid(), pyme_id: p.id, usuario_id: u.id, rol: d.rol, sucursal_id: d.sucursal_id, permisos, creado_en: now() }
   await req.sql('insert into miembros (id, pyme_id, usuario_id, rol, sucursal_id, permisos, creado_en) values ($1, $2, $3, $4, $5, $6::text[], $7)', [m.id, m.pyme_id, m.usuario_id, m.rol, m.sucursal_id, m.permisos, m.creado_en])
-  const lugar = d.sucursal_id ? (await una<{ nombre: string }>(req.sql, 'select nombre from sucursales where id = $1', [d.sucursal_id]))?.nombre : 'la casa matriz'
-  await enviarCorreo(req.sql, u.correo, `Tu cuenta de equipo en ${p.nombre_comercial}`, `Hola, ${u.nombre_visible}:\n\n${p.nombre_comercial} te dio acceso como ${d.rol === 'clinico' ? 'personal clínico' : 'jefe de local'} de ${lugar}.\n\nCorreo: ${u.correo}\nClave temporal: ${clave}\n\nPodrás usar: ${permisos.join(', ')}.\nTe recomendamos cambiar la clave al ingresar.\n\nEquipo PetSuite`, 'cuenta_equipo')
+  const lugar = (d.sucursal_id ? (await una<{ nombre: string }>(req.sql, 'select nombre from sucursales where id = $1', [d.sucursal_id]))?.nombre : null) ?? 'la casa matriz'
+  const correo = correoEquipo({ nombre: u.nombre_visible, negocio: p.nombre_comercial, rol: d.rol, lugar, permisos, enlace })
+  await enviarCorreo(req.sql, u.correo, correo.asunto, correo.cuerpo, 'cuenta_equipo', enlace)
   return vistaMiembro(req.sql, m.id)
 })
 

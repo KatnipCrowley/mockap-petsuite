@@ -5,6 +5,13 @@ export const loginSchema = z.object({
   password: z.string().min(6, 'La contraseña debe tener al menos 6 caracteres'),
 })
 
+export const emailSchema = z.object({ email: z.email('Ingresa un correo válido') })
+
+export const newPasswordSchema = z.object({
+  password: z.string().min(8, 'La contraseña debe tener al menos 8 caracteres').max(72, 'La contraseña admite hasta 72 caracteres'),
+  confirm: z.string(),
+}).refine(d => d.password === d.confirm, { message: 'Las contraseñas no coinciden', path: ['confirm'] })
+
 export const petSchema = z.object({
   name: z.string().trim().min(2, 'Ingresa el nombre de tu mascota').max(80, 'El nombre no puede superar 80 caracteres'),
   species: z.string().trim().min(2, 'Ingresa la especie').max(60, 'La especie es demasiado larga'),

@@ -45,9 +45,12 @@ test('the owner creates a local manager whose credentials arrive by email and wh
   await assert.rejects(() => handle('POST', `/pymes/${pyme.id}/equipo`, { nombre_visible: 'Vet', correo: 'vet@huellitas.cl', rol: 'clinico' }, owner), status(422))
   await assert.rejects(() => handle('POST', `/pymes/${pyme.id}/equipo`, { nombre_visible: 'Jefe', correo: 'nuevo@huellitas.cl', rol: 'jefe_local', permisos: ['suscripcion'] }, owner), status(422))
   await handle('POST', `/pymes/${pyme.id}/equipo`, { nombre_visible: 'Tomás Lagos', correo: 'nuevo@huellitas.cl', rol: 'jefe_local', sucursal_id: null }, owner)
+  // La invitación trae un enlace para crear la contraseña, no una clave temporal.
   const mail = JSON.parse(localStorage.getItem(STORAGE_KEY)).correos.find(c => c.para === 'nuevo@huellitas.cl')
-  const clave = /Clave temporal: (\S+)/.exec(mail.cuerpo)[1]
-  const jefe = await login('nuevo@huellitas.cl', clave)
+  assert.ok(!/Clave temporal/.test(mail.cuerpo))
+  const token = /#restablecer\/([0-9a-f]{32})/.exec(mail.cuerpo)[1]
+  await handle('POST', '/auth/restablecer', { token, clave: 'jefe-nuevo-123' }, null)
+  const jefe = await login('nuevo@huellitas.cl', 'jefe-nuevo-123')
   assert.deepEqual(jefe.permisos, ['perfil', 'catalogo', 'contactos', 'metricas'])
   assert.ok(Array.isArray(await handle('GET', `/pymes/${pyme.id}/catalogo`, undefined, jefe)))
   await assert.rejects(() => handle('GET', `/pymes/${pyme.id}/equipo`, undefined, jefe), status(403))

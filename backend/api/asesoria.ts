@@ -2,19 +2,21 @@
 import { z } from 'zod'
 import { DIAS_DERIVAR_COBRANZA, planPorId } from '../../src/modules/plans/plans'
 import { derivarCobranza } from '../../src/mock/orcob'
+import { correoCuentaCreada } from '../../src/shared/cuentas'
 import { auth, correoDe, enviarCorreo } from './auth'
 import { comunasDe, fail, idDe, now, on, parse, uid, una } from './core'
 import type { Sql } from './db'
 import { nuevaCuenta } from './equipo'
 import { estadoPlanDe, PYME, suscripcionesDe, type Pyme, type Suscripcion } from './negocio'
 
-// El asesor crea cuentas para Pymes u ONG que acompaña; la cuenta recibe su clave temporal por correo.
+// El asesor crea cuentas para Pymes u ONG que acompaña; la cuenta recibe por correo el enlace para crear su contraseña.
 on('POST', '/asesor/cuentas', async req => {
   const asesor = await auth(req, 'asesor', 'admin')
   const d = parse(z.object({ tipo: z.enum(['pyme', 'ong']), correo: z.string().trim().email('Correo inválido'), nombre_visible: z.string().trim().min(2, 'Ingresa el nombre del contacto').max(80), comuna_id: z.number().int().positive() }), req.body)
   if (!(await comunasDe(req.sql)).has(d.comuna_id)) return fail(400, 'Comuna no válida')
-  const { u, clave } = await nuevaCuenta(req.sql, d.correo, d.nombre_visible, d.tipo, d.comuna_id)
-  await enviarCorreo(req.sql, u.correo, 'Tu cuenta PetSuite está lista', `Hola, ${u.nombre_visible}:\n\n${asesor.nombre_visible}, tu asesor PetSuite, creó tu cuenta de ${d.tipo === 'pyme' ? 'negocio' : 'organización'}.\n\nCorreo: ${u.correo}\nClave temporal: ${clave}\n\nAl ingresar, registra ${d.tipo === 'pyme' ? 'tu negocio y elige un plan (Gratis, Bronce, Plata u Oro)' : 'tu organización; participar es gratis'}. Al primer ingreso te pediremos aceptar el aviso de privacidad.\n\nEquipo PetSuite`, 'cuenta_creada')
+  const { u, enlace } = await nuevaCuenta(req.sql, d.correo, d.nombre_visible, d.tipo, d.comuna_id)
+  const correo = correoCuentaCreada({ nombre: u.nombre_visible, asesor: asesor.nombre_visible, tipo: d.tipo, enlace })
+  await enviarCorreo(req.sql, u.correo, correo.asunto, correo.cuerpo, 'cuenta_creada', enlace)
   return { id: u.id, correo: u.correo }
 })
 

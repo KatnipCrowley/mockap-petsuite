@@ -23,12 +23,13 @@ on('GET', '/privacidad/mis-datos', async req => {
   const u = await auth(req)
   const privacidad = await privacidadDe(req.sql, u)
   const suspension = await una(req.sql, 'select tipo, dias, hasta, motivo, mensaje, aplicada_en from suspensiones where usuario_id = $1 and levantada_en is null', [u.id])
+  const verificado = await una<{ correo_verificado_en: string | null }>(req.sql, 'select correo_verificado_en from usuarios where id = $1', [u.id])
   const mascotas = await req.sql(`select m.*, coalesce((select json_agg(json_build_object('estado', md.estado, 'emitida_en', md.emitida_en) order by md.emitida_en) from medallas md where md.mascota_id = m.id), '[]'::json) as medallas
     from mascotas m where m.tutor_id = $1 order by m.creado_en`, [u.id])
   for (const m of mascotas) for (const md of m.medallas) md.emitida_en = new Date(md.emitida_en).toISOString()
   return {
     generado_en: now(), responsable: 'PetSuite', version_aviso: VERSION_PRIVACIDAD,
-    cuenta: { ...u, consentimientos: privacidad.consentimientos, suspension: suspension ?? null },
+    cuenta: { ...u, correo_verificado_en: verificado?.correo_verificado_en ?? null, consentimientos: privacidad.consentimientos, suspension: suspension ?? null },
     mascotas,
     accesos_otorgados: await req.sql('select p.nombre_comercial as clinica, a.permiso, a.vigente_hasta, a.revocado_en from accesos a join pymes p on p.id = a.pyme_id where a.otorgado_por = $1 order by a.vigente_hasta', [u.id]),
     publicaciones: await req.sql('select tipo, texto, creado_en, estado from publicaciones where autor_id = $1 order by creado_en', [u.id]),

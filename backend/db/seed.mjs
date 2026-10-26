@@ -31,6 +31,7 @@ async function filas(db) {
   const usuarios = await Promise.all(db.usuarios.map(async u => ({
     id: u.id, correo: u.correo, clave_hash: await bcrypt.hash(u.clave, RONDAS_BCRYPT), rol: u.rol, nombre_visible: u.nombre_visible,
     comuna_id: u.comuna_id, estado: u.estado, bloqueo_tratamiento: u.bloqueo_tratamiento ?? false, creado_en: u.creado_en,
+    correo_verificado_en: u.correo_verificado_en ?? null,
   })))
   return [
     ['usuarios', usuarios],

@@ -57,6 +57,17 @@ Estas reglas resumen errores que ya ocurrieron. Léelas antes de cada tarea.
 - Si cambias `public/sw.js`, sube la versión del caché.
 - Para carga, vacío, error y permiso insuficiente usa los componentes de `src/shared/feedback.tsx`.
 
+### Cuentas reales
+
+PetSuite dejó de ser solo una demostración. La demo, con el mock y la clave `petsuite123`, sigue en GitHub Pages; la versión real usa otra base.
+
+- La base real no tiene cuentas demo: nunca ejecutes `npm run db:seed` en ella. El primer administrador se crea con `npm run db:crear-admin`.
+- Ninguna clave viaja por correo. Las cuentas que crea una Pyme o un asesor reciben una invitación para crear la suya.
+- Los enlaces de confirmación, recuperación e invitación sirven una sola vez, vencen y se guardan como SHA-256. Al enviarlos con `enviarCorreo`, pasa el enlace como `privado`: con Resend configurado, la bandeja guarda el correo sin él.
+- Reenviar la confirmación y recuperar la contraseña responden lo mismo exista o no la cuenta.
+- Los textos, plazos y mensajes de las cuentas están en `src/shared/cuentas.ts`, compartido por el mock, el API y el frontend.
+- Los botones de cuentas de prueba y «Datos de demostración» solo aparecen en la demo (`modoDemo`, sin `VITE_API_URL`).
+
 ### Verificación antes de terminar
 
 - Ejecuta `npx tsc -b`, `npm run build -- --base=/mockap-petsuite/`, `npm test` y `git diff --check`.
@@ -566,3 +577,43 @@ Cada entrada va al final del archivo, bajo el encabezado `## AAAA-MM-DD` de su d
   - La regla «nunca crear otra rama» pasa a «solo si el usuario lo pide, y se fusiona antes de la siguiente tarea», porque el usuario pidió la rama `mejoras-qr-y-compartir`.
 - Motivo: que cualquier persona o agente del equipo evite repetir estos errores.
 - Verificación ejecutada: revisión del texto y `git diff --check` correcto. No cambia código.
+
+### Cuentas reales: confirmación de correo, recuperación de contraseña e invitaciones
+
+- Fecha: 2026-10-26.
+- Rama: `usuarios-reales`, creada sobre `mejoras-qr-y-compartir` a pedido del usuario.
+- Archivos agregados: `src/shared/cuentas.ts`, `src/modules/auth/AccountLinks.tsx`, `backend/db/migrations/004_cuentas_reales.sql`, `backend/db/crear-admin.mjs` y `backend/api/cuentas.test.mjs`.
+- Archivos modificados:
+  - Mock: `src/mock/db.ts`, `src/mock/server.ts` y `src/mock/suite.ts`.
+  - API: `backend/api/auth.ts`, `backend/api/cuentas.ts`, `backend/api/equipo.ts`, `backend/api/asesoria.ts`, `backend/api/privacidad.ts` y `backend/db/seed.mjs`.
+  - Pruebas: `backend/api/paridad.test.mjs` y `src/modules/business/business-rules.test.mjs`.
+  - Frontend: `src/App.tsx`, `src/modules/auth/Login.tsx`, `src/shared/api.ts`, `src/shared/validators.ts`, `src/modules/advisor/advisor.tsx`, `src/modules/business/team.tsx` y `src/styles/design-suite.css`.
+  - Otros: `package.json`, `.env.example`, `backend/README.md` y `Agents.md`.
+- Cambio realizado:
+  - El registro deja la cuenta pendiente y envía un enlace de confirmación que vence en 24 horas. Sin confirmar no se puede ingresar: con la clave correcta, el ingreso responde 403 y la pantalla ofrece reenviar el enlace. El enlace confirma el correo e inicia la sesión.
+  - «¿Olvidaste tu contraseña?» envía un enlace que vence en 1 hora. La contraseña nueva cierra todas las sesiones y también confirma el correo.
+  - Las cuentas creadas por una Pyme (equipo) o por el asesor reciben una invitación para crear su contraseña, que vence en 7 días, en lugar de una clave temporal en texto.
+  - Reenviar y recuperar responden lo mismo exista o no la cuenta, y envían como máximo un correo por minuto a cada cuenta. Cada enlace sirve una vez y emitir uno nuevo anula el anterior.
+  - Correo real con Resend (`RESEND_API_KEY`, `MAIL_FROM`, `APP_URL`): la bandeja guarda una copia sin el enlace, y si el envío falla, la solicitud responde 502 y se deshace.
+  - Migración 004: columna `correo_verificado_en`, en la que las cuentas existentes quedan confirmadas; tabla `tokens_cuenta` con RLS y nuevos tipos de correo.
+  - Mock: los datos de demostración pasan a `petsuite-mock-db-v4`, así que se descarta lo guardado en la v3. Las cuentas demo nacen confirmadas.
+  - `npm run db:crear-admin -- correo nombre` crea el primer administrador en una base sin datos demo e imprime su invitación.
+  - La descarga de datos personales incluye la fecha de confirmación del correo.
+  - Sin `VITE_API_URL` (demo) siguen las cuentas de prueba, y un aviso permite abrir el enlace del correo simulado. Con `VITE_API_URL` (versión real) desaparecen las cuentas de prueba y «Datos de demostración».
+- Motivo: el usuario indicó que PetSuite deja de ser una prueba y que cada cuenta debe validarse confirmando su correo, sin cuentas de prueba en la versión real.
+- Pendiente para la versión real:
+  - Desplegar el API y crear la base nueva en Supabase.
+  - Configurar Resend con un dominio propio.
+  - Verificar el certificado TLS de Supabase y evitar la pausa del plan gratuito.
+  - Limitar los intentos de inicio de sesión.
+- Verificación ejecutada:
+  - `npx tsc -b` sin errores y `npm run build -- --base=/mockap-petsuite/` correcto.
+  - `npm test`: 29 de 29.
+    - La paridad recorre registro, ingreso sin confirmar, reenvío, enlace inválido, reutilizado y válido, recuperación, contraseña nueva con cierre de sesiones e invitación de equipo.
+    - La prueba de cobertura incluye las 4 rutas nuevas.
+    - Se agregaron 2 pruebas: Resend simulado (copia sin enlace y 502 que deshace el registro) y primer administrador.
+  - Recorrido con Chromium:
+    - Demo a 1366 px y 390 px: registro, pendiente, reenvío y confirmación; recuperación con contraseñas que no coinciden, contraseña nueva, clave anterior rechazada e ingreso; enlace inválido.
+    - Build con `VITE_API_URL` contra `backend/server.mjs`: sin cuentas de prueba, sin atajo al correo simulado, enlace a `APP_URL` y Configuración sin «Datos de demostración».
+    - Recorrido general por las 9 cuentas demo, sin errores de JavaScript ni desplazamiento horizontal.
+  - `git diff --check` correcto.

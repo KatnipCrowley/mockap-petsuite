@@ -3,6 +3,7 @@
 import type { ApiRole, FichaDatos, Oferta } from '../shared/api'
 import type { ModuloPyme, RolEquipo } from '../shared/permissions'
 import { VERSION_PRIVACIDAD } from '../shared/legal'
+import type { TipoToken } from '../shared/cuentas'
 
 export type Rubro = 'veterinaria' | 'tienda' | 'peluqueria' | 'otro'
 export type Verificacion = 'pendiente' | 'aprobada' | 'rechazada' | 'suspendida'
@@ -13,7 +14,11 @@ export type Suspension = { tipo: 'temporal' | 'permanente'; dias: number | null;
 export type Usuario = {
   id: string; correo: string; clave: string; rol: ApiRole; nombre_visible: string; comuna_id: number | null; estado: 'activo' | 'suspendido' | 'eliminado'
   suspension?: Suspension | null; consentimientos?: Consentimiento[]; bloqueo_tratamiento?: boolean; creado_en: string
+  // Sin confirmar, la cuenta no puede ingresar. Las cuentas de la demo nacen confirmadas.
+  correo_verificado_en?: string | null
 }
+// Enlace de un solo uso enviado por correo: confirmar la cuenta, crear una contraseña nueva o aceptar una invitación.
+export type TokenCuenta = { token: string; usuario_id: string; tipo: TipoToken; creado_en: string; expira_en: string; usado_en: string | null }
 export type MascotaRow = { id: string; tutor_id: string; nombre: string; especie: string; raza: string | null; sexo: string | null; fecha_nacimiento: string | null; foto_url: string | null; datos_clinicos: FichaDatos; ficha_version: number; creado_en: string }
 export type Medalla = { id: string; mascota_id: string; token: string; estado: 'activa' | 'inactiva' | 'reemplazada'; emitida_en: string }
 export type Escaneo = { id: string; medalla_id: string; ocurrido_en: string }
@@ -67,7 +72,7 @@ export type Convenio = {
   premios: { mes: string; otorgado_en: string }[]; creado_en: string
 }
 export type Canje = { id: string; convenio_id: string; sucursal_id: string | null; monto_clp: number | null; registrado_por: string; ocurrido_en: string }
-export type Correo = { id: string; para: string; asunto: string; cuerpo: string; tipo: 'bienvenida' | 'cuenta_creada' | 'cuenta_equipo' | 'aprobacion' | 'convenio' | 'cobranza' | 'privacidad' | 'premio'; enviado_en: string }
+export type Correo = { id: string; para: string; asunto: string; cuerpo: string; tipo: 'bienvenida' | 'verificacion' | 'restablecer' | 'cuenta_creada' | 'cuenta_equipo' | 'aprobacion' | 'convenio' | 'cobranza' | 'privacidad' | 'premio'; enviado_en: string }
 // Derechos ARSOPOL de la Ley 21.719: acceso, rectificación, supresión, oposición, portabilidad y bloqueo.
 export type SolicitudPrivacidad = { id: string; usuario_id: string; derecho: 'acceso' | 'rectificacion' | 'supresion' | 'oposicion' | 'portabilidad' | 'bloqueo'; detalle: string; estado: 'recibida' | 'en_proceso' | 'respondida' | 'rechazada'; respuesta: string | null; creado_en: string; vence_en: string; respondido_en: string | null }
 
@@ -103,11 +108,12 @@ export type Db = {
   canjes: Canje[]
   correos: Correo[]
   solicitudes_privacidad: SolicitudPrivacidad[]
+  tokens_cuenta: TokenCuenta[]
 }
 
-// v3: planes Gratis/Bronce/Plata/Oro, sucursales y equipo, publicidad, convenios, CMS de ONG y Ley 21.719. Los datos anteriores se descartan.
-export const STORAGE_KEY = 'petsuite-mock-db-v3'
-try { for (const old of ['petsuite-mock-db-v1', 'petsuite-mock-db-v2']) localStorage.removeItem(old) } catch { /* sin almacenamiento */ }
+// v4: confirmación de correo, recuperación de contraseña e invitaciones con enlace. Los datos anteriores se descartan.
+export const STORAGE_KEY = 'petsuite-mock-db-v4'
+try { for (const old of ['petsuite-mock-db-v1', 'petsuite-mock-db-v2', 'petsuite-mock-db-v3']) localStorage.removeItem(old) } catch { /* sin almacenamiento */ }
 export const CLAVE_DEMO = 'petsuite123'
 export { VERSION_PRIVACIDAD }
 
@@ -134,10 +140,11 @@ function seed(): Db {
     comunas: [{ id: 1, nombre: 'Osorno' }, { id: 2, nombre: 'Puerto Montt' }, { id: 3, nombre: 'Castro' }],
     usuarios: [], sesiones: {}, mascotas: [], medallas: [], escaneos: [], mensajes: [], accesos: [], pymes: [], sucursales: [], miembros: [], catalogo: [], eventos: [], contactos_pymes: [],
     suscripciones: [], pagos: [], casos_cobranza: [], publicaciones: [], comentarios: [], reacciones: [], guardados: [], reportes: [], ongs: [], animales: [], solicitudes: [], eventos_adopcion: [],
-    banners: [], convenios: [], canjes: [], correos: [], solicitudes_privacidad: [],
+    banners: [], convenios: [], canjes: [], correos: [], solicitudes_privacidad: [], tokens_cuenta: [],
   }
   const user = (correo: string, rol: ApiRole, nombre: string, comuna: number) => {
-    const u: Usuario = { id: uid(), correo, clave: CLAVE_DEMO, rol, nombre_visible: nombre, comuna_id: comuna, estado: 'activo', consentimientos: consentimientosBase(), creado_en: t() }
+    const creado = t()
+    const u: Usuario = { id: uid(), correo, clave: CLAVE_DEMO, rol, nombre_visible: nombre, comuna_id: comuna, estado: 'activo', consentimientos: consentimientosBase(), creado_en: creado, correo_verificado_en: creado }
     db.usuarios.push(u)
     return u.id
   }

@@ -181,6 +181,11 @@
   .suite-table .user-identity strong { font-size: 0.9rem; }
   .suite-table .user-identity small, .suite-table .user-role { font-size: 0.78rem; line-height: 1.4; }
 }
+/* Cuentas reales: recuperar contraseña y, en la demostración, abrir el enlace del correo simulado. */
+.login-card .login-forgot { justify-self: end; margin-top: calc(var(--space-2) * -1); }
+.login-demo-link { margin: 0; padding: var(--space-3); border: 1px dashed var(--color-border-subtle); border-radius: var(--radius-md); color: var(--color-text-secondary); font-size: 0.85rem; }
+.login-demo-link .text-button { display: inline; padding: 0; min-height: 0; }
+
 /* Botón «Compartir» en páginas públicas y en la barra de filtros de Adopciones. */
 .public-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-2); }
 .toolbar-share { display: flex; margin-inline-start: auto; }

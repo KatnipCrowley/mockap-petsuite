@@ -7,6 +7,7 @@ import { db, now, uid, dayOffset, VERSION_PRIVACIDAD, type Animal, type Banner, 
 import { DIAS_DERIVAR_COBRANZA, ONG_CUPOS, planPorId, type Limites, type Plan } from '../modules/plans/plans'
 import { ROLES_EQUIPO, type ModuloPyme, type Rol } from '../shared/permissions'
 import { derivarCobranza } from './orcob'
+import { ENLACE_INVALIDO, VIGENCIA_HORAS, correoCuentaCreada, correoEquipo, enlaceCuenta, type TipoToken } from '../shared/cuentas'
 
 type Req = { params: Record<string, string>; query: URLSearchParams; body: unknown; session: Session | null }
 type Cupon = { codigo: string; titulo: string; descuento_pct: number; condiciones: string; hasta: string; ong: string; ong_id: string; negocio: string; pyme_id: string }
@@ -29,12 +30,45 @@ type Ctx = {
 }
 
 // ---------- Correos (simulados) ----------
-export function enviarCorreo(para: string, asunto: string, cuerpo: string, tipo: Correo['tipo']) {
+// En la demo la bandeja simulada es el único canal, así que guarda el correo completo, enlaces incluidos.
+// El API real, con proveedor de correo, guarda una copia sin el enlace (_privado).
+export function enviarCorreo(para: string, asunto: string, cuerpo: string, tipo: Correo['tipo'], _privado?: string) {
   if (para) db.correos.push({ id: uid(), para, asunto, cuerpo, tipo, enviado_en: now() })
 }
 const correoDe = (usuarioId: string) => db.usuarios.find(u => u.id === usuarioId)?.correo ?? ''
 const avisarAsesores = (asunto: string, cuerpo: string) => db.usuarios.filter(u => u.rol === 'asesor' && u.estado === 'activo').forEach(a => enviarCorreo(a.correo, asunto, cuerpo, 'aprobacion'))
-const claveTemporal = () => `Pet-${uid().replace(/-/g, '').slice(0, 8)}`
+
+// ---------- Enlaces de cuenta ----------
+// Base de los enlaces: la app de este navegador; en Node (servidor con archivo o pruebas), APP_URL o el Vite local.
+const baseApp = () => typeof location !== 'undefined'
+  ? `${location.origin}${import.meta.env?.BASE_URL ?? '/'}`
+  : (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.APP_URL ?? 'http://localhost:5173/'
+
+/** Segundos desde el último enlace de ese tipo para la cuenta (Infinity si nunca se envió). */
+export function segundosDesdeEnvio(usuarioId: string, tipo: TipoToken) {
+  const ultimo = db.tokens_cuenta.filter(t => t.usuario_id === usuarioId && t.tipo === tipo).map(t => t.creado_en).sort().pop()
+  return ultimo ? (Date.now() - new Date(ultimo).getTime()) / 1000 : Infinity
+}
+
+/** Emite un enlace de un solo uso y anula los anteriores del mismo tipo que sigan sin usar. */
+export function emitirToken(usuarioId: string, tipo: TipoToken) {
+  const anulado = now()
+  for (const t of db.tokens_cuenta) if (t.usuario_id === usuarioId && t.tipo === tipo && !t.usado_en) t.usado_en = anulado
+  const token = uid().replace(/-/g, '')
+  db.tokens_cuenta.push({ token, usuario_id: usuarioId, tipo, creado_en: now(), expira_en: new Date(Date.now() + VIGENCIA_HORAS[tipo] * 3_600_000).toISOString(), usado_en: null })
+  return enlaceCuenta(baseApp(), tipo, token)
+}
+
+/** Consume un enlace vigente de alguno de los tipos indicados; si no existe, ya se usó o venció, responde 400. */
+export function usarToken(token: string, tipos: TipoToken[], fail: (status: number, message: string) => never) {
+  const t = db.tokens_cuenta.find(x => x.token === token && tipos.includes(x.tipo) && !x.usado_en && x.expira_en > now())
+  const u = t && db.usuarios.find(x => x.id === t.usuario_id)
+  if (!t || !u) return fail(400, ENLACE_INVALIDO)
+  const usado = now()
+  for (const x of db.tokens_cuenta) if (x.usuario_id === u.id && tipos.includes(x.tipo) && !x.usado_en) x.usado_en = usado
+  return u
+}
+
 const mesActual = () => dayOffset(0).slice(0, 7)
 const sumarDias = (iso: string, dias: number) => { const d = new Date(`${iso}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + dias); return d.toISOString().slice(0, 10) }
 
@@ -56,10 +90,10 @@ export function registerSuiteRoutes(ctx: Ctx) {
   const nuevaCuenta = (correo: string, nombre: string, rol: Rol, comuna_id: number | null) => {
     const c = correo.trim().toLowerCase()
     if (db.usuarios.some(u => u.correo === c)) fail(409, 'Ese correo ya tiene una cuenta en PetSuite')
-    const clave = claveTemporal()
-    const u: Usuario = { id: uid(), correo: c, clave, rol, nombre_visible: nombre.trim(), comuna_id, estado: 'activo', creado_en: now() }
+    // Sin clave conocida: la persona crea la suya con el enlace de invitación, que además confirma su correo.
+    const u: Usuario = { id: uid(), correo: c, clave: uid(), rol, nombre_visible: nombre.trim(), comuna_id, estado: 'activo', creado_en: now(), correo_verificado_en: null }
     db.usuarios.push(u)
-    return { u, clave }
+    return { u, enlace: emitirToken(u.id, 'invitacion') }
   }
 
   // ---------- Sucursales (multitenant) ----------
@@ -146,17 +180,18 @@ export function registerSuiteRoutes(ctx: Ctx) {
 
   on('GET', '/pymes/:id/equipo', req => { const p = miPyme(req, 'equipo'); return db.miembros.filter(m => m.pyme_id === p.id).map(vistaMiembro) })
 
-  // Crea la cuenta del integrante y le envía sus credenciales temporales por correo.
+  // Crea la cuenta del integrante y le envía por correo el enlace para crear su contraseña.
   on('POST', '/pymes/:id/equipo', req => {
     const p = miPyme(req, 'equipo')
     const d = parse(miembroSchema, req.body)
     exigirCupo(p.id, 'usuarios')
     const permisos = permisosValidos(p, d.rol, d.permisos, d.sucursal_id)
-    const { u, clave } = nuevaCuenta(d.correo, d.nombre_visible, d.rol, p.comuna_id)
+    const { u, enlace } = nuevaCuenta(d.correo, d.nombre_visible, d.rol, p.comuna_id)
     const m: Miembro = { id: uid(), pyme_id: p.id, usuario_id: u.id, rol: d.rol, sucursal_id: d.sucursal_id, permisos, creado_en: now() }
     db.miembros.push(m)
-    const lugar = d.sucursal_id ? db.sucursales.find(s => s.id === d.sucursal_id)?.nombre : 'la casa matriz'
-    enviarCorreo(u.correo, `Tu cuenta de equipo en ${p.nombre_comercial}`, `Hola, ${u.nombre_visible}:\n\n${p.nombre_comercial} te dio acceso como ${d.rol === 'clinico' ? 'personal clínico' : 'jefe de local'} de ${lugar}.\n\nCorreo: ${u.correo}\nClave temporal: ${clave}\n\nPodrás usar: ${permisos.join(', ')}.\nTe recomendamos cambiar la clave al ingresar.\n\nEquipo PetSuite`, 'cuenta_equipo')
+    const lugar = (d.sucursal_id ? db.sucursales.find(s => s.id === d.sucursal_id)?.nombre : null) ?? 'la casa matriz'
+    const correo = correoEquipo({ nombre: u.nombre_visible, negocio: p.nombre_comercial, rol: d.rol, lugar, permisos, enlace })
+    enviarCorreo(u.correo, correo.asunto, correo.cuerpo, 'cuenta_equipo', enlace)
     return vistaMiembro(m)
   })
 
@@ -433,13 +468,14 @@ export function registerSuiteRoutes(ctx: Ctx) {
     return { ok: true }
   })
 
-  // El asesor crea cuentas para Pymes u ONG que acompaña; la cuenta recibe su clave temporal por correo.
+  // El asesor crea cuentas para Pymes u ONG que acompaña; la cuenta recibe por correo el enlace para crear su contraseña.
   on('POST', '/asesor/cuentas', req => {
     const asesor = auth(req, 'asesor', 'admin')
     const d = parse(z.object({ tipo: z.enum(['pyme', 'ong']), correo: z.string().trim().email('Correo inválido'), nombre_visible: z.string().trim().min(2, 'Ingresa el nombre del contacto').max(80), comuna_id: z.number().int().positive() }), req.body)
     if (!db.comunas.some(c => c.id === d.comuna_id)) return fail(400, 'Comuna no válida')
-    const { u, clave } = nuevaCuenta(d.correo, d.nombre_visible, d.tipo, d.comuna_id)
-    enviarCorreo(u.correo, 'Tu cuenta PetSuite está lista', `Hola, ${u.nombre_visible}:\n\n${asesor.nombre_visible}, tu asesor PetSuite, creó tu cuenta de ${d.tipo === 'pyme' ? 'negocio' : 'organización'}.\n\nCorreo: ${u.correo}\nClave temporal: ${clave}\n\nAl ingresar, registra ${d.tipo === 'pyme' ? 'tu negocio y elige un plan (Gratis, Bronce, Plata u Oro)' : 'tu organización; participar es gratis'}. Al primer ingreso te pediremos aceptar el aviso de privacidad.\n\nEquipo PetSuite`, 'cuenta_creada')
+    const { u, enlace } = nuevaCuenta(d.correo, d.nombre_visible, d.tipo, d.comuna_id)
+    const correo = correoCuentaCreada({ nombre: u.nombre_visible, asesor: asesor.nombre_visible, tipo: d.tipo, enlace })
+    enviarCorreo(u.correo, correo.asunto, correo.cuerpo, 'cuenta_creada', enlace)
     return { id: u.id, correo: u.correo }
   })
 

@@ -2,7 +2,8 @@
 import { z } from 'zod'
 import { PLANES } from '../../src/modules/plans/plans'
 import { VERSION_PRIVACIDAD } from '../../src/shared/legal'
-import { auth, cifrarClave, claveCorrecta, crearSesion, enviarCorreo, levantarVencidas, permisosDe, USUARIO, usuarioPorId, type Usuario } from './auth'
+import { CORREO_SIN_CONFIRMAR, SEGUNDOS_ENTRE_ENVIOS, correoRestablecer, correoVerificacion } from '../../src/shared/cuentas'
+import { auth, cerrarSesiones, cifrarClave, claveCorrecta, crearSesion, emitirToken, enviarCorreo, levantarVencidas, permisosDe, segundosDesdeEnvio, usarToken, USUARIO, usuarioPorId, type Usuario } from './auth'
 import { comunasDe, fail, now, on, parse, porTexto, uid, una } from './core'
 import type { Sql } from './db'
 
@@ -19,11 +20,18 @@ export async function consentimientosIniciales(sql: Sql, usuarioId: string, comu
   }
 }
 
+type ConCorreo = Usuario & { correo_verificado_en: string | null }
+const porCorreo = (sql: Sql, correo: string) => una<ConCorreo>(sql, `select ${USUARIO}, u.correo_verificado_en from usuarios u where lower(u.correo) = $1`, [correo.toLowerCase()])
+const correoSchema = z.object({ correo: z.string().trim().email('Correo inválido').max(254) })
+const tokenSchema = z.string().max(200)
+
 on('POST', '/auth/login', async req => {
   const d = parse(z.object({ correo: z.string().trim().email('Correo inválido'), clave: z.string().min(1, 'Ingresa tu contraseña') }), req.body)
-  const fila = await una<Usuario & { clave_hash: string }>(req.sql, `select ${USUARIO}, u.clave_hash from usuarios u where lower(u.correo) = $1`, [d.correo.toLowerCase()])
+  const fila = await una<ConCorreo & { clave_hash: string }>(req.sql, `select ${USUARIO}, u.clave_hash, u.correo_verificado_en from usuarios u where lower(u.correo) = $1`, [d.correo.toLowerCase()])
   // Se compara siempre, exista o no la cuenta, para no revelar qué correos están registrados por el tiempo de respuesta.
   if (!(await claveCorrecta(d.clave, fila?.clave_hash)) || !fila) return fail(401, 'Credenciales incorrectas')
+  // Solo con la clave correcta se informa que falta confirmar el correo.
+  if (!fila.correo_verificado_en) return fail(403, CORREO_SIN_CONFIRMAR)
   let u: Usuario | undefined = fila
   if (u.estado === 'suspendido') {
     await levantarVencidas(req.sql, u.id)
@@ -51,8 +59,56 @@ on('POST', '/auth/registro', async req => {
   await req.sql('insert into usuarios (id, correo, clave_hash, rol, nombre_visible, comuna_id, estado, creado_en) values ($1, $2, $3, $4, $5, $6, $7, $8)',
     [u.id, correo, await cifrarClave(d.clave), u.rol, u.nombre_visible, u.comuna_id, u.estado, u.creado_en])
   await consentimientosIniciales(req.sql, u.id, d.acepta_comunicaciones)
-  await enviarCorreo(req.sql, correo, 'Bienvenida a PetSuite', `Hola, ${u.nombre_visible}:\n\nTu cuenta está lista.${d.rol === 'pyme' ? ' Registra tu negocio y elige un plan: el plan Gratis te publica en el directorio sin costo.' : d.rol === 'ong' ? ' Registra tu organización: participar es gratis.' : ' Crea la Ficha Única de tu mascota y activa su QR de emergencia.'}\n\nPuedes revisar o retirar tus consentimientos en Configuración > Privacidad.\n\nEquipo PetSuite`, 'bienvenida')
+  // La cuenta queda pendiente: no hay sesión hasta que la persona abre el enlace enviado a su correo.
+  const enlace = await emitirToken(req.sql, u.id, 'verificacion')
+  const c = correoVerificacion(u.nombre_visible, u.rol, enlace)
+  await enviarCorreo(req.sql, correo, c.asunto, c.cuerpo, 'verificacion', enlace)
+  return { verificacion_pendiente: true, correo }
+})
+
+// Confirma el correo con el enlace y deja la sesión iniciada.
+on('POST', '/auth/verificar', async req => {
+  const d = parse(z.object({ token: tokenSchema }), req.body)
+  let u: Usuario | undefined = await usarToken(req.sql, d.token, ['verificacion'])
+  await req.sql('update usuarios set correo_verificado_en = coalesce(correo_verificado_en, $2) where id = $1', [u.id, now()])
+  if (u.estado === 'suspendido') {
+    await levantarVencidas(req.sql, u.id)
+    u = await usuarioPorId(req.sql, u.id)
+  }
+  if (!u || u.estado !== 'activo') return fail(403, 'Tu cuenta está suspendida')
   return sesionDe(req.sql, u)
+})
+
+// Reenvío y recuperación responden lo mismo exista o no la cuenta, para no revelar qué correos están registrados.
+on('POST', '/auth/reenviar-verificacion', async req => {
+  const d = parse(correoSchema, req.body)
+  const u = await porCorreo(req.sql, d.correo)
+  if (u && !u.correo_verificado_en && u.estado === 'activo' && await segundosDesdeEnvio(req.sql, u.id, 'verificacion') >= SEGUNDOS_ENTRE_ENVIOS) {
+    const enlace = await emitirToken(req.sql, u.id, 'verificacion')
+    const c = correoVerificacion(u.nombre_visible, u.rol, enlace)
+    await enviarCorreo(req.sql, u.correo, c.asunto, c.cuerpo, 'verificacion', enlace)
+  }
+  return { ok: true }
+})
+
+on('POST', '/auth/recuperar', async req => {
+  const d = parse(correoSchema, req.body)
+  const u = await porCorreo(req.sql, d.correo)
+  if (u && u.estado !== 'eliminado' && await segundosDesdeEnvio(req.sql, u.id, 'restablecer') >= SEGUNDOS_ENTRE_ENVIOS) {
+    const enlace = await emitirToken(req.sql, u.id, 'restablecer')
+    const c = correoRestablecer(u.nombre_visible, enlace)
+    await enviarCorreo(req.sql, u.correo, c.asunto, c.cuerpo, 'restablecer', enlace)
+  }
+  return { ok: true }
+})
+
+// Contraseña nueva con un enlace de recuperación o de invitación: confirma el correo y cierra las sesiones abiertas.
+on('POST', '/auth/restablecer', async req => {
+  const d = parse(z.object({ token: tokenSchema, clave: z.string().min(8, 'La contraseña debe tener al menos 8 caracteres').max(72) }), req.body)
+  const u = await usarToken(req.sql, d.token, ['restablecer', 'invitacion'])
+  await req.sql('update usuarios set clave_hash = $2, correo_verificado_en = coalesce(correo_verificado_en, $3) where id = $1', [u.id, await cifrarClave(d.clave), now()])
+  await cerrarSesiones(req.sql, u.id)
+  return { ok: true }
 })
 
 on('GET', '/auth/yo', async req => {

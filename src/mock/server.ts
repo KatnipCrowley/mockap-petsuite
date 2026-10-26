@@ -9,7 +9,8 @@ import { businessContactSchema, businessProfileSchema, businessReplySchema, user
 import { DIAS_GRACIA, DIAS_PERIODO, PLANES, PLAN_GRATIS, dentroDelLimite, etiquetasLimite, limiteTexto, planPorId, type Limites, type Plan } from '../modules/plans/plans'
 import { PERMISOS_ADMIN, PERMISOS_ASESOR, PERMISOS_DUENO, type ModuloPyme } from '../shared/permissions'
 import { crearCobro } from './orcob'
-import { enviarCorreo, registerSuiteRoutes } from './suite'
+import { emitirToken, enviarCorreo, registerSuiteRoutes, segundosDesdeEnvio, usarToken } from './suite'
+import { CORREO_SIN_CONFIRMAR, SEGUNDOS_ENTRE_ENVIOS, correoRestablecer, correoVerificacion } from '../shared/cuentas'
 
 z.config(z.locales.es())
 
@@ -175,15 +176,21 @@ const routes: [string, string, Handler][] = []
 const on = (method: string, path: string, h: Handler) => routes.push([method, path, h])
 
 // Autenticación y catálogos
+const sesionNueva = (u: Usuario) => {
+  const token = uid()
+  db.sesiones[token] = u.id
+  return { token, usuario: { id: u.id, rol: u.rol, nombre_visible: u.nombre_visible, comuna_id: u.comuna_id, permisos: permisosDe(u) } }
+}
+
 on('POST', '/auth/login', req => {
   const d = parse(z.object({ correo: z.string().trim().email('Correo inválido'), clave: z.string().min(1, 'Ingresa tu contraseña') }), req.body)
   const u = db.usuarios.find(x => x.correo === d.correo.toLowerCase())
   if (!u || u.clave !== d.clave) return fail(401, 'Credenciales incorrectas')
+  // Solo con la clave correcta se informa que falta confirmar el correo.
+  if (!u.correo_verificado_en) return fail(403, CORREO_SIN_CONFIRMAR)
   refreshSuspension(u)
   if (u.estado !== 'activo') return fail(403, 'Tu cuenta está suspendida')
-  const token = uid()
-  db.sesiones[token] = u.id
-  return { token, usuario: { id: u.id, rol: u.rol, nombre_visible: u.nombre_visible, comuna_id: u.comuna_id, permisos: permisosDe(u) } }
+  return sesionNueva(u)
 })
 
 // Ley 21.719: el consentimiento para tratar datos es explícito y separado de los términos; las comunicaciones comerciales son opcionales.
@@ -201,12 +208,59 @@ on('POST', '/auth/registro', req => {
   const correo = d.correo.toLowerCase()
   if (db.usuarios.some(u => u.correo === correo)) return fail(409, 'Ese correo ya está registrado')
   if (!db.comunas.some(c => c.id === d.comuna_id)) return fail(400, 'Comuna no válida')
-  const u: Usuario = { id: uid(), correo, clave: d.clave, rol: d.rol, nombre_visible: d.nombre_visible, comuna_id: d.comuna_id, estado: 'activo', consentimientos: consentimientosBase(d.acepta_comunicaciones), creado_en: now() }
+  const u: Usuario = { id: uid(), correo, clave: d.clave, rol: d.rol, nombre_visible: d.nombre_visible, comuna_id: d.comuna_id, estado: 'activo', consentimientos: consentimientosBase(d.acepta_comunicaciones), creado_en: now(), correo_verificado_en: null }
   db.usuarios.push(u)
-  enviarCorreo(correo, 'Bienvenida a PetSuite', `Hola, ${u.nombre_visible}:\n\nTu cuenta está lista.${d.rol === 'pyme' ? ' Registra tu negocio y elige un plan: el plan Gratis te publica en el directorio sin costo.' : d.rol === 'ong' ? ' Registra tu organización: participar es gratis.' : ' Crea la Ficha Única de tu mascota y activa su QR de emergencia.'}\n\nPuedes revisar o retirar tus consentimientos en Configuración > Privacidad.\n\nEquipo PetSuite`, 'bienvenida')
-  const token = uid()
-  db.sesiones[token] = u.id
-  return { token, usuario: { id: u.id, rol: u.rol, nombre_visible: u.nombre_visible, comuna_id: u.comuna_id, permisos: permisosDe(u) } }
+  // La cuenta queda pendiente: no hay sesión hasta que la persona abre el enlace enviado a su correo.
+  const enlace = emitirToken(u.id, 'verificacion')
+  const c = correoVerificacion(u.nombre_visible, u.rol, enlace)
+  enviarCorreo(correo, c.asunto, c.cuerpo, 'verificacion', enlace)
+  return { verificacion_pendiente: true, correo }
+})
+
+const correoSchema = z.object({ correo: z.string().trim().email('Correo inválido').max(254) })
+const tokenSchema = z.string().max(200)
+
+// Confirma el correo con el enlace y deja la sesión iniciada.
+on('POST', '/auth/verificar', req => {
+  const d = parse(z.object({ token: tokenSchema }), req.body)
+  const u = usarToken(d.token, ['verificacion'], fail)
+  u.correo_verificado_en ??= now()
+  refreshSuspension(u)
+  if (u.estado !== 'activo') return fail(403, 'Tu cuenta está suspendida')
+  return sesionNueva(u)
+})
+
+// Reenvío y recuperación responden lo mismo exista o no la cuenta, para no revelar qué correos están registrados.
+on('POST', '/auth/reenviar-verificacion', req => {
+  const d = parse(correoSchema, req.body)
+  const u = db.usuarios.find(x => x.correo === d.correo.toLowerCase())
+  if (u && !u.correo_verificado_en && u.estado === 'activo' && segundosDesdeEnvio(u.id, 'verificacion') >= SEGUNDOS_ENTRE_ENVIOS) {
+    const enlace = emitirToken(u.id, 'verificacion')
+    const c = correoVerificacion(u.nombre_visible, u.rol, enlace)
+    enviarCorreo(u.correo, c.asunto, c.cuerpo, 'verificacion', enlace)
+  }
+  return { ok: true }
+})
+
+on('POST', '/auth/recuperar', req => {
+  const d = parse(correoSchema, req.body)
+  const u = db.usuarios.find(x => x.correo === d.correo.toLowerCase())
+  if (u && u.estado !== 'eliminado' && segundosDesdeEnvio(u.id, 'restablecer') >= SEGUNDOS_ENTRE_ENVIOS) {
+    const enlace = emitirToken(u.id, 'restablecer')
+    const c = correoRestablecer(u.nombre_visible, enlace)
+    enviarCorreo(u.correo, c.asunto, c.cuerpo, 'restablecer', enlace)
+  }
+  return { ok: true }
+})
+
+// Contraseña nueva con un enlace de recuperación o de invitación: confirma el correo y cierra las sesiones abiertas.
+on('POST', '/auth/restablecer', req => {
+  const d = parse(z.object({ token: tokenSchema, clave: z.string().min(8, 'La contraseña debe tener al menos 8 caracteres').max(72) }), req.body)
+  const u = usarToken(d.token, ['restablecer', 'invitacion'], fail)
+  u.clave = d.clave
+  u.correo_verificado_en ??= now()
+  for (const [token, id] of Object.entries(db.sesiones)) if (id === u.id) delete db.sesiones[token]
+  return { ok: true }
 })
 
 on('GET', '/auth/yo', req => { const u = auth(req); return { id: u.id, rol: u.rol, nombre_visible: u.nombre_visible, correo: u.correo, comuna_id: u.comuna_id, permisos: permisosDe(u) } })

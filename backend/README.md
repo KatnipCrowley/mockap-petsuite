@@ -61,10 +61,23 @@ Abre `http://192.168.1.10:5173` en ambos dispositivos. La URL del API debe usar 
 
 El servidor reutiliza las cuentas y contraseñas conocidas de la demostración. `PETSUITE_ALLOW_DEMO_API=1` habilita explícitamente su acceso desde la red; esta versión sirve para probar el flujo compartido, no para alojar cuentas reales. El archivo `data/` queda fuera de Git.
 
-Antes de alojar cuentas reales faltan:
+## Versión real, sin cuentas demo
 
-- cambiar las claves demo;
-- reemplazar las claves temporales del correo simulado por un enlace de activación;
-- verificar el certificado TLS de Supabase en lugar de `sslmode=no-verify`.
+Las cuentas reales confirman su correo antes de ingresar. Recuperan la contraseña con un enlace, y quienes crea una Pyme o un asesor reciben una invitación para crear la suya; nunca se envían claves por correo.
+
+1. **Base propia.** Usa un proyecto de Supabase distinto del de la demo y ejecuta solo `npm run db:migrate`, que deja las comunas y los planes. **No ejecutes `db:seed` en esa base**: carga las cuentas demo con la clave `petsuite123`.
+2. **Correo.** Crea una cuenta en [Resend](https://resend.com) y verifica tu dominio. Sin dominio verificado, Resend solo envía a tu propio correo. Define en el entorno del API:
+   - `RESEND_API_KEY`: la clave de Resend.
+   - `MAIL_FROM`: el remitente, por ejemplo `PetSuite <no-responder@tudominio.cl>`.
+   - `APP_URL`: la dirección de la app que abren los enlaces, con barra final.
+3. **Primer administrador.** Ejecuta `npm run db:crear-admin -- tu@correo.cl Tu nombre`. El enlace para crear la contraseña aparece en la terminal y vence en 7 días.
+
+Con proveedor configurado, la bandeja de correos que ven el asesor y el administrador guarda cada mensaje sin el enlace de acceso. Si Resend falla al enviar un enlace, la solicitud responde 502 y no queda una cuenta a medias.
+
+Antes de abrir la versión real al público falta:
+
+- verificar el certificado TLS de Supabase en lugar de `sslmode=no-verify`;
+- evitar la pausa del plan gratuito de Supabase tras 7 días sin uso, porque dejaría sin respuesta el QR de emergencia;
+- limitar los intentos de inicio de sesión.
 
 Verificación local: `npm test`.

@@ -1,6 +1,7 @@
 // Cuentas, sesiones y permisos. El token de sesión solo lo conoce el cliente: la base guarda su SHA-256.
 import { createHash, randomBytes } from 'node:crypto'
 import bcrypt from 'bcryptjs'
+import { ENLACE_INVALIDO, VIGENCIA_HORAS, enlaceCuenta, type TipoToken } from '../../src/shared/cuentas'
 import { PERMISOS_ADMIN, PERMISOS_ASESOR, PERMISOS_DUENO, type Rol } from '../../src/shared/permissions'
 import { fail, now, uid, una, type Req } from './core'
 import type { Sql } from './db'
@@ -78,11 +79,66 @@ export async function permisosDe(sql: Sql, u: Pick<Usuario, 'id' | 'rol'>): Prom
   return []
 }
 
-export type Correo = { id: string; para: string; asunto: string; cuerpo: string; tipo: 'bienvenida' | 'cuenta_creada' | 'cuenta_equipo' | 'aprobacion' | 'convenio' | 'cobranza' | 'privacidad' | 'premio'; enviado_en: string }
+export type Correo = { id: string; para: string; asunto: string; cuerpo: string; tipo: 'bienvenida' | 'verificacion' | 'restablecer' | 'cuenta_creada' | 'cuenta_equipo' | 'aprobacion' | 'convenio' | 'cobranza' | 'privacidad' | 'premio'; enviado_en: string }
 
-// Bandeja de salida simulada: hasta tener proveedor de correo, los mensajes quedan registrados en la tabla correos.
-export async function enviarCorreo(sql: Sql, para: string, asunto: string, cuerpo: string, tipo: Correo['tipo']) {
-  if (para) await sql('insert into correos (id, para, asunto, cuerpo, tipo, enviado_en) values ($1, $2, $3, $4, $5, $6)', [uid(), para, asunto, cuerpo, tipo, now()])
+// ---------- Correo ----------
+// Con RESEND_API_KEY y MAIL_FROM, el correo sale por Resend y la bandeja (tabla correos) guarda una copia sin el
+// enlace de acceso (privado), para que nadie que lea la bandeja pueda usarlo. Sin proveedor (desarrollo y pruebas),
+// la bandeja es el único canal y guarda el correo completo, igual que el mock.
+const OCULTO = '[enlace enviado solo al destinatario]'
+
+export async function enviarCorreo(sql: Sql, para: string, asunto: string, cuerpo: string, tipo: Correo['tipo'], privado?: string) {
+  if (!para) return
+  const clave = process.env.RESEND_API_KEY, remitente = process.env.MAIL_FROM
+  const real = !!(clave && remitente)
+  await sql('insert into correos (id, para, asunto, cuerpo, tipo, enviado_en) values ($1, $2, $3, $4, $5, $6)', [uid(), para, asunto, real && privado ? cuerpo.split(privado).join(OCULTO) : cuerpo, tipo, now()])
+  if (real && !(await enviarPorResend(clave, remitente, para, asunto, cuerpo)) && privado) {
+    // Sin el correo, la persona quedaría esperando un enlace que nunca llega: la solicitud falla y se deshace.
+    fail(502, 'No pudimos enviar el correo. Inténtalo de nuevo en unos minutos.')
+  }
+}
+
+async function enviarPorResend(clave: string, remitente: string, para: string, asunto: string, cuerpo: string) {
+  try {
+    const r = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${clave}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: remitente, to: [para], subject: asunto, text: cuerpo }),
+      signal: AbortSignal.timeout(10_000),
+    })
+    if (!r.ok) console.error(`Resend respondió ${r.status}: ${await r.text().catch(() => '')}`)
+    return r.ok
+  } catch (error) {
+    console.error('No se pudo contactar a Resend:', error)
+    return false
+  }
+}
+
+// ---------- Enlaces de cuenta ----------
+const baseApp = () => process.env.APP_URL || 'http://localhost:5173/'
+
+/** Segundos desde el último enlace de ese tipo para la cuenta (Infinity si nunca se envió). */
+export async function segundosDesdeEnvio(sql: Sql, usuarioId: string, tipo: TipoToken) {
+  const f = await una<{ creado_en: string }>(sql, 'select creado_en from tokens_cuenta where usuario_id = $1 and tipo = $2 order by creado_en desc limit 1', [usuarioId, tipo])
+  return f ? (Date.now() - new Date(f.creado_en).getTime()) / 1000 : Infinity
+}
+
+/** Emite un enlace de un solo uso y anula los anteriores del mismo tipo que sigan sin usar. */
+export async function emitirToken(sql: Sql, usuarioId: string, tipo: TipoToken) {
+  await sql('update tokens_cuenta set usado_en = $3 where usuario_id = $1 and tipo = $2 and usado_en is null', [usuarioId, tipo, now()])
+  const token = randomBytes(16).toString('hex')
+  await sql("insert into tokens_cuenta (usuario_id, tipo, token_hash, creado_en, expira_en) values ($1, $2, decode($3, 'hex'), $4, $5)",
+    [usuarioId, tipo, huella(token), now(), new Date(Date.now() + VIGENCIA_HORAS[tipo] * 3_600_000).toISOString()])
+  return enlaceCuenta(baseApp(), tipo, token)
+}
+
+/** Consume un enlace vigente de alguno de los tipos indicados; si no existe, ya se usó o venció, responde 400. */
+export async function usarToken(sql: Sql, token: string, tipos: TipoToken[]) {
+  const u = await una<Usuario>(sql, `select ${USUARIO} from tokens_cuenta t join usuarios u on u.id = t.usuario_id
+    where t.token_hash = decode($1, 'hex') and t.tipo = any($2::text[]) and t.usado_en is null and t.expira_en > $3`, [huella(token), tipos, now()])
+  if (!u) return fail(400, ENLACE_INVALIDO)
+  await sql('update tokens_cuenta set usado_en = $3 where usuario_id = $1 and tipo = any($2::text[]) and usado_en is null', [u.id, tipos, now()])
+  return u
 }
 export async function correoDe(sql: Sql, usuarioId: string | null | undefined) {
   return usuarioId ? (await una<{ correo: string }>(sql, 'select correo from usuarios where id = $1', [usuarioId]))?.correo ?? '' : ''

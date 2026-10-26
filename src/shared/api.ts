@@ -1,6 +1,7 @@
 // Cliente del API PetSuite. Sin VITE_API_URL usa el mock local; con una URL configurada
 // consulta el mismo contrato por HTTP, incluido el QR público sin sesión.
 import { handle } from '../mock/server'
+import { db as mockDb } from '../mock/db'
 import { ApiError } from './errors'
 import type { Rol } from './permissions'
 
@@ -47,6 +48,20 @@ export async function api<T = unknown>(path: string, options: { method?: string;
 }
 
 export const errorText = (e: unknown) => e instanceof Error ? e.message : 'Ocurrió un error inesperado'
+
+// Respuesta de ingreso y de confirmación de correo.
+export type AuthResponse = { token: string; usuario: { id: string; rol: ApiRole; nombre_visible: string; comuna_id: number | null; permisos: string[] } }
+export const sessionFrom = (data: AuthResponse): Session => ({ token: data.token, id: data.usuario.id, rol: data.usuario.rol, nombre: data.usuario.nombre_visible, comunaId: data.usuario.comuna_id, permisos: data.usuario.permisos })
+
+/** Sin VITE_API_URL la app es la demostración: datos en este navegador y cuentas de prueba. */
+export const modoDemo = !apiUrl
+/** Solo en la demostración, que no envía correos: el enlace del último correo simulado de ese tipo para la dirección. */
+export function enlaceDemo(correo: string, ruta: 'verificar' | 'restablecer') {
+  if (!modoDemo) return null
+  const para = correo.trim().toLowerCase()
+  const ultimo = mockDb.correos.filter(c => c.para === para && c.cuerpo.includes(`#${ruta}/`)).sort((a, b) => b.enviado_en.localeCompare(a.enviado_en))[0]
+  return ultimo ? new RegExp(`\\S+#${ruta}/[0-9a-f]{32}`).exec(ultimo.cuerpo)?.[0] ?? null : null
+}
 
 // --- Tipos del API ---
 export type Comuna = { id: number; nombre: string }
