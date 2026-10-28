@@ -649,7 +649,7 @@ Cada entrada va al final del archivo, bajo el encabezado `## AAAA-MM-DD` de su d
 
 - Fecha: 2026-10-27.
 - Rama: `patricioampuero/rediseno-profesional-frontend`.
-- Archivos agregados: `src/shared/profile-cover.tsx`, `src/shared/metric.tsx` y `src/styles/design-pro.css`.
+- Archivos agregados: `src/shared/profile-cover.tsx`, `src/shared/metric.tsx`, `src/styles/design-pro.css` y `docs/capturas/rediseno/` (13 capturas de antes y después, modo oscuro y móvil, con su `README.md`).
 - Archivos modificados: `src/App.tsx`, `src/main.tsx`, `src/shared/media.tsx`, `src/modules/tutor/tutor.tsx`, `src/modules/community/community.tsx`, `src/modules/business/business.tsx`, `src/modules/ong/adoption.tsx`, `src/modules/clinical/clinical.tsx`, `src/modules/admin/admin.tsx`, `src/modules/auth/Login.tsx` y `Agents.md`.
 - Cambio realizado:
   - Portada de perfil (`ProfileCover`) en el Inicio de los siete roles: fondo de portada, avatar, insignias, acciones y cifras reales de la cuenta.
