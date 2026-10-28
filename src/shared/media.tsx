@@ -1,3 +1,4 @@
+import { useId } from 'react'
 import { iniciales } from './api'
 
 // Imágenes de demostración de Pexels (licencia libre). Créditos en public/img/CREDITOS.md.
@@ -9,19 +10,21 @@ export const rubroFoto: Record<string, string> = {
 }
 
 // Las rutas de /public se resuelven contra la base del sitio (en GitHub Pages es /mockap-petsuite/).
-const publicUrl = (src: string) => src.startsWith('/') ? `${import.meta.env.BASE_URL}${src.slice(1)}` : src
+export const assetUrl = (src: string) => src.startsWith('/') ? `${import.meta.env.BASE_URL}${src.slice(1)}` : src
 
 /** Foto de mascota o animal; si no hay foto, muestra sus iniciales. */
 export function Photo({ src, nombre, className = 'pet-photo' }: { src?: string | null; nombre: string; className?: string }) {
   if (!src) return <div className={className}>{iniciales(nombre)}</div>
-  return <div className={`${className} has-photo`} role="img" aria-label={`Foto de ${nombre}`} style={{ background: `url(${publicUrl(src)}) center / cover no-repeat` }} />
+  return <div className={`${className} has-photo`} role="img" aria-label={`Foto de ${nombre}`} style={{ background: `url(${assetUrl(src)}) center / cover no-repeat` }} />
 }
 
 /** Logotipo de PetSuite: medalla con huella. Es el mismo dibujo de public/icon.svg. */
 export function LogoMark({ size = 34 }: { size?: number }) {
+  // Id propio por logo: si dos compartieran id y el primero estuviera oculto, el otro perdería su degradado.
+  const gradient = `ps-logo-bg-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`
   return <svg width={size} height={size} viewBox="0 0 512 512" aria-hidden="true" focusable="false">
-    <defs><linearGradient id="ps-logo-bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#17a394" /><stop offset="1" stopColor="#0a5c55" /></linearGradient></defs>
-    <rect width="512" height="512" rx="116" fill="url(#ps-logo-bg)" />
+    <defs><linearGradient id={gradient} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#17a394" /><stop offset="1" stopColor="#0a5c55" /></linearGradient></defs>
+    <rect width="512" height="512" rx="116" fill={`url(#${gradient})`} />
     <circle cx="256" cy="112" r="34" fill="none" stroke="#fff" strokeWidth="22" />
     <circle cx="256" cy="296" r="148" fill="#fff" />
     <g fill="#0e7c72">

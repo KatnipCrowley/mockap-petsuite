@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { QrCode, Store, Users } from 'lucide-react'
 import { ApiError, api, enlaceDemo, errorText, modoDemo, sessionFrom, setSession, type AuthResponse, type Comuna, type Session } from '../../shared/api'
 import { CORREO_SIN_CONFIRMAR, SEGUNDOS_ENTRE_ENVIOS, VIGENCIA_HORAS } from '../../shared/cuentas'
 import { emailSchema, loginSchema, registrationSchema } from '../../shared/validators'
@@ -30,7 +31,12 @@ const titles: Record<Exclude<Mode, 'pending'>, [string, string, string]> = {
 
 /** Panel de marca y tarjeta: lo comparten el ingreso y las pantallas de los enlaces enviados por correo. */
 export function AuthShell({ children }: { children: React.ReactNode }) {
-  return <div className="login-page"><div className="login-art"><div className="art-orb" /><div className="brand light"><span className="brand-mark"><LogoMark /></span><span>Pet<span>Suite</span></span></div><div className="art-copy"><p className="eyebrow">TODO EN UN SOLO LUGAR</p><h1>Su mundo, mejor conectado.</h1><p>Ficha única de salud con QR de emergencia, directorio Pet-Care y muro comunal por comuna.</p></div><div className="art-footer">PetSuite <span>Tu suite para mascotas</span></div></div>{children}</div>
+  return <div className="login-page"><div className="login-art"><div className="art-orb" /><div className="brand light"><span className="brand-mark"><LogoMark /></span><span>Pet<span>Suite</span></span></div><div className="art-copy"><p className="eyebrow">TODO EN UN SOLO LUGAR</p><h1>Su mundo, mejor conectado.</h1><p>Ficha única de salud con QR de emergencia, directorio Pet-Care y muro comunal por comuna.</p>
+    <ul className="art-features">
+      <li><QrCode size={22} aria-hidden="true" /><span><strong>QR de emergencia</strong>Quien encuentre a tu mascota ve sus alergias y te avisa sin ver tus datos.</span></li>
+      <li><Store size={22} aria-hidden="true" /><span><strong>Directorio Pet-Care</strong>Veterinarias, tiendas y peluquerías verificadas de tu comuna.</span></li>
+      <li><Users size={22} aria-hidden="true" /><span><strong>Comunidad por comuna</strong>Extravíos, alertas de salud, eventos y adopciones cerca de ti.</span></li>
+    </ul></div><div className="art-footer">PetSuite <span>Tu suite para mascotas</span></div></div>{children}</div>
 }
 
 /** En la demostración no salen correos: se ofrece abrir el enlace que quedó en la bandeja simulada. */

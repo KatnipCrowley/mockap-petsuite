@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Pencil, Search, X } from 'lucide-react'
+import { Pencil, Search, Stethoscope, X } from 'lucide-react'
+import { ProfileCover } from '../../shared/profile-cover'
 import { Loading, Photo } from '../../shared/media'
 import { api, emptyFicha, errorText, fechaCorta, type FichaDatos, type RegistroMeta } from '../../shared/api'
 import { usePyme } from '../business/business'
@@ -43,9 +44,14 @@ export function ClinicalArea({ active }: { active: string }) {
   const shown = list.filter(p => `${p.nombre} ${p.tutor} ${p.raza || ''}`.toLocaleLowerCase('es').includes(q) && (
     filtro === 'Todos' || (filtro === 'Con alertas' && !!p.alertas?.length) || (filtro === 'Con registro' && p.permiso === 'escritura') || (filtro === 'Por vencer' && porVencer(p))))
 
-  return <section className="page clinical-page"><div className="page-title"><div><p className="eyebrow">ATENCIÓN VETERINARIA · {pyme.nombre_comercial.toUpperCase()}</p><h1>{active === 'patients' ? 'Pacientes' : 'Tu jornada clínica'}</h1><p className="muted">Fichas que los tutores compartieron contigo por un tiempo limitado.</p></div></div>
+  const resumen = patients ? [{ label: 'Fichas con acceso vigente', value: list.length }, { label: 'Con alertas críticas', value: alerts }, { label: 'Accesos que vencen en 3 días', value: list.filter(porVencer).length }] : undefined
+  return <section className="page clinical-page">
+    {active === 'patients'
+      ? <div className="page-title"><div><p className="eyebrow">ATENCIÓN VETERINARIA · {pyme.nombre_comercial.toUpperCase()}</p><h1>Pacientes</h1><p className="muted">Fichas que los tutores compartieron contigo por un tiempo limitado.</p></div></div>
+      : <ProfileCover eyebrow="ATENCIÓN VETERINARIA" title="Tu jornada clínica" subtitle={`${pyme.nombre_comercial} · Fichas que los tutores compartieron contigo por un tiempo limitado.`} image="/img/vet-2.jpg" avatar={<Stethoscope size={34} />}
+          badges={<span className={pyme.estado_verificacion === 'aprobada' ? 'chip chip-ok' : 'chip chip-warn'}>{pyme.estado_verificacion === 'aprobada' ? 'Veterinaria verificada' : 'Veterinaria en verificación'}</span>} stats={resumen} />}
     {pyme.estado_verificacion !== 'aprobada' && <div className="alert-card"><div><strong>Tu clínica está: {pyme.estado_verificacion === 'pendiente' ? 'en verificación' : pyme.estado_verificacion}</strong><p>Los tutores solo pueden compartir fichas con veterinarias verificadas.</p></div></div>}
-    {patients && <div className="clinical-summary"><div><strong>{list.length}</strong><span>Fichas con acceso vigente</span></div><div><strong>{alerts}</strong><span>Con alertas críticas</span></div><div><strong>{list.filter(porVencer).length}</strong><span>Accesos que vencen en 3 días</span></div></div>}
+    {patients && active === 'patients' && <div className="clinical-summary"><div><strong>{list.length}</strong><span>Fichas con acceso vigente</span></div><div><strong>{alerts}</strong><span>Con alertas críticas</span></div><div><strong>{list.filter(porVencer).length}</strong><span>Accesos que vencen en 3 días</span></div></div>}
     <div className="clinical-panel"><div className="chart-heading"><div><p className="eyebrow">PACIENTES</p><h2>Accesos otorgados</h2></div></div>
       {list.length > 0 && <div className="list-toolbar"><label className="search-field"><Search size={17} aria-hidden="true" /><span className="sr-only">Buscar paciente</span><input type="search" value={query} onChange={e => setQuery(e.target.value)} placeholder="Busca por mascota, tutor o raza" /></label><div className="category-tabs">{filtros.map(f => <button key={f} className={filtro === f ? 'category-tab active' : 'category-tab'} onClick={() => setFiltro(f)}>{f}</button>)}</div></div>}
       {shown.map(p => <div className="patient-row" key={p.id}><Photo src={p.foto_url} nombre={p.nombre} className="pet-photo small-photo" /><div><strong>{p.nombre}</strong><small>{p.tutor} · {p.permiso === 'escritura' ? 'lectura y registro' : 'solo lectura'} · acceso hasta {new Date(p.vigente_hasta).toLocaleDateString('es-CL')}{porVencer(p) ? ' (vence pronto)' : ''}</small></div><span className={p.alertas?.length ? 'clinical-alert' : 'clinical-ok'}>{p.alertas?.length ? p.alertas[0] : 'Sin alertas'}</span><button className="secondary" onClick={() => setOpen(p)}>Abrir ficha</button></div>)}
