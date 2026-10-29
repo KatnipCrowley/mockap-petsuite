@@ -35,7 +35,7 @@ Estas reglas resumen errores que ya ocurrieron. Léelas antes de cada tarea.
 
 ### Estructura del código
 
-- `src/shared/`: núcleo común (`api`, `validators`, `permissions`, `media`, `feedback`, `accessibility`, `share`, `errors`, `legal`).
+- `src/shared/`: núcleo común (`api`, `validators`, `permissions`, `media`, `feedback`, `accessibility`, `share`, `errors`, `legal`, `cuentas`, `profile-cover`, `metric`).
 - `src/styles/`: hojas de estilo.
 - `src/modules/<área>/`: una carpeta por área (tutor, community, directory, business, clinical, ong, plans, promotions, advisor, admin, privacy, auth).
 - `src/mock/`: API simulada en el navegador.
@@ -58,6 +58,9 @@ Estas reglas resumen errores que ya ocurrieron. Léelas antes de cada tarea.
 - La sesión está en `sessionStorage`; borrarlo cierra la sesión. Los datos del mock están en `localStorage` (`petsuite-mock-db-vN`); si cambia el modelo, sube la versión de la clave.
 - Si cambias `public/sw.js`, sube la versión del caché.
 - Para carga, vacío, error y permiso insuficiente usa los componentes de `src/shared/feedback.tsx`.
+- El Inicio de cada rol abre con `ProfileCover` (`src/shared/profile-cover.tsx`) y los indicadores usan `Metric` (`src/shared/metric.tsx`). Las cifras de la portada salen siempre de datos reales; no se inventan seguidores, valoraciones ni notificaciones.
+- Los estilos visuales nuevos van en `src/styles/design-pro.css` (se carga al final) y usan solo los tokens de `design.css`, para que funcionen con los seis temas y el modo oscuro.
+- En teléfonos (≤600 px) el menú es una barra inferior. No agregues elementos fijos al borde inferior sin revisar que no la tapen.
 
 ### Cuentas reales
 
@@ -639,3 +642,39 @@ Cada entrada va al final del archivo, bajo el encabezado `## AAAA-MM-DD` de su d
 - Cambio realizado: cada tarea debe usar una rama creada desde `origin/main`, nombrada `<nombredeusuario>/<cambio-branch>`, donde `cambio-branch` es el texto descriptivo completo. Esta convención aplica a todos los usuarios del equipo. Por solicitud expresa del usuario, esta actualización de las instrucciones se hizo directamente en `main`.
 - Motivo: identificar claramente quién trabaja en cada rama y qué cambio contiene, manteniendo una rama separada por tarea.
 - Verificación ejecutada: revisión del texto y `git diff --check`.
+
+## 2026-10-27
+
+### Rediseño profesional de todos los módulos
+
+- Fecha: 2026-10-27.
+- Rama: `patricioampuero/rediseno-profesional-frontend`.
+- Archivos agregados: `src/shared/profile-cover.tsx`, `src/shared/metric.tsx`, `src/styles/design-pro.css` y `docs/capturas/rediseno/` (13 capturas de antes y después, modo oscuro y móvil, con su `README.md`).
+- Archivos modificados: `src/App.tsx`, `src/main.tsx`, `src/shared/media.tsx`, `src/modules/tutor/tutor.tsx`, `src/modules/community/community.tsx`, `src/modules/business/business.tsx`, `src/modules/ong/adoption.tsx`, `src/modules/clinical/clinical.tsx`, `src/modules/admin/admin.tsx`, `src/modules/auth/Login.tsx` y `Agents.md`.
+- Cambio realizado:
+  - Portada de perfil (`ProfileCover`) en el Inicio de los siete roles: fondo de portada, avatar, insignias, acciones y cifras reales de la cuenta.
+    - Tutor: mascotas, medallas QR activas y vacunas próximas.
+    - Pyme y veterinaria: foto de su rubro, plan, verificación, ítems, locales, equipo y ofertas.
+    - ONG: foto de portada, verificación, comuna y acceso a su perfil público.
+    - Clínica: fichas vigentes, con alertas y por vencer.
+    - Asesor y administración: usuarios, Pymes verificadas, animales en adopción y pendientes de revisión.
+  - Métricas con ícono y tono por tipo (`Metric`), en lugar de las tres copias locales que había.
+  - Muro comunal como feed social:
+    - Recuadro «¿Qué está pasando con tu mascota?» con accesos directos por tipo.
+    - Publicaciones con encabezado de autor, pastilla de tipo y botones «Apoyar», «Comentar» y «Guardar».
+    - Columna lateral con alertas activas, próximos eventos y tu actividad, calculada con las publicaciones ya cargadas.
+  - Marco: barra superior con la sección actual y la cuenta, tarjeta de perfil en el menú y «Cerrar sesión» al pie del menú. En teléfonos (≤600 px) el menú pasa a ser una barra inferior deslizable, y los filtros se deslizan en una sola fila.
+  - Hoja `design-pro.css`:
+    - Encabezados de página en tarjeta con acento.
+    - Superficies con sombras suaves, pestañas en píldora y buscador redondeado.
+    - Tarjetas del directorio, de mascotas y de ONG con efecto al pasar el cursor.
+    - Modales con fondo difuminado.
+    - Todo usa los tokens de tema y funciona en claro y en oscuro.
+  - Ingreso: tres tarjetas reales del producto sobre la imagen (QR de emergencia, directorio y comunidad). Los botones de cuentas demo ya no quedan circulares.
+  - Corrección: el logo usaba un id fijo para su degradado. Si el primer logo quedaba oculto, como el del menú en el teléfono, los demás perdían el fondo; ahora cada logo tiene su propio id.
+- Motivo: el usuario pidió que cada módulo y rol se vea profesional y llamativo, como una red social profesional.
+- Verificación ejecutada:
+  - `npx tsc -b` sin errores, `npm run build -- --base=/mockap-petsuite/` correcto y `npm test` 29 de 29.
+  - Capturas con Chromium de las 59 vistas de 7 roles (más ingreso, adopciones, planes y ficha pública del QR) a 1366 px en claro y oscuro, y a 390 px en claro y oscuro.
+  - Recorrido general por las 9 cuentas demo, flujos de QR, cartel y «Compartir», y flujos de cuentas reales con API HTTP: sin errores de JavaScript ni desplazamiento horizontal.
+  - `git diff --check` correcto.

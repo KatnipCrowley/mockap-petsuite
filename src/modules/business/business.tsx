@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { AlertCircle, Crown, Pencil, ShoppingBag, Tag, X } from 'lucide-react'
+import { AlertCircle, BadgeCheck, Crown, Eye, MousePointerClick, Package, Pencil, ShoppingBag, Tag, Ticket, X } from 'lucide-react'
 import { api, clp, errorText, fechaCorta, fechaLarga, hoy, ofertaVigente, type Comuna, type ItemCatalogo } from '../../shared/api'
 import { BusinessProfile } from './business-profile'
 import { BusinessContacts } from './business-contacts'
@@ -11,6 +11,9 @@ import { moduloLabel, type ModuloPyme } from '../../shared/permissions'
 import { registerPymeSchema } from '../../shared/validators'
 import { EmptyState, ErrorState, LoadingState, PermissionState } from '../../shared/feedback'
 import { useModalFocus } from '../../shared/accessibility'
+import { rubroFoto } from '../../shared/media'
+import { Metric } from '../../shared/metric'
+import { ProfileCover } from '../../shared/profile-cover'
 
 export type MiPyme = {
   id: string; nombre_comercial: string; rubro: string; estado_verificacion: 'pendiente' | 'aprobada' | 'rechazada' | 'suspendida'; comuna_id: number; solicitud_pendiente?: boolean
@@ -25,7 +28,7 @@ const estadoTexto: Record<MiPyme['estado_verificacion'], string> = { pendiente: 
 // Vista del menú → módulo que exige. Las vistas sin módulo (Inicio) las ve todo el equipo.
 const vistaModulo: Record<string, ModuloPyme> = { 'business-profile': 'perfil', branches: 'sucursales', catalog: 'catalogo', contacts: 'contactos', team: 'equipo', ads: 'publicidad', agreements: 'convenios', metrics: 'metricas', subscription: 'suscripcion' }
 
-function Metric({ label, value, trend }: { label: string; value: string; trend: string }) { return <div className="metric-card"><small>{label}</small><strong>{value}</strong><span>{trend}</span></div> }
+const rubroTexto: Record<string, string> = { veterinaria: 'Veterinaria', tienda: 'Tienda', peluqueria: 'Peluquería', otro: 'Servicio Pet-Care' }
 
 // Diferencia contra los 30 días anteriores, en palabras.
 const comparar = (actual: number, previo: number) => {
@@ -130,10 +133,16 @@ function Overview({ pyme }: { pyme: MiPyme }) {
   const t = m?.totales, a = m?.anteriores
   const dueno = pyme.rol_interno === 'dueno'
   const siguiente = PLANES.find(p => p.precio_mensual_clp > pyme.plan.precio_mensual_clp)
-  return <section className="page business-page"><div className="business-welcome"><div><p className="eyebrow">{dueno ? 'TU NEGOCIO EN PETSUITE' : `${pyme.rol_interno === 'jefe_local' ? 'JEFE DE LOCAL' : 'EQUIPO'} · ${pyme.sucursal?.nombre.toUpperCase() ?? 'CASA MATRIZ'}`}</p><h1>{pyme.nombre_comercial}</h1><p>{dueno ? 'Tu vitrina en el directorio: plan, sucursales, equipo, catálogo, publicidad y convenios con ONG.' : `Puedes usar: ${pyme.permisos.map(p => moduloLabel[p]).join(', ')}.`}</p></div><ShoppingBag size={38} strokeWidth={1.5} /></div>
+  const verificada = pyme.estado_verificacion === 'aprobada'
+  return <section className="page business-page">
+    <ProfileCover eyebrow={dueno ? 'TU NEGOCIO EN PETSUITE' : `${pyme.rol_interno === 'jefe_local' ? 'JEFE DE LOCAL' : 'EQUIPO'} · ${pyme.sucursal?.nombre.toUpperCase() ?? 'CASA MATRIZ'}`} title={pyme.nombre_comercial}
+      subtitle={dueno ? 'Tu vitrina en el directorio: plan, sucursales, equipo, catálogo, publicidad y convenios con ONG.' : `Puedes usar: ${pyme.permisos.map(p => moduloLabel[p]).join(', ')}.`}
+      image={rubroFoto[pyme.rubro] || rubroFoto.otro}
+      badges={<><PlanBadge plan={pyme.plan} /><span className={verificada ? 'chip chip-ok' : 'chip chip-warn'}>{verificada && <BadgeCheck size={13} />} {estadoTexto[pyme.estado_verificacion]}</span><span className="chip">{rubroTexto[pyme.rubro] || pyme.rubro}</span></>}
+      stats={[{ label: 'Ítems en catálogo', value: pyme.uso.items }, { label: pyme.uso.sucursales === 1 ? 'Local' : 'Locales', value: pyme.uso.sucursales }, { label: 'Cuentas de equipo', value: pyme.uso.usuarios }, { label: 'Ofertas vigentes', value: pyme.uso.ofertas }]} />
     <StatusBanner pyme={pyme} />
     <PlanAlert pyme={pyme} />
-    {veMetricas && <div className="business-stats"><Metric label="Visitas al perfil" value={String(t?.visita_perfil ?? 0)} trend={t && a ? comparar(t.visita_perfil, a.visita_perfil) : 'Últimos 30 días'} /><Metric label="Vistas de productos" value={String(t?.vista_item ?? 0)} trend={t && a ? comparar(t.vista_item, a.vista_item) : 'Últimos 30 días'} /><Metric label="Clics de contacto" value={String((t?.clic_contacto ?? 0) + (t?.clic_whatsapp ?? 0))} trend={t && a ? comparar(t.clic_contacto + t.clic_whatsapp, a.clic_contacto + a.clic_whatsapp) : 'Últimos 30 días'} /></div>}
+    {veMetricas && <div className="business-stats"><Metric icon={Eye} label="Visitas al perfil" value={String(t?.visita_perfil ?? 0)} trend={t && a ? comparar(t.visita_perfil, a.visita_perfil) : 'Últimos 30 días'} /><Metric icon={Package} tone="info" label="Vistas de productos" value={String(t?.vista_item ?? 0)} trend={t && a ? comparar(t.vista_item, a.vista_item) : 'Últimos 30 días'} /><Metric icon={MousePointerClick} tone="warm" label="Clics de contacto" value={String((t?.clic_contacto ?? 0) + (t?.clic_whatsapp ?? 0))} trend={t && a ? comparar(t.clic_contacto + t.clic_whatsapp, a.clic_contacto + a.clic_whatsapp) : 'Últimos 30 días'} /></div>}
     <div className="business-activity plan-overview"><div className="plan-overview-head"><div><p className="eyebrow">TU PLAN</p><h2><PlanBadge plan={pyme.plan} /> {pyme.plan.precio_mensual_clp ? `${clp(pyme.plan.precio_mensual_clp)} al mes` : 'Sin costo'}</h2><p>{pyme.suscripcion && pyme.dias_mora === 0 ? `Vigente hasta el ${fechaLarga(pyme.suscripcion.fin)}. Tarifa plana, sin comisiones por venta.` : pyme.plan.codigo === 'gratis' ? 'Apareces en el directorio con lo esencial. Sube de plan para sumar sucursales, equipo, ofertas, publicidad y convenios.' : ''}{pyme.solicitud_pendiente ? ' Tienes un pago en revisión.' : ''}</p></div>{dueno && siguiente && <div className="plan-upsell"><Crown size={18} aria-hidden="true" /><span>Con <strong>{siguiente.nombre}</strong> ({clp(siguiente.precio_mensual_clp)}/mes) tendrías {siguiente.limites.items} ítems, {siguiente.limites.sucursales} {siguiente.limites.sucursales === 1 ? 'sucursal' : 'sucursales'} y {siguiente.limites.usuarios} cuentas de equipo.</span></div>}</div>
       <UsageMeters plan={pyme.plan} uso={pyme.uso} />
       {m && m.ofertas_vigentes > 0 && <p><span className="chip chip-warn"><Tag size={13} /> {m.ofertas_vigentes} {m.ofertas_vigentes === 1 ? 'oferta vigente' : 'ofertas vigentes'}</span></p>}</div></section>
@@ -223,7 +232,7 @@ function MetricsView({ pyme }: { pyme: MiPyme }) {
   const canales = [['Llamadas', t.clic_contacto, a.clic_contacto], ['WhatsApp', t.clic_whatsapp, a.clic_whatsapp]] as const
   const mejora = (desde: string) => <div className="role-panel locked-panel"><p className="eyebrow">DISPONIBLE DESDE {desde.toUpperCase()}</p><p className="muted">Mejora tu plan en Suscripción para ver este detalle.</p></div>
   return <section className="page role-page"><div className="page-title"><div><p className="eyebrow">GESTIÓN B2B · MÉTRICAS {m.nivel.toUpperCase()}</p><h1>Panel de métricas</h1><p className="muted">Cómo te encuentra la comunidad. Últimos 30 días comparados con los 30 anteriores.</p></div><PlanBadge plan={pyme.plan} /></div>
-    <div className="metric-grid"><Metric label="Visitas al perfil" value={String(t.visita_perfil)} trend={comparar(t.visita_perfil, a.visita_perfil)} /><Metric label="Vistas de ítems" value={String(t.vista_item)} trend={comparar(t.vista_item, a.vista_item)} /><Metric label="Clics de contacto" value={String(contactos)} trend={comparar(contactos, a.clic_contacto + a.clic_whatsapp)} /><Metric label="Cupones canjeados" value={String(m.canjes_30d)} trend="Ventas atribuidas a ONG aliadas" /></div>
+    <div className="metric-grid"><Metric icon={Eye} label="Visitas al perfil" value={String(t.visita_perfil)} trend={comparar(t.visita_perfil, a.visita_perfil)} /><Metric icon={Package} tone="info" label="Vistas de ítems" value={String(t.vista_item)} trend={comparar(t.vista_item, a.vista_item)} /><Metric icon={MousePointerClick} tone="warm" label="Clics de contacto" value={String(contactos)} trend={comparar(contactos, a.clic_contacto + a.clic_whatsapp)} /><Metric icon={Ticket} tone="success" label="Cupones canjeados" value={String(m.canjes_30d)} trend="Ventas atribuidas a ONG aliadas" /></div>
     <article className="admin-chart-card"><div className="chart-heading"><div><p className="eyebrow">ACTIVIDAD</p><h2>Eventos por día</h2></div></div>{m.por_dia.length ? <div className="bar-chart" aria-label="Eventos por día">{m.por_dia.map(d => <div className="bar-column" key={d.dia}><span style={{ height: `${Math.max(6, (d.eventos / max) * 100)}%` }} /><small>{new Date(d.dia).toLocaleDateString('es-CL', { day: 'numeric', month: 'short' })}</small></div>)}</div> : <p className="muted">Aún no hay actividad registrada.</p>}</article>
     <div className="metrics-split">
       {m.nivel === 'basicas' ? mejora('Plata') : <div className="role-panel"><p className="eyebrow">CONTACTO POR CANAL</p><h2>Cómo te escriben</h2><div className="channel-list">{canales.map(([label, n, prev]) => <div key={label}><div className="channel-head"><strong>{label}</strong><small>{n} · {comparar(n, prev)}</small></div><div className="channel-bar" aria-hidden="true"><span style={{ width: `${contactos ? (n / contactos) * 100 : 0}%` }} /></div></div>)}</div>{!contactos && <p className="muted">Publica tu teléfono y WhatsApp en el perfil para recibir contactos.</p>}</div>}

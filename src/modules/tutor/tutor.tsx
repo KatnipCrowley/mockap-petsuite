@@ -11,6 +11,7 @@ import { CommunityView } from '../community/community'
 import { DirectoryView } from '../directory/directory'
 import { BannerStrip } from '../promotions/promotions'
 import { useModalFocus } from '../../shared/accessibility'
+import { ProfileCover } from '../../shared/profile-cover'
 
 // meta conserva lo que el formulario del tutor no edita (próxima dosis, autoría de la clínica, anulación).
 type Entry = { id: string; type: 'Vacuna' | 'Atención' | 'Tratamiento'; date: string; title: string; notes: string; meta?: RegistroMeta & { proxima?: string; fin?: string } }
@@ -109,7 +110,9 @@ function Dashboard({ pets, name, banner, onSelect, onMissing, onPets, onCommunit
   const sinQr = pets.filter(p => !p.token_activo).length
   const vaccines = upcomingVaccines(pets)
   return <section className="page home-page">
-    <div className="welcome"><div><p className="eyebrow">TU ESPACIO PETSUITE</p><h1>Hola, {name.split(' ')[0]}</h1><p className="muted">Todo lo importante para tus mascotas, en un solo lugar.</p></div><button className="primary" onClick={onAdd}><CirclePlus size={17} /> Agregar mascota</button></div>
+    <ProfileCover eyebrow="TU ESPACIO PETSUITE" title={`Hola, ${name.split(' ')[0]}`} subtitle="Todo lo importante para tus mascotas, en un solo lugar." avatar={iniciales(name)}
+      actions={<><button className="primary" onClick={onAdd}><CirclePlus size={17} /> Agregar mascota</button><button className="secondary" onClick={onCommunity}><MessageCircle size={17} /> Ir al muro</button></>}
+      stats={[{ label: 'Mascotas', value: pets.length }, { label: 'Medallas QR activas', value: pets.length - sinQr }, { label: 'Vacunas próximas', value: vaccines.length }]} />
     {!pets.length && <section className="onboarding-panel" aria-labelledby="onboarding-title"><p className="eyebrow">PRIMEROS PASOS</p><h2 id="onboarding-title">Prepara su ficha de emergencia</h2><p>Desde la Ficha Única puedes compartir datos críticos sin mostrar tu información personal.</p><ol><li><strong>Registra tu mascota</strong><span>Comienza con su nombre y especie.</span><button className="primary" onClick={onAdd}>Registrar mascota <ArrowRight size={16} /></button></li><li><strong>Completa alergias y condiciones</strong><span>Después del registro, agrega lo que quien la encuentre debe saber.</span></li><li><strong>Genera su medalla QR</strong><span>Abre su ficha y activa el código de emergencia.</span></li></ol></section>}
     {banner}
     {pets[0] && <PetHero pet={pets[0]} onOpen={() => onSelect(pets[0])} />}

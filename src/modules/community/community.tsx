@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import QRCode from 'qrcode'
-import { Bookmark, BookmarkCheck, CalendarDays, Check, CirclePlus, Heart, MapPin, MessageCircle, Pencil, Printer, Search, Trash2, Users, X } from 'lucide-react'
+import { Bookmark, BookmarkCheck, CalendarDays, Check, CirclePlus, Heart, MapPin, MessageCircle, PawPrint, Pencil, Printer, Search, ThumbsUp, Trash2, TriangleAlert, Users, X } from 'lucide-react'
 import { api, errorText, fechaCorta, getSession, hoy, iniciales, type Comuna, type Mascota } from '../../shared/api'
 import { Photo } from '../../shared/media'
 import { moderationMessageSchema } from '../../shared/validators'
@@ -50,6 +50,7 @@ export function CommunityView({ onAdoption, onPyme }: { onAdoption?: () => void;
   const [query, setQuery] = useState('')
   const [orden, setOrden] = useState<'recientes' | 'apoyadas'>('recientes')
   const [composer, setComposer] = useState<Post | 'new' | null>(null)
+  const [newType, setNewType] = useState<Tipo>('recomendacion')
   const [reporting, setReporting] = useState<Reportable | null>(null)
   const [poster, setPoster] = useState<{ post: Post; petId?: string } | null>(null)
   const [commenting, setCommenting] = useState<string | null>(null)
@@ -72,12 +73,22 @@ export function CommunityView({ onAdoption, onPyme }: { onAdoption?: () => void;
   const own = comuna === session?.comunaId
   const comunaName = comunas.find(c => c.id === comuna)?.nombre || ''
   const remove = (p: Post) => { if (window.confirm('¿Eliminar esta publicación? No se puede deshacer.')) void act(() => api(`/muro/${p.id}`, { method: 'DELETE' })) }
+  const openComposer = (tipo: Tipo = 'recomendacion') => { setNewType(tipo); setComposer('new') }
+  // La columna lateral resume lo que ya se cargó del muro: no consulta datos adicionales.
+  const all = posts || []
+  const alertas = all.filter(p => p.urgente && !p.resuelto).slice(0, 4)
+  const eventos = all.filter(p => p.tipo === 'evento' && !!p.fecha_evento && p.fecha_evento >= hoy()).sort((a, b) => (a.fecha_evento || '').localeCompare(b.fecha_evento || '')).slice(0, 3)
+  const focusPost = (id: string) => { setFilter('Todos'); setQuery(''); window.setTimeout(() => document.getElementById(`post-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60) }
 
-  return <section className="page community-page"><div className="page-title"><div><p className="eyebrow">COMUNIDAD PETSUITE · {guardadas ? 'GUARDADAS' : comunaName.toUpperCase()}</p><h1>Muro comunal</h1><p className="muted">Comparte, encuentra y ayuda a otros tutores de tu comuna.</p></div><button className="primary" onClick={() => setComposer('new')}><CirclePlus size={17} /> Publicar</button></div>
+  return <section className="page community-page"><div className="page-title"><div><p className="eyebrow">COMUNIDAD PETSUITE · {guardadas ? 'GUARDADAS' : comunaName.toUpperCase()}</p><h1>Muro comunal</h1><p className="muted">Comparte, encuentra y ayuda a otros tutores de tu comuna.</p></div><button className="primary" onClick={() => openComposer()}><CirclePlus size={17} /> Publicar</button></div>
     <p className="sr-only" role="status" aria-live="polite">{notice}</p>{notice && <p className="save-message">{notice}</p>}
     <BannerStrip ubicacion="muro" onPyme={onPyme} />
-    <div className="community-intro"><div className="intro-icon"><Users size={20} /></div><div><strong>Una comunidad que se cuida</strong><p>Las publicaciones aparecen solo en el muro de la comuna de su autor. No se permiten enlaces externos.</p></div>{comunas.length > 0 && <select aria-label="Ver muro de otra comuna" value={comuna} disabled={guardadas} onChange={e => setComuna(Number(e.target.value))}>{comunas.map(c => <option key={c.id} value={c.id}>{c.nombre}{c.id === session?.comunaId ? ' (tu comuna)' : ''}</option>)}</select>}</div>
-    <div className="list-toolbar"><label className="search-field"><Search size={17} aria-hidden="true" /><span className="sr-only">Buscar en el muro</span><input type="search" value={query} onChange={e => setQuery(e.target.value)} placeholder="Busca por texto, sector, autor o mascota" /></label><select aria-label="Ordenar publicaciones" value={orden} onChange={e => setOrden(e.target.value as 'recientes' | 'apoyadas')}><option value="recientes">Más recientes (urgentes primero)</option><option value="apoyadas">Más apoyadas</option></select></div>
+    <div className="feed-layout"><div className="feed-main">
+    <div className="feed-composer">
+      <div className="feed-composer-row"><div className="post-avatar">{iniciales(session?.nombre || 'Tú')}</div><button type="button" className="feed-composer-input" onClick={() => openComposer()}>¿Qué está pasando con tu mascota{session?.nombre ? `, ${session.nombre.split(' ')[0]}` : ''}?</button></div>
+      <div className="feed-composer-types">{([['extravio', PawPrint], ['alerta', TriangleAlert], ['evento', CalendarDays], ['recomendacion', ThumbsUp]] as const).map(([tipo, Icon]) => <button key={tipo} type="button" className={`feed-type ${tipoClass[tipo]}`} onClick={() => openComposer(tipo)}><Icon size={16} aria-hidden="true" /> {tipoLabel[tipo]}</button>)}</div>
+    </div>
+    <div className="list-toolbar feed-toolbar"><label className="search-field"><Search size={17} aria-hidden="true" /><span className="sr-only">Buscar en el muro</span><input type="search" value={query} onChange={e => setQuery(e.target.value)} placeholder="Busca por texto, sector, autor o mascota" /></label>{comunas.length > 0 && <select aria-label="Ver muro de otra comuna" value={comuna} disabled={guardadas} onChange={e => setComuna(Number(e.target.value))}>{comunas.map(c => <option key={c.id} value={c.id}>{c.nombre}{c.id === session?.comunaId ? ' (tu comuna)' : ''}</option>)}</select>}<select aria-label="Ordenar publicaciones" value={orden} onChange={e => setOrden(e.target.value as 'recientes' | 'apoyadas')}><option value="recientes">Más recientes (urgentes primero)</option><option value="apoyadas">Más apoyadas</option></select></div>
     <div className="community-filters">{(['Todos', 'extravio', 'encuentro', 'alerta', 'evento', 'adopcion', 'recomendacion', 'Guardadas'] as const).map(v => <button key={v} className={filter === v ? 'category-tab active' : 'category-tab'} onClick={() => setFilter(v)}>{v === 'Todos' || v === 'Guardadas' ? v : tipoLabel[v]}</button>)}</div>
     {error && !posts && <ErrorState message={error} onRetry={() => void load()} />}
     {error && posts && <p className="form-error" role="alert">{error}</p>}
@@ -93,8 +104,15 @@ export function CommunityView({ onAdoption, onPyme }: { onAdoption?: () => void;
         onAddComment={text => act(() => api(`/muro/${post.id}/comentarios`, { method: 'POST', body: { texto: text } }))}
         onEditComment={(c, text) => act(() => api(`/muro/comentarios/${c.id}`, { method: 'PATCH', body: { texto: text } }))}
         onDeleteComment={c => { if (window.confirm('¿Eliminar tu comentario?')) void act(() => api(`/muro/comentarios/${c.id}`, { method: 'DELETE' })) }} />)}
-      {posts && visible.length === 0 && <EmptyState title={guardadas ? 'Sin publicaciones guardadas' : 'Sin publicaciones'} description={guardadas ? 'Guarda publicaciones del muro para volver a ellas después.' : q ? 'Ninguna publicación coincide con tu búsqueda.' : `Todavía no hay publicaciones de este tipo en ${comunaName || 'esta comuna'}.`} action={guardadas || q || filter !== 'Todos' ? 'Ver todas' : 'Publicar en el muro'} onAction={() => { if (guardadas || q || filter !== 'Todos') { setFilter('Todos'); setQuery('') } else setComposer('new') }} />}</div>
-    {composer && <Composer post={composer === 'new' ? null : composer} onClose={() => setComposer(null)} onSaved={async () => { const nuevo = composer === 'new'; setComposer(null); setNotice(nuevo ? 'Publicación creada en el muro comunal.' : 'Publicación actualizada.'); if (nuevo && guardadas) setFilter('Todos'); if (nuevo && !own && session?.comunaId) setComuna(session.comunaId); else await load() }} />}
+      {posts && visible.length === 0 && <EmptyState title={guardadas ? 'Sin publicaciones guardadas' : 'Sin publicaciones'} description={guardadas ? 'Guarda publicaciones del muro para volver a ellas después.' : q ? 'Ninguna publicación coincide con tu búsqueda.' : `Todavía no hay publicaciones de este tipo en ${comunaName || 'esta comuna'}.`} action={guardadas || q || filter !== 'Todos' ? 'Ver todas' : 'Publicar en el muro'} onAction={() => { if (guardadas || q || filter !== 'Todos') { setFilter('Todos'); setQuery('') } else openComposer() }} />}</div>
+    </div>
+    <aside className="feed-rail" aria-label="Resumen del muro">
+      <section className="rail-card rail-intro"><div className="intro-icon"><Users size={20} /></div><div><strong>Una comunidad que se cuida</strong><p>Las publicaciones aparecen solo en el muro de la comuna de su autor. No se permiten enlaces externos.</p></div></section>
+      <section className="rail-card"><h3><TriangleAlert size={17} aria-hidden="true" /> Alertas activas</h3>{alertas.length ? <ul className="rail-list">{alertas.map(p => <li key={p.id}><button type="button" onClick={() => focusPost(p.id)}><span className={`rail-dot ${tipoClass[p.tipo]}`} aria-hidden="true" /><span><strong>{tipoLabel[p.tipo]}{p.mascota ? ` · ${p.mascota}` : ''}</strong><small>{p.texto}</small><em>{p.sector ? `${p.sector} · ` : ''}{ago(p.creado_en)}</em></span></button></li>)}</ul> : <p className="muted">{posts ? 'No hay alertas activas en este muro.' : 'Cargando…'}</p>}</section>
+      <section className="rail-card"><h3><CalendarDays size={17} aria-hidden="true" /> Próximos eventos</h3>{eventos.length ? <ul className="rail-list">{eventos.map(p => { const d = new Date(`${p.fecha_evento}T12:00:00`); return <li key={p.id}><button type="button" onClick={() => focusPost(p.id)}><span className="rail-date" aria-hidden="true"><b>{d.getDate()}</b><small>{d.toLocaleDateString('es-CL', { month: 'short' }).replace('.', '')}</small></span><span><strong>{p.texto}</strong><em>{p.sector || p.autor} · {fechaCorta(p.fecha_evento || '')}</em></span></button></li> })}</ul> : <p className="muted">{posts ? 'No hay eventos próximos en este muro.' : 'Cargando…'}</p>}</section>
+      <section className="rail-card"><h3><Heart size={17} aria-hidden="true" /> Tu actividad en este muro</h3><dl className="rail-stats"><div><dt>Publicaciones</dt><dd>{all.filter(p => p.es_mio).length}</dd></div><div><dt>Guardadas</dt><dd>{all.filter(p => p.guardado).length}</dd></div><div><dt>Apoyos</dt><dd>{all.filter(p => p.reaccione).length}</dd></div></dl></section>
+    </aside></div>
+    {composer && <Composer post={composer === 'new' ? null : composer} initialType={newType} onClose={() => setComposer(null)} onSaved={async () => { const nuevo = composer === 'new'; setComposer(null); setNotice(nuevo ? 'Publicación creada en el muro comunal.' : 'Publicación actualizada.'); if (nuevo && guardadas) setFilter('Todos'); if (nuevo && !own && session?.comunaId) setComuna(session.comunaId); else await load() }} />}
     {reporting && <ReportModal target={reporting} onClose={() => setReporting(null)} onSaved={() => setReporting(null)} />}
     {poster && <LostPosterModal post={poster.post} petId={poster.petId} onClose={() => setPoster(null)} />}
   </section>
@@ -114,13 +132,13 @@ function PostCard({ post, showComment, comunaAjena, onGeneratePoster, onReact, o
   const saveComment = async (event: React.FormEvent, c: Comentario) => { event.preventDefault(); if (!editing || editing.text.trim().length < 3) return; await onEditComment(c, editing.text.trim()); setEditing(null) }
   const cerrable = post.tipo === 'extravio' || post.tipo === 'encuentro'
   const nombreFoto = post.mascota || post.animal?.nombre || tipoLabel[post.tipo]
-  return <article className={`community-post${post.urgente && !post.resuelto ? ' is-urgent' : ''}${post.resuelto ? ' is-resolved' : ''}`}><div className="post-top"><div className="post-avatar">{iniciales(post.autor)}</div><div><strong>{post.autor}</strong><small>{ago(post.creado_en)}{post.editado ? ' · editado' : ''}{comunaAjena ? ` · ${comunaAjena}` : ''}</small></div></div>
-    <div className="chip-row"><span className={`post-type ${tipoClass[post.tipo]}`}>{tipoLabel[post.tipo].toUpperCase()}</span>{post.urgente && !post.resuelto && <span className="chip chip-alert">Urgente</span>}{post.resuelto && <span className="chip chip-ok"><Check size={13} /> {post.tipo === 'extravio' ? 'Mascota encontrada' : 'Resuelto'}</span>}</div>
-    {post.foto_url && <Photo src={post.foto_url} nombre={nombreFoto} className="post-photo" />}
-    <p>{post.texto}</p>
+  return <article id={`post-${post.id}`} className={`community-post${post.urgente && !post.resuelto ? ' is-urgent' : ''}${post.resuelto ? ' is-resolved' : ''}`}><header className="post-top"><div className="post-avatar">{iniciales(post.autor)}</div><div className="post-author"><strong>{post.autor}</strong><small>{ago(post.creado_en)}{post.editado ? ' · editado' : ''}{comunaAjena ? ` · ${comunaAjena}` : ''}</small></div><span className={`post-type ${tipoClass[post.tipo]}`}>{tipoLabel[post.tipo]}</span></header>
+    {((post.urgente && !post.resuelto) || post.resuelto) && <div className="chip-row">{post.urgente && !post.resuelto && <span className="chip chip-alert"><TriangleAlert size={13} /> Urgente</span>}{post.resuelto && <span className="chip chip-ok"><Check size={13} /> {post.tipo === 'extravio' ? 'Mascota encontrada' : 'Resuelto'}</span>}</div>}
+    <p className="post-text">{post.texto}</p>
     {(post.sector || post.fecha_evento || post.mascota) && <div className="post-meta">{post.mascota && <span>Mascota: {post.mascota}</span>}{post.sector && <span><MapPin size={14} /> {post.sector}</span>}{post.fecha_evento && <span className={post.fecha_evento < hoy() ? 'is-past' : ''}><CalendarDays size={14} /> {post.fecha_evento < hoy() ? 'Fue el' : 'Fecha:'} {fechaCorta(post.fecha_evento)}</span>}</div>}
+    {post.foto_url && <Photo src={post.foto_url} nombre={nombreFoto} className="post-photo" />}
     {post.tipo === 'adopcion' && <div className="post-adoption">{post.animal ? <><span>Conoce a <strong>{post.animal.nombre}</strong> · {post.animal.ong}</span>{onAdoption && <button className="secondary" onClick={onAdoption}>Ver en Adopciones</button>}</> : <span>Este animal ya encontró un hogar o no está disponible.</span>}</div>}
-    <div className="post-actions"><button className={post.reaccione ? 'reacted' : ''} onClick={onReact} aria-pressed={post.reaccione}><Heart size={16} fill={post.reaccione ? 'currentColor' : 'none'} /> {post.reacciones}</button><button onClick={onComment}><MessageCircle size={16} /> {post.comentarios.length} comentarios</button><button onClick={onSave} aria-pressed={post.guardado}>{post.guardado ? <BookmarkCheck size={16} /> : <Bookmark size={16} />} {post.guardado ? 'Guardada' : 'Guardar'}</button>{!post.es_mio && <button onClick={() => onReport({ tipo: 'publicacion', id: post.id, autor: post.autor })}>Reportar</button>}</div>
+    <div className="post-actions"><button className={post.reaccione ? 'reacted' : ''} onClick={onReact} aria-pressed={post.reaccione}><Heart size={16} fill={post.reaccione ? 'currentColor' : 'none'} /> Apoyar{post.reacciones ? ` · ${post.reacciones}` : ''}</button><button onClick={onComment} aria-expanded={showComment}><MessageCircle size={16} /> Comentar{post.comentarios.length ? ` · ${post.comentarios.length}` : ''}</button><button onClick={onSave} aria-pressed={post.guardado}>{post.guardado ? <BookmarkCheck size={16} /> : <Bookmark size={16} />} {post.guardado ? 'Guardada' : 'Guardar'}</button>{!post.es_mio && <button onClick={() => onReport({ tipo: 'publicacion', id: post.id, autor: post.autor })}>Reportar</button>}</div>
     {post.es_mio && <div className="post-owner-actions">{post.tipo === 'extravio' && <button className="text-button" onClick={() => onGeneratePoster({ post, petId: post.mascota_id ?? undefined })}><Printer size={15} /> Generar cartel</button>}{cerrable && <button className="text-button" onClick={onResolve}><Check size={15} /> {post.resuelto ? 'Reabrir' : post.tipo === 'extravio' ? 'Marcar como encontrada' : 'Marcar como resuelto'}</button>}<button className="text-button" onClick={onEdit}><Pencil size={15} /> Editar</button><button className="text-button danger-text" onClick={onDelete}><Trash2 size={15} /> Eliminar</button></div>}
     {post.comentarios.length > 0 && <div className="comments">{post.comentarios.map(c => <div className="comment" key={c.id}><strong>{c.autor}</strong>
       {editing?.id === c.id ? <form className="comment-form" onSubmit={e => saveComment(e, c)}><input aria-label="Editar comentario" maxLength={1000} value={editing.text} onChange={e => setEditing({ id: c.id, text: e.target.value })} /><button className="primary">Guardar comentario</button><button type="button" className="secondary" onClick={() => setEditing(null)}>Cancelar</button></form> : <span>{c.texto}{c.editado ? ' (editado)' : ''}</span>}
@@ -129,9 +147,9 @@ function PostCard({ post, showComment, comunaAjena, onGeneratePoster, onReact, o
   </article>
 }
 
-function Composer({ post, onClose, onSaved }: { post: Post | null; onClose: () => void; onSaved: () => Promise<void> }) {
+function Composer({ post, initialType = 'recomendacion', onClose, onSaved }: { post: Post | null; initialType?: Tipo; onClose: () => void; onSaved: () => Promise<void> }) {
   useModalFocus(onClose, post ? 'textarea' : 'select')
-  const [form, setForm] = useState({ tipo: post?.tipo || 'recomendacion' as Tipo, texto: post?.texto || '', mascota_id: '', sector: post?.sector || '', fecha_evento: post?.fecha_evento || '' })
+  const [form, setForm] = useState({ tipo: post?.tipo || initialType, texto: post?.texto || '', mascota_id: '', sector: post?.sector || '', fecha_evento: post?.fecha_evento || '' })
   const [pets, setPets] = useState<Mascota[]>([])
   const [error, setError] = useState('')
   const [errorField, setErrorField] = useState('')

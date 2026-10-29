@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Check, Search, ShieldAlert } from 'lucide-react'
+import { BriefcaseBusiness, Check, HeartHandshake, QrCode, Search, ShieldAlert, ShieldCheck, Store, TrendingUp, Wallet } from 'lucide-react'
+import { Metric } from '../../shared/metric'
+import { ProfileCover } from '../../shared/profile-cover'
 import { api, clp, errorText, iniciales } from '../../shared/api'
 import { SuspensionReview, type AccountSummary } from './admin-suspension'
 import { Approvals, Collections, NewAccounts, PrivacyAdmin, SentEmails } from '../advisor/advisor'
@@ -19,7 +21,6 @@ type PymePendiente = { id: string; nombre_comercial: string; rut_empresa: string
 
 const rolLabel: Record<string, string> = { tutor: 'Tutor', pyme: 'Pyme', jefe_local: 'Jefe de local', clinico: 'Clínico', asesor: 'Asesor', admin: 'Administrador', ong: 'ONG' }
 
-function Metric({ label, value, trend }: { label: string; value: string; trend: string }) { return <div className="metric-card"><small>{label}</small><strong>{value}</strong><span>{trend}</span></div> }
 
 // El asesor comparte este espacio con el administrador, pero el servidor solo le responde lo de su rol.
 export function AdminArea({ active, rol }: { active: string; rol: 'admin' | 'asesor' }) {
@@ -42,10 +43,15 @@ function Overview({ rol }: { rol: 'admin' | 'asesor' }) {
   const load = useCallback(() => api<Resumen>('/admin/resumen').then(value => { setR(value); setError('') }).catch(e => setError(errorText(e))), [])
   useEffect(() => { void load() }, [load])
   const total = r ? Math.max(1, r.por_plan.reduce((n, p) => n + p.pymes, 0)) : 1
-  return <section className="page admin-page"><div className="page-title"><div><p className="eyebrow">{rol === 'asesor' ? 'ASESORÍA COMERCIAL' : 'CENTRO DE CONTROL'}</p><h1>{rol === 'asesor' ? 'Tu cartera de Pymes y ONG' : 'Resumen de PetSuite'}</h1><p className="muted">{rol === 'asesor' ? `${rolLargo.asesor}: gestionas cuentas, planes, aprobaciones y cobranza.` : 'Datos en vivo de la base de datos de la plataforma.'}</p></div></div>
+  const pendientes = r ? r.banners_pendientes + r.perfiles_pendientes + r.convenios_pendientes + r.pymes_pendientes + (r.ong_pendientes ?? 0) + (rol === 'admin' ? r.reportes_abiertos + r.privacidad_pendientes : 0) : null
+  return <section className="page admin-page">
+    <ProfileCover eyebrow={rol === 'asesor' ? 'ASESORÍA COMERCIAL' : 'CENTRO DE CONTROL'} title={rol === 'asesor' ? 'Tu cartera de Pymes y ONG' : 'Resumen de PetSuite'} avatar={rol === 'asesor' ? <BriefcaseBusiness size={34} /> : <ShieldCheck size={34} />}
+      subtitle={rol === 'asesor' ? `${rolLargo.asesor}: gestionas cuentas, planes, aprobaciones y cobranza.` : 'Datos en vivo de la base de datos de la plataforma.'}
+      badges={<span className="chip chip-info">{rolLargo[rol]}</span>}
+      stats={r ? [{ label: 'Usuarios', value: r.usuarios }, { label: 'Pymes verificadas', value: r.pymes_activas }, { label: 'Animales en adopción', value: r.animales_disponibles ?? 0 }, { label: 'Pendientes de revisión', value: pendientes ?? 0 }] : undefined} />
     {!r && !error && <LoadingState label="Cargando resumen" />}
     {error && <ErrorState message={error} onRetry={() => void load()} />}
-    {r && <><div className="admin-metrics"><Metric label="Ingreso mensual recurrente" value={clp(r.mrr)} trend="Suma de planes vigentes" /><Metric label="Pymes verificadas" value={String(r.pymes_activas)} trend={`${r.pymes_pendientes} por verificar · ${r.en_gracia} en gracia`} /><Metric label="Ingresos (30 días)" value={clp(r.ingresos_30d)} trend="Pagos confirmados" />{rol === 'admin' ? <Metric label="Escaneos de QR" value={String(r.escaneos)} trend={`${r.usuarios} usuarios · ${r.suspendidos} suspendidos`} /> : <Metric label="ONG en verificación" value={String(r.ong_pendientes ?? 0)} trend={`${r.animales_disponibles ?? 0} animales en adopción`} />}</div>
+    {r && <><div className="admin-metrics"><Metric icon={TrendingUp} label="Ingreso mensual recurrente" value={clp(r.mrr)} trend="Suma de planes vigentes" /><Metric icon={Store} tone="info" label="Pymes verificadas" value={String(r.pymes_activas)} trend={`${r.pymes_pendientes} por verificar · ${r.en_gracia} en gracia`} /><Metric icon={Wallet} tone="success" label="Ingresos (30 días)" value={clp(r.ingresos_30d)} trend="Pagos confirmados" />{rol === 'admin' ? <Metric icon={QrCode} tone="warm" label="Escaneos de QR" value={String(r.escaneos)} trend={`${r.usuarios} usuarios · ${r.suspendidos} suspendidos`} /> : <Metric icon={HeartHandshake} tone="warm" label="ONG en verificación" value={String(r.ong_pendientes ?? 0)} trend={`${r.animales_disponibles ?? 0} animales en adopción`} />}</div>
       <div className="admin-bottom-grid"><article className="admin-table-card"><div className="chart-heading"><div><p className="eyebrow">MODELO DE NEGOCIO</p><h2>Pymes por plan</h2></div></div><div className="channel-list">{r.por_plan.map(p => <div key={p.codigo}><div className="channel-head"><PlanBadge plan={p} /><small>{p.pymes} {p.pymes === 1 ? 'Pyme' : 'Pymes'} · {clp((PLANES.find(x => x.codigo === p.codigo)?.precio_mensual_clp ?? 0) * p.pymes)}/mes</small></div><div className="channel-bar" aria-hidden="true"><span style={{ width: `${(p.pymes / total) * 100}%` }} /></div></div>)}</div></article>
         <article className="admin-table-card"><div className="chart-heading"><div><p className="eyebrow">PENDIENTES</p><h2>Requiere tu atención</h2></div></div>
           {rol === 'admin' && <div className="health-stat warning"><span className="status-dot" /><div><strong>{r.reportes_abiertos} reportes abiertos</strong><small>Meta de resolución: 24 horas</small></div></div>}

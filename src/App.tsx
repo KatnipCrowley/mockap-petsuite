@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { BadgePercent, Building2, ChartColumn, Check, ClipboardCheck, CreditCard, FileUser, Heart, House, Landmark, Lock, Mail, Megaphone, MessageCircle, Package, PawPrint, Settings, ShieldCheck, Stethoscope, Store, UserPlus, Users, UsersRound } from 'lucide-react'
+import { BadgePercent, Building2, ChartColumn, Check, ClipboardCheck, CreditCard, FileUser, Heart, House, Landmark, Lock, LogOut, Mail, Megaphone, MessageCircle, Package, PawPrint, Settings, ShieldCheck, Stethoscope, Store, UserPlus, Users, UsersRound } from 'lucide-react'
 import { LogoMark } from './shared/media'
 import { api, getSession, modoDemo, setSession, type ApiRole, type Session } from './shared/api'
 import { Login } from './modules/auth/Login'
@@ -117,10 +117,10 @@ function App() {
         <div className="brand"><span className="brand-mark"><LogoMark /></span><span>Pet<span>Suite</span></span></div>
         <div className="profile-mini"><div className="avatar">{user.nombre.slice(0, 2).toUpperCase()}</div><div><strong>{user.nombre}</strong><small>{roleLabels[user.rol]}</small></div></div>
         <nav aria-label="Navegación principal">{roleMenus[user.rol].filter(([, , modulo]) => !modulo || user.permisos?.includes(modulo)).map(([label, id]) => { const Icon = navIcons[id]; return <button className={active === id ? 'nav-item active' : 'nav-item'} aria-current={active === id ? 'page' : undefined} aria-label={label} title={label} onClick={() => setActive(id)} key={id}><Icon className="nav-icon" size={19} strokeWidth={1.8} /><span>{label}</span></button> })}</nav>
-        <div className="sidebar-bottom" />
+        <div className="sidebar-bottom"><button type="button" className="sidebar-logout" onClick={logout} title="Cerrar sesión"><LogOut size={18} aria-hidden="true" /><span>Cerrar sesión</span></button></div>
       </aside>
       <main className="main-content">
-        <header className="topbar"><div className="mobile-brand brand"><span className="brand-mark"><LogoMark /></span><span>Pet<span>Suite</span></span></div><div className="topbar-context">{roleLabels[user.rol]}</div><div className="top-actions"><div className="avatar small" aria-label={user.nombre}>{user.nombre.slice(0, 2).toUpperCase()}</div></div></header>
+        <header className="topbar"><div className="mobile-brand brand"><span className="brand-mark"><LogoMark /></span><span>Pet<span>Suite</span></span></div><div className="topbar-context"><strong>{roleMenus[user.rol].find(([, id]) => id === active)?.[0] ?? 'Inicio'}</strong><span>{roleLabels[user.rol]}</span></div><div className="top-actions"><div className="topbar-user"><strong>{user.nombre}</strong><small>{roleLabels[user.rol]}</small></div><div className="avatar small" aria-label={user.nombre}>{user.nombre.slice(0, 2).toUpperCase()}</div></div></header>
         {active !== 'settings' && user.rol === 'tutor' && <TutorArea active={active} setActive={setActive} name={user.nombre} />}
         {active !== 'settings' && (user.rol === 'pyme' || user.rol === 'jefe_local') && <BusinessArea active={active} />}
         {active !== 'settings' && user.rol === 'clinico' && <ClinicalArea active={active} />}

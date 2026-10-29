@@ -11,6 +11,7 @@ import './styles/design-polish.css'
 import './styles/design-suite.css'
 import './styles/feedback.css'
 import './styles/accessibility.css'
+import './styles/design-pro.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode><App /></StrictMode>,

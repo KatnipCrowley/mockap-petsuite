@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { AlertCircle, ArrowRight, Check, CirclePlus, Heart, MapPin, PawPrint, ShieldCheck, X } from 'lucide-react'
+import { AlertCircle, ArrowRight, Check, CirclePlus, Eye, Heart, MapPin, PawPrint, ShieldCheck, X } from 'lucide-react'
 import { LogoMark, Photo } from '../../shared/media'
 import { api, errorText, iniciales, type Comuna, type FichaDatos } from '../../shared/api'
 import { OngProfileEditor } from './ong-profile'
@@ -7,6 +7,8 @@ import { AdsManager, OngAgreements } from '../promotions/promotions'
 import { EmptyState, ErrorState, LoadingState } from '../../shared/feedback'
 import { useModalFocus } from '../../shared/accessibility'
 import { ShareButton } from '../../shared/share'
+import { Metric } from '../../shared/metric'
+import { ProfileCover } from '../../shared/profile-cover'
 
 type AnimalResumen = { id: string; nombre: string; especie: string; raza: string | null; edad_estimada: string | null; estado_salud: string | null; foto_url: string | null; ong: string; comuna: string }
 type OrgResumen = { id: string; nombre: string; tipo: string; comuna: string; mision: string | null; animales: number; cupones: number }
@@ -88,7 +90,6 @@ type Solicitud = { id: string; solicitante_nombre: string | null; solicitante_co
 
 const estadoLabel = { disponible: 'Disponible', en_proceso: 'En proceso', adoptado: 'Adoptado' }
 
-function Metric({ label, value, trend }: { label: string; value: string; trend: string }) { return <div className="metric-card"><small>{label}</small><strong>{value}</strong><span>{trend}</span></div> }
 
 export function OngArea({ active }: { active: string }) {
   const [ong, setOng] = useState<Ong | null | undefined>(undefined)
@@ -138,12 +139,16 @@ function Overview({ ong }: { ong: Ong }) {
   const load = useCallback(() => api<MiAnimal[]>('/ong/animales').then(value => { setAnimals(value); setError('') }).catch(e => setError(errorText(e))), [])
   useEffect(() => { void load() }, [load])
   const published = animals?.filter(a => a.publicado).length || 0
-  return <section className="page business-page"><div className="business-welcome"><div><p className="eyebrow">TU ORGANIZACIÓN EN PETSUITE</p><h1>{ong.nombre}</h1><p>{tipoOng[ong.tipo] || ong.tipo} · {ong.comuna}. Tus animales atraen a nuevos tutores a toda la comunidad.</p></div><ShieldCheck size={38} strokeWidth={1.5} /></div>
+  const verificada = ong.estado_verificacion === 'aprobada'
+  return <section className="page business-page">
+    <ProfileCover eyebrow="TU ORGANIZACIÓN EN PETSUITE" title={ong.nombre} subtitle={`${tipoOng[ong.tipo] || ong.tipo} · ${ong.comuna}. Tus animales atraen a nuevos tutores a toda la comunidad.`} image="/img/cachorro.jpg"
+      badges={<><span className={verificada ? 'chip chip-ok' : 'chip chip-warn'}>{verificada ? <><ShieldCheck size={13} /> Verificada</> : 'En verificación'}</span><span className="chip"><MapPin size={13} /> {ong.comuna}</span></>}
+      actions={verificada ? <a className="secondary" href={`#ong/${ong.id}`}>Ver perfil público <ArrowRight size={16} /></a> : undefined} />
     <StatusBanner ong={ong} />
     {!animals && !error && <LoadingState label="Cargando resumen de adopciones" />}
     {error && !animals && <ErrorState message={error} onRetry={() => void load()} />}
-    {animals && <div className="business-stats"><Metric label="Animales publicados" value={String(published)} trend={`${animals.length} en total`} /><Metric label="Solicitudes abiertas" value={String(animals.reduce((s, a) => s + a.solicitudes_abiertas, 0))} trend="Por responder" /><Metric label="Visitas (7 días)" value={String(animals.reduce((s, a) => s + a.visitas_7d, 0))} trend="Al catálogo público" /></div>}
-    <div className="business-activity"><p className="eyebrow">PARTICIPACIÓN SIN COSTO</p><h2>Tu organización en PetSuite es gratis</h2><p>Arma tu perfil público con datos para donar, difunde un banner a la vez y acepta convenios con negocios: cada compra con tu cupón mide el impacto de tu comunidad. Todo pasa por la revisión de un asesor.</p>{ong.estado_verificacion === 'aprobada' && <p><a className="text-button" href={`#ong/${ong.id}`}>Ver mi perfil público</a></p>}</div></section>
+    {animals && <div className="business-stats"><Metric icon={PawPrint} label="Animales publicados" value={String(published)} trend={`${animals.length} en total`} /><Metric icon={Heart} tone="warm" label="Solicitudes abiertas" value={String(animals.reduce((s, a) => s + a.solicitudes_abiertas, 0))} trend="Por responder" /><Metric icon={Eye} tone="info" label="Visitas (7 días)" value={String(animals.reduce((s, a) => s + a.visitas_7d, 0))} trend="Al catálogo público" /></div>}
+    <div className="business-activity"><p className="eyebrow">PARTICIPACIÓN SIN COSTO</p><h2>Tu organización en PetSuite es gratis</h2><p>Arma tu perfil público con datos para donar, difunde un banner a la vez y acepta convenios con negocios: cada compra con tu cupón mide el impacto de tu comunidad. Todo pasa por la revisión de un asesor.</p></div></section>
 }
 
 const parseLines = (text: string) => text.split('\n').map(l => l.trim()).filter(Boolean).map(l => { const [nombre, fecha] = l.split('|').map(s => s.trim()); return { nombre, fecha: fecha || new Date().toISOString().slice(0, 10) } })
