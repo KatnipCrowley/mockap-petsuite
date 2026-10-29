@@ -11,6 +11,9 @@ import { AdminArea } from './modules/admin/admin'
 import { AdoptionCatalog, OngArea } from './modules/ong/adoption'
 import { PublicOngProfile } from './modules/ong/ong-profile'
 import { PublicPlans } from './modules/plans/plans-ui'
+import { Landing } from './modules/landing/landing'
+import { ExplorePage } from './modules/directory/explore'
+import { PublicBusiness } from './modules/directory/public-business'
 import { MyInbox, PrivacyCenter } from './modules/privacy/privacy'
 import { resetDemo } from './mock/db'
 import { rolLabel, type Modulo } from './shared/permissions'
@@ -100,15 +103,19 @@ function App() {
   if (hash.startsWith('#adopciones')) return <AdoptionCatalog standalone />
   if (hash.startsWith('#ong/')) return <PublicOngProfile id={hash.slice(5)} />
   if (hash.startsWith('#planes')) return <PublicPlans />
+  if (hash.startsWith('#explorar')) return <ExplorePage hash={hash} />
+  if (hash.startsWith('#local/')) return <PublicBusiness key={hash} id={hash.slice(7).split('?')[0]} />
 
-  const enter = (session: Session) => { setUser(session); setActive(firstView[session.rol]) }
+  // Cambia la dirección sin dejar en el historial el enlace anterior (por ejemplo, un token de un solo uso).
+  const goTo = (next: string) => { window.history.replaceState(null, '', window.location.pathname + window.location.search + next); setHash(next) }
+  const enter = (session: Session) => { goTo(''); setUser(session); setActive(firstView[session.rol]) }
   const logout = () => { setSession(null); setUser(null) }
-  // Quita el token del enlace de la barra de direcciones y del historial al salir de la vista.
-  const leaveLink = () => { window.history.replaceState(null, '', window.location.pathname + window.location.search); setHash('') }
-  if (hash.startsWith('#verificar/')) return <VerifyEmail token={hash.slice(11)} onLogin={session => { leaveLink(); enter(session) }} onExit={leaveLink} />
+  const leaveLink = () => goTo('#ingresar')
+  if (hash.startsWith('#verificar/')) return <VerifyEmail token={hash.slice(11)} onLogin={enter} onExit={leaveLink} />
   // Una contraseña nueva cierra las sesiones en el servidor: también se cierra la de este navegador.
   if (hash.startsWith('#restablecer/')) return <ResetPassword token={hash.slice(13)} onDone={logout} onExit={leaveLink} />
-  if (!user) return <Login onLogin={enter} />
+  // Sin sesión, la raíz es la landing; el ingreso y el registro tienen su propia dirección.
+  if (!user) return hash.startsWith('#ingresar') || hash.startsWith('#registro') ? <Login key={hash} initialMode={hash.startsWith('#registro') ? 'register' : 'login'} onLogin={enter} /> : <Landing />
   const saveProfile = (next: Profile) => { setProfile(next); localStorage.setItem(`petsuite-profile-${user.id}`, JSON.stringify({ phone: next.phone })) }
 
   return (

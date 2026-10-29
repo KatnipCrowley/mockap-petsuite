@@ -34,7 +34,7 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
   return <div className="login-page"><div className="login-art"><div className="art-orb" /><div className="brand light"><span className="brand-mark"><LogoMark /></span><span>Pet<span>Suite</span></span></div><div className="art-copy"><p className="eyebrow">TODO EN UN SOLO LUGAR</p><h1>Su mundo, mejor conectado.</h1><p>Ficha única de salud con QR de emergencia, directorio Pet-Care y muro comunal por comuna.</p>
     <ul className="art-features">
       <li><QrCode size={22} aria-hidden="true" /><span><strong>QR de emergencia</strong>Quien encuentre a tu mascota ve sus alergias y te avisa sin ver tus datos.</span></li>
-      <li><Store size={22} aria-hidden="true" /><span><strong>Directorio Pet-Care</strong>Veterinarias, tiendas y peluquerías verificadas de tu comuna.</span></li>
+      <li><Store size={22} aria-hidden="true" /><span><strong>Explora sin cuenta</strong>Veterinarias, tiendas y peluquerías validadas por PetSuite en tu comuna.</span></li>
       <li><Users size={22} aria-hidden="true" /><span><strong>Comunidad por comuna</strong>Extravíos, alertas de salud, eventos y adopciones cerca de ti.</span></li>
     </ul></div><div className="art-footer">PetSuite <span>Tu suite para mascotas</span></div></div>{children}</div>
 }
@@ -44,8 +44,8 @@ function DemoLink({ href }: { href: string | null }) {
   return href ? <p className="login-demo-link">Modo demostración: aquí no se envían correos. <a className="text-button" href={href}>Abrir el enlace del correo</a></p> : null
 }
 
-export function Login({ onLogin }: { onLogin: (session: Session) => void }) {
-  const [mode, setMode] = useState<Mode>('login')
+export function Login({ onLogin, initialMode = 'login' }: { onLogin: (session: Session) => void; initialMode?: 'login' | 'register' }) {
+  const [mode, setMode] = useState<Mode>(initialMode)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [name, setName] = useState('')
@@ -141,7 +141,9 @@ export function Login({ onLogin }: { onLogin: (session: Session) => void }) {
       <button className="primary full" disabled={busy}>{busy ? 'Un momento...' : mode === 'login' ? 'Ingresar' : mode === 'register' ? 'Crear cuenta' : 'Enviar enlace'}</button>
       <button type="button" className="text-button" onClick={() => go(mode === 'login' ? 'register' : 'login')}>{mode === 'login' ? '¿No tienes cuenta? Regístrate' : 'Ya tengo cuenta'}</button>
       {mode === 'login' && modoDemo && <><div className="login-divider"><span>cuentas de demostración · clave petsuite123</span></div><div className="demo-roles">{demoAccounts.map(a => <button type="button" key={a.correo} className="demo-role" title={a.detalle} onClick={() => { setEmail(a.correo); setPassword('petsuite123'); setError(''); setErrorField('') }}>{a.label}</button>)}</div></>}
+      <a className="text-button" href="#explorar">Explorar veterinarias, tiendas y peluquerías (sin cuenta)</a>
       <a className="text-button" href="#adopciones">Ver animales en adopción (sin cuenta)</a>
+      <a className="text-button" href="#">Volver al inicio</a>
       <a className="text-button" href="#planes">¿Tienes un negocio? Revisa los planes Gratis, Bronce, Plata y Oro</a>
       <p className="terms">Al ingresar aceptas nuestros <u>términos de uso</u> y <u>política de privacidad</u>.</p>
     </form>
