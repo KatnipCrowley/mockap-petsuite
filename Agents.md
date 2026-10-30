@@ -68,7 +68,7 @@ Estas reglas resumen errores que ya ocurrieron. Léelas antes de cada tarea.
 - Para carga, vacío, error y permiso insuficiente usa los componentes de `src/shared/feedback.tsx`.
 - El Inicio de cada rol abre con `ProfileCover` (`src/shared/profile-cover.tsx`) y los indicadores usan `Metric` (`src/shared/metric.tsx`). Las cifras de la portada salen siempre de datos reales; no se inventan seguidores, valoraciones ni notificaciones.
 - Los estilos visuales nuevos van en `src/styles/design-pro.css` (se carga al final) y usan solo los tokens de `design.css`, para que funcionen con los seis temas y el modo oscuro.
-- En teléfonos (≤600 px) el menú es una barra inferior. No agregues elementos fijos al borde inferior sin revisar que no la tapen.
+- El menú de cada rol se define en `roleMenus` (`src/App.tsx`), con secciones desplegables. Una vista nueva va dentro de la sección que le corresponde; una sección con una sola opción visible se muestra suelta. En escritorio el menú se contrae a íconos. Hasta 800 px es un panel que se abre con ☰ desde la barra superior, así que ya no hay barra inferior.
 - Sin sesión, la raíz es la landing. El ingreso está en `#ingresar` y el registro en `#registro`; no enlaces a `./` para ir al ingreso.
 - Las páginas públicas (landing, `#explorar`, `#local/<id>`) usan `PublicHeader` y `PublicFooter` (`src/modules/landing/public-layout.tsx`). La búsqueda de Explorar está en `src/modules/directory/explore-search.ts`: el plan solo decide el bloque «Patrocinado», nunca el orden normal.
 
@@ -760,4 +760,36 @@ Cada entrada va al final del archivo, bajo el encabezado `## AAAA-MM-DD` de su d
     - «Volver a Explorar» con los filtros.
     - Ingreso del tutor desde `#ingresar` y cierre de sesión que vuelve a la landing.
     - El carrusel avanza a los 7 segundos y se detiene con el botón de pausa.
+  - `git diff --check` correcto.
+
+## 2026-10-30
+
+### Menú de cada rol con secciones desplegables
+
+- Fecha: 2026-10-30.
+- Rama: `patricioampuero/menu-desplegable`, creada sobre `patricioampuero/landing-explorar-frontend` porque ambas tocan `src/App.tsx` y esa rama aún no está en `main`. Se fusiona después de ella.
+- Archivos modificados: `src/App.tsx`, `src/styles/design-pro.css` y `AGENTS.md`.
+- Cambio realizado:
+  - Las opciones de cada rol se agrupan en secciones desplegables. Inicio y Configuración quedan sueltos.
+    - Pyme y jefe de local: Mi negocio, Clientes, Promoción y Cuenta.
+    - Tutor: Explorar y adoptar.
+    - ONG: Mi organización, y Alianzas y difusión.
+    - Clínico: Atención.
+    - Asesor: Cuentas y Gestión.
+    - Administrador: Comunidad, Cuentas comerciales y Cumplimiento.
+  - Una sección sin opciones permitidas desaparece, y una con una sola opción se muestra suelta. Por eso el clínico, que solo tiene Pacientes, ve su menú sin secciones.
+  - La sección de la vista actual se abre sola. Cerrada, se marca para que se sepa dónde se está.
+  - Escritorio: un botón contrae el menú a una columna de íconos con todas las opciones, separadas por sección. El navegador lo recuerda.
+  - Hasta 800 px se elimina la barra inferior y el riel de íconos de la tableta. El botón ☰ de la barra superior abre un panel lateral con las secciones, el perfil y «Cerrar sesión». Se cierra al elegir una opción, con la X, con Escape o tocando fuera, y el foco vuelve a ☰. Mientras está abierto, el resto de la pantalla queda inerte.
+- Motivo: el usuario pidió que el menú de cada vista fuera desplegable y que sus opciones también lo fueran. Eligió el menú lateral de cada rol y, en el teléfono, el botón ☰ con el menú completo.
+- Verificación ejecutada:
+  - `npx tsc -b` sin errores y `npm run build -- --base=/mockap-petsuite/` correcto. `npm test`: 34 de 34.
+  - Recorrido con Chromium sobre la build de Pages con las 9 cuentas demo:
+    - Cada opción a 1366 px en claro, con las secciones abiertas, y cada opción a 390 px en oscuro, desde el panel ☰. Son 72 opciones por tamaño.
+    - Sin errores de JavaScript ni desplazamiento horizontal, y el panel se cierra después de cada elección.
+  - Capturas:
+    - Menú abierto y contraído a 1366 px en claro, y menú del administrador a 1366 px en oscuro.
+    - Panel cerrado y abierto a 390 px en claro y oscuro, y a 768 px en oscuro.
+  - El menú contraído mide 84 px y se mantiene al recargar.
+  - Escape cierra el panel y devuelve el foco a ☰.
   - `git diff --check` correcto.
