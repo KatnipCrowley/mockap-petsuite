@@ -18,18 +18,27 @@ const tipoOng: Record<string, string> = { refugio: 'Refugio', rescatista_indepen
 const estadoPerfil = { sin_enviar: 'Borrador sin enviar', en_revision: 'En revisión del asesor', publicado: 'Publicado', rechazado: 'Con observaciones del asesor' }
 const vacio: OngPerfil = { mision: '', como_ayudar: '', necesidades: [], voluntariado: '', horario_visitas: '', donaciones: null, emblema: 'heart', color: 'acento' }
 
-function OngHero({ nombre, sub, perfil }: { nombre: string; sub: string; perfil: OngPerfil }) {
-  const Icon = emblemas[perfil.emblema]
-  return <div className={`ong-hero tone-${perfil.color}`}><span className="ong-emblem"><Icon size={30} strokeWidth={1.7} /></span><div><p className="eyebrow">{sub}</p><h1>{nombre}</h1><p>{perfil.mision || 'Cuenta aquí la misión de tu organización.'}</p></div></div>
+// Los textos largos cargan recortados, para que la página muestre primero a los animales y cómo ayudar.
+function LeerMas({ texto }: { texto: string }) {
+  const [abierto, setAbierto] = useState(false)
+  const largo = texto.length > 220
+  return <><p className={largo && !abierto ? 'read-more-clamp' : undefined}>{texto}</p>{largo && <button type="button" className="text-button read-more" aria-expanded={abierto} onClick={() => setAbierto(!abierto)}>{abierto ? 'Leer menos' : 'Leer más'}</button>}</>
 }
 
-function PerfilBody({ perfil }: { perfil: OngPerfil }) {
-  return <div className="ong-sections">
-    {perfil.como_ayudar && <section className="role-panel"><p className="eyebrow">CÓMO AYUDAR</p><p>{perfil.como_ayudar}</p></section>}
+function OngHero({ nombre, sub, perfil }: { nombre: string; sub: string; perfil: OngPerfil }) {
+  const Icon = emblemas[perfil.emblema]
+  return <div className={`ong-hero tone-${perfil.color}`}><span className="ong-emblem"><Icon size={30} strokeWidth={1.7} /></span><div><p className="eyebrow">{sub}</p><h1>{nombre}</h1><LeerMas texto={perfil.mision || 'Cuenta aquí la misión de tu organización.'} /></div></div>
+}
+
+function PerfilBody({ perfil, contacto, redes }: { perfil: OngPerfil; contacto?: string | null; redes?: string | null }) {
+  if (!perfil.como_ayudar && !perfil.necesidades.length && !perfil.donaciones && !perfil.voluntariado && !perfil.horario_visitas && !contacto && !redes) return null
+  return <section className="ong-help" aria-label="Cómo ayudar"><div className="section-heading"><h3>Cómo ayudar</h3></div><div className="ong-sections">
+    {perfil.como_ayudar && <section className="role-panel"><p className="eyebrow">CÓMO AYUDAR</p><LeerMas texto={perfil.como_ayudar} /></section>}
     {!!perfil.necesidades.length && <section className="role-panel"><p className="eyebrow">NECESITAMOS</p><div className="chip-row">{perfil.necesidades.map(n => <span key={n} className="chip chip-warn">{n}</span>)}</div></section>}
-    {perfil.donaciones && <section className="role-panel"><p className="eyebrow">DONACIONES</p><dl className="donation-data"><dt>Banco</dt><dd>{perfil.donaciones.banco}</dd><dt>Tipo de cuenta</dt><dd>{perfil.donaciones.tipo_cuenta}</dd><dt>Número</dt><dd>{perfil.donaciones.numero}</dd><dt>Titular</dt><dd>{perfil.donaciones.titular}</dd><dt>RUT</dt><dd>{perfil.donaciones.rut}</dd><dt>Correo</dt><dd>{perfil.donaciones.correo}</dd></dl><p className="muted">Datos verificados por un asesor PetSuite. PetSuite no recibe ni intermedia donaciones.</p></section>}
-    {(perfil.voluntariado || perfil.horario_visitas) && <section className="role-panel"><p className="eyebrow">VOLUNTARIADO Y VISITAS</p>{perfil.voluntariado && <p>{perfil.voluntariado}</p>}{perfil.horario_visitas && <p className="muted">Visitas: {perfil.horario_visitas}</p>}</section>}
-  </div>
+    {perfil.donaciones && <section className="role-panel"><p className="eyebrow">DONACIONES</p><details className="ong-donation"><summary>Ver datos para transferir</summary><dl className="donation-data"><dt>Banco</dt><dd>{perfil.donaciones.banco}</dd><dt>Tipo de cuenta</dt><dd>{perfil.donaciones.tipo_cuenta}</dd><dt>Número</dt><dd>{perfil.donaciones.numero}</dd><dt>Titular</dt><dd>{perfil.donaciones.titular}</dd><dt>RUT</dt><dd>{perfil.donaciones.rut}</dd><dt>Correo</dt><dd>{perfil.donaciones.correo}</dd></dl></details><p className="muted">Datos revisados por un asesor PetSuite. PetSuite no recibe ni intermedia donaciones.</p></section>}
+    {(perfil.voluntariado || perfil.horario_visitas) && <section className="role-panel"><p className="eyebrow">VOLUNTARIADO Y VISITAS</p>{perfil.voluntariado && <LeerMas texto={perfil.voluntariado} />}{perfil.horario_visitas && <p className="muted">Visitas: {perfil.horario_visitas}</p>}</section>}
+    {(contacto || redes) && <section className="role-panel"><p className="eyebrow">CONTACTO</p>{contacto && <p>{contacto}</p>}{redes && <p className="muted">{redes}</p>}</section>}
+  </div></section>
 }
 
 // CMS: la ONG arma su perfil público sin subir imágenes. Lo que guarda es un borrador; se publica cuando el asesor lo aprueba.
@@ -81,10 +90,10 @@ export function PublicOngProfile({ id }: { id: string }) {
   return <div className="emergency-page adoption-public"><main style={{ width: 'min(1100px, 100%)' }}><div className="public-emergency-brand" style={{ justifyContent: 'space-between' }}><span><span className="brand-mark"><LogoMark /></span> PetSuite <span>ORGANIZACIONES</span></span><div className="public-actions">{ong && <ShareButton hash={`#ong/${id}`} title={ong.nombre} text={`Conoce a ${ong.nombre} en PetSuite: animales en adopción y cómo ayudar.`} />}<button className="secondary" onClick={() => { if (window.history.length > 1) window.history.back(); else window.location.hash = '#adopciones' }}><X size={15} /> Volver</button></div></div>
     {!ong ? (error ? <ErrorState message={error} onRetry={() => void load()} /> : <LoadingState label="Cargando organización pública" />) : <section className="page">
       <OngHero nombre={ong.nombre} sub={`${tipoOng[ong.tipo] || ong.tipo} · ${ong.comuna}`.toUpperCase()} perfil={perfil} />
-      <div className="business-stats"><div className="metric-card"><small>Animales en adopción</small><strong>{ong.animales.length}</strong><span><MapPin size={13} /> {ong.comuna}</span></div><div className="metric-card"><small>Compras con sus cupones este mes</small><strong>{ong.impacto.canjes_mes}</strong><span>{ong.impacto.aliados} negocios aliados</span></div><div className="metric-card"><small>Impacto acumulado</small><strong>{ong.impacto.canjes_total}</strong><span>Canjes en negocios Pet-Care</span></div></div>
-      {!!ong.cupones.length && <><div className="section-heading"><h3>Apoya comprando con sus cupones</h3></div><CouponList cupones={ong.cupones} por="negocio" /></>}
-      <PerfilBody perfil={perfil} />
        {!!ong.animales.length ? <><div className="section-heading"><h3>Buscan un hogar</h3></div><div className="pet-grid adoption-grid">{ong.animales.map(a => <a key={a.id} className="pet-card" href="#adopciones"><Photo src={a.foto_url} nombre={a.nombre} className="pet-photo adoption-photo" /><div className="pet-info"><strong>{a.nombre}</strong><span>{a.especie}{a.edad_estimada ? ` · ${a.edad_estimada}` : ''}</span></div></a>)}</div></> : <EmptyState title="Sin animales en adopción" description="Explora otras organizaciones para encontrar a tu nuevo compañero." action="Ver adopciones" onAction={() => { window.location.hash = '#adopciones' }} />}
-      {ong.contacto && <p className="muted">Contacto: {ong.contacto}{ong.redes_sociales ? ` · ${ong.redes_sociales}` : ''}</p>}
+      <PerfilBody perfil={perfil} contacto={ong.contacto} redes={ong.redes_sociales} />
+      <div className="section-heading"><h3>Su impacto</h3></div>
+      <div className="business-stats"><div className="metric-card"><small>Animales en adopción</small><strong>{ong.animales.length}</strong><span><MapPin size={13} /> {ong.comuna}</span></div><div className="metric-card"><small>Compras con sus cupones este mes</small><strong>{ong.impacto.canjes_mes}</strong><span>{ong.impacto.aliados} {ong.impacto.aliados === 1 ? 'negocio aliado' : 'negocios aliados'}</span></div><div className="metric-card"><small>Impacto acumulado</small><strong>{ong.impacto.canjes_total}</strong><span>Canjes en negocios Pet-Care</span></div></div>
+      {!!ong.cupones.length && <><div className="section-heading"><h3>Apoya comprando con sus cupones</h3></div><CouponList cupones={ong.cupones} por="negocio" /></>}
     </section>}</main></div>
 }

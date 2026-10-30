@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { BadgePercent, Building2, ChartColumn, Check, ClipboardCheck, CreditCard, FileUser, Heart, House, Landmark, Lock, LogOut, Mail, Megaphone, MessageCircle, Package, PawPrint, Settings, ShieldCheck, Stethoscope, Store, UserPlus, Users, UsersRound } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { BadgePercent, Briefcase, Building2, ChartColumn, Check, ChevronDown, ClipboardCheck, Compass, CreditCard, FileUser, Heart, HeartHandshake, House, Landmark, Lock, LogOut, Mail, Megaphone, Menu, MessageCircle, MessagesSquare, Package, PanelLeftClose, PanelLeftOpen, PawPrint, Settings, ShieldCheck, Stethoscope, Store, UserPlus, Users, UsersRound, X } from 'lucide-react'
 import { LogoMark } from './shared/media'
 import { api, getSession, modoDemo, setSession, type ApiRole, type Session } from './shared/api'
 import { Login } from './modules/auth/Login'
@@ -11,22 +11,49 @@ import { AdminArea } from './modules/admin/admin'
 import { AdoptionCatalog, OngArea } from './modules/ong/adoption'
 import { PublicOngProfile } from './modules/ong/ong-profile'
 import { PublicPlans } from './modules/plans/plans-ui'
+import { Landing } from './modules/landing/landing'
+import { ExplorePage } from './modules/directory/explore'
+import { PublicBusiness } from './modules/directory/public-business'
 import { MyInbox, PrivacyCenter } from './modules/privacy/privacy'
 import { resetDemo } from './mock/db'
 import { rolLabel, type Modulo } from './shared/permissions'
 
 // [etiqueta, vista, módulo requerido]. Sin módulo, la vista es parte fija del rol.
 type MenuItem = readonly [string, string, Modulo?]
-const menuEmpresa: MenuItem[] = [['Inicio', 'business-home'], ['Perfil del negocio', 'business-profile', 'perfil'], ['Sucursales', 'branches', 'sucursales'], ['Catálogo', 'catalog', 'catalogo'], ['Consultas', 'contacts', 'contactos'], ['Equipo', 'team', 'equipo'], ['Publicidad', 'ads', 'publicidad'], ['Convenios', 'agreements', 'convenios'], ['Métricas', 'metrics', 'metricas'], ['Suscripción', 'subscription', 'suscripcion'], ['Configuración', 'settings']]
-const roleMenus: Record<ApiRole, readonly MenuItem[]> = {
-  tutor: [['Inicio', 'home'], ['Mis mascotas', 'pets'], ['Directorio', 'directory'], ['Adopciones', 'adoption'], ['Muro comunal', 'community'], ['Configuración', 'settings']],
-  ong: [['Inicio', 'ong-home'], ['Perfil público', 'ong-profile'], ['Mis animales', 'animals'], ['Convenios', 'ong-agreements'], ['Publicidad', 'ong-ads'], ['Configuración', 'settings']],
-  pyme: menuEmpresa,
-  jefe_local: menuEmpresa.map(([l, v, m]) => [v === 'business-profile' ? 'Perfil del local' : l, v, m] as const),
-  clinico: [['Inicio', 'clinical-home'], ['Pacientes', 'patients', 'pacientes'], ['Consultas', 'contacts', 'contactos'], ['Configuración', 'settings']],
-  asesor: [['Inicio', 'admin-home'], ['Pymes y suscripciones', 'subscriptions', 'cuentas'], ['ONG', 'ongs', 'cuentas'], ['Aprobaciones', 'approvals', 'aprobaciones'], ['Cobranza', 'collections', 'cobranza'], ['Crear cuentas', 'accounts', 'cuentas'], ['Correos', 'emails', 'correos'], ['Configuración', 'settings']],
-  admin: [['Inicio', 'admin-home'], ['Usuarios', 'users', 'usuarios'], ['Moderación', 'moderation', 'moderacion'], ['Pymes y suscripciones', 'subscriptions', 'cuentas'], ['ONG', 'ongs', 'cuentas'], ['Aprobaciones', 'approvals', 'aprobaciones'], ['Cobranza', 'collections', 'cobranza'], ['Privacidad', 'privacy-admin', 'privacidad'], ['Correos', 'emails', 'correos'], ['Configuración', 'settings']],
+// Las opciones se agrupan en secciones desplegables; Inicio y Configuración quedan sueltos.
+type MenuGroup = { grupo: string; icono: typeof House; items: readonly MenuItem[] }
+type MenuEntry = MenuItem | MenuGroup
+const esGrupo = (entry: MenuEntry): entry is MenuGroup => !Array.isArray(entry)
+const menuEmpresa = (perfil: string): MenuEntry[] => [
+  ['Inicio', 'business-home'],
+  { grupo: 'Mi negocio', icono: Briefcase, items: [[perfil, 'business-profile', 'perfil'], ['Sucursales', 'branches', 'sucursales'], ['Catálogo', 'catalog', 'catalogo'], ['Equipo', 'team', 'equipo']] },
+  { grupo: 'Clientes', icono: MessagesSquare, items: [['Consultas', 'contacts', 'contactos'], ['Métricas', 'metrics', 'metricas']] },
+  { grupo: 'Promoción', icono: Megaphone, items: [['Publicidad', 'ads', 'publicidad'], ['Convenios', 'agreements', 'convenios']] },
+  { grupo: 'Cuenta', icono: CreditCard, items: [['Suscripción', 'subscription', 'suscripcion'], ['Configuración', 'settings']] },
+]
+const roleMenus: Record<ApiRole, readonly MenuEntry[]> = {
+  tutor: [['Inicio', 'home'], ['Mis mascotas', 'pets'], { grupo: 'Explorar y adoptar', icono: Compass, items: [['Directorio', 'directory'], ['Adopciones', 'adoption']] }, ['Muro comunal', 'community'], ['Configuración', 'settings']],
+  ong: [['Inicio', 'ong-home'], { grupo: 'Mi organización', icono: HeartHandshake, items: [['Perfil público', 'ong-profile'], ['Mis animales', 'animals']] }, { grupo: 'Alianzas y difusión', icono: Megaphone, items: [['Convenios', 'ong-agreements'], ['Publicidad', 'ong-ads']] }, ['Configuración', 'settings']],
+  pyme: menuEmpresa('Perfil del negocio'),
+  jefe_local: menuEmpresa('Perfil del local'),
+  clinico: [['Inicio', 'clinical-home'], { grupo: 'Atención', icono: Stethoscope, items: [['Pacientes', 'patients', 'pacientes'], ['Consultas', 'contacts', 'contactos']] }, ['Configuración', 'settings']],
+  asesor: [['Inicio', 'admin-home'], { grupo: 'Cuentas', icono: Building2, items: [['Pymes y suscripciones', 'subscriptions', 'cuentas'], ['ONG', 'ongs', 'cuentas'], ['Crear cuentas', 'accounts', 'cuentas']] }, { grupo: 'Gestión', icono: ClipboardCheck, items: [['Aprobaciones', 'approvals', 'aprobaciones'], ['Cobranza', 'collections', 'cobranza'], ['Correos', 'emails', 'correos']] }, ['Configuración', 'settings']],
+  admin: [['Inicio', 'admin-home'], { grupo: 'Comunidad', icono: Users, items: [['Usuarios', 'users', 'usuarios'], ['Moderación', 'moderation', 'moderacion']] }, { grupo: 'Cuentas comerciales', icono: Building2, items: [['Pymes y suscripciones', 'subscriptions', 'cuentas'], ['ONG', 'ongs', 'cuentas'], ['Aprobaciones', 'approvals', 'aprobaciones'], ['Cobranza', 'collections', 'cobranza']] }, { grupo: 'Cumplimiento', icono: Lock, items: [['Privacidad', 'privacy-admin', 'privacidad'], ['Correos', 'emails', 'correos']] }, ['Configuración', 'settings']],
 }
+
+// Quita las vistas sin permiso; una sección vacía desaparece y una de una sola opción se muestra suelta.
+function menuVisible(entries: readonly MenuEntry[], permisos: readonly string[] | undefined): MenuEntry[] {
+  const puede = ([, , modulo]: MenuItem) => !modulo || !!permisos?.includes(modulo)
+  const visibles: MenuEntry[] = []
+  for (const entry of entries) {
+    if (!esGrupo(entry)) { if (puede(entry)) visibles.push(entry); continue }
+    const items = entry.items.filter(puede)
+    if (items.length > 1) visibles.push({ ...entry, items })
+    else visibles.push(...items)
+  }
+  return visibles
+}
+const vistasDe = (entries: readonly MenuEntry[]) => entries.flatMap(entry => esGrupo(entry) ? entry.items : [entry])
 const firstView: Record<ApiRole, string> = { tutor: 'home', pyme: 'business-home', jefe_local: 'business-home', clinico: 'clinical-home', asesor: 'admin-home', admin: 'admin-home', ong: 'ong-home' }
 
 const navIcons: Record<string, typeof House> = {
@@ -37,6 +64,25 @@ const navIcons: Record<string, typeof House> = {
   approvals: ClipboardCheck, collections: Landmark, accounts: UserPlus, emails: Mail, 'privacy-admin': Lock,
 }
 
+
+/** Menú del rol con secciones desplegables. Se abre sola la sección de la vista actual. */
+function SideNav({ entries, active, onSelect }: { entries: readonly MenuEntry[]; active: string; onSelect: (id: string) => void }) {
+  const grupoDe = (id: string) => entries.find((entry): entry is MenuGroup => esGrupo(entry) && entry.items.some(([, vista]) => vista === id))?.grupo
+  const [abiertos, setAbiertos] = useState<Set<string>>(() => new Set([grupoDe(active)].filter((g): g is string => !!g)))
+  useEffect(() => { const grupo = grupoDe(active); if (grupo) setAbiertos(prev => prev.has(grupo) ? prev : new Set(prev).add(grupo)) }, [active])
+  const alternar = (grupo: string) => setAbiertos(prev => { const next = new Set(prev); if (!next.delete(grupo)) next.add(grupo); return next })
+  const opcion = ([label, id]: MenuItem) => { const Icon = navIcons[id]; return <button type="button" className={active === id ? 'nav-item active' : 'nav-item'} aria-current={active === id ? 'page' : undefined} aria-label={label} title={label} onClick={() => onSelect(id)} key={id}><Icon className="nav-icon" size={19} strokeWidth={1.8} /><span>{label}</span></button> }
+  return <nav aria-label="Navegación principal">{entries.map(entry => {
+    if (!esGrupo(entry)) return opcion(entry)
+    const abierto = abiertos.has(entry.grupo)
+    const panel = `menu-${entry.grupo.normalize('NFD').replace(/[^a-zA-Z]+/g, '-').toLowerCase()}`
+    const Icon = entry.icono
+    return <div className="nav-group" key={entry.grupo}>
+      <button type="button" className={entry.items.some(([, id]) => id === active) ? 'nav-group-toggle has-active' : 'nav-group-toggle'} aria-expanded={abierto} aria-controls={panel} onClick={() => alternar(entry.grupo)}><Icon className="nav-icon" size={19} strokeWidth={1.8} aria-hidden="true" /><span>{entry.grupo}</span><ChevronDown className="nav-group-chevron" size={16} aria-hidden="true" /></button>
+      <div id={panel} className={abierto ? 'nav-group-items' : 'nav-group-items is-closed'} role="group" aria-label={entry.grupo}>{entry.items.map(opcion)}</div>
+    </div>
+  })}</nav>
+}
 
 type ThemeName = 'original' | 'océano' | 'bosque' | 'lavanda' | 'coral' | 'vino'
 type ColorMode = 'light' | 'dark' | 'system'
@@ -74,6 +120,28 @@ function App() {
   const [brightness, setBrightness] = useState(() => Number(localStorage.getItem('petsuite-brightness')) || 100)
   const [profile, setProfile] = useState<Profile>({ name: '', email: '', phone: '', avatar: '' })
   const [hash, setHash] = useState(window.location.hash)
+  // Escritorio: el menú se contrae a íconos y se recuerda en este navegador. Hasta 800 px se abre con ☰ como panel.
+  const [contraido, setContraido] = useState(() => { try { return localStorage.getItem('petsuite-menu-contraido') === '1' } catch { return false } })
+  const [menuAbierto, setMenuAbierto] = useState(false)
+  const menuBoton = useRef<HTMLButtonElement>(null)
+  // Al cerrar el panel, el foco vuelve a ☰ después de que el contenido deja de estar inerte.
+  const volverFoco = useRef(false)
+  useEffect(() => { try { localStorage.setItem('petsuite-menu-contraido', contraido ? '1' : '0') } catch { /* almacenamiento no disponible */ } }, [contraido])
+  useEffect(() => {
+    if (!menuAbierto) {
+      if (volverFoco.current) { volverFoco.current = false; menuBoton.current?.focus() }
+      return
+    }
+    document.querySelector<HTMLElement>('#menu-lateral .sidebar-close')?.focus()
+    const escritorio = window.matchMedia('(min-width: 801px)')
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') { event.preventDefault(); volverFoco.current = true; setMenuAbierto(false) } }
+    const onAncho = () => { if (escritorio.matches) setMenuAbierto(false) }
+    const overflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    document.addEventListener('keydown', onKey)
+    escritorio.addEventListener('change', onAncho)
+    return () => { document.removeEventListener('keydown', onKey); escritorio.removeEventListener('change', onAncho); document.body.style.overflow = overflow }
+  }, [menuAbierto])
 
   useEffect(() => {
     const applyMode = () => applyAppearance(theme, mode, brightness)
@@ -100,27 +168,39 @@ function App() {
   if (hash.startsWith('#adopciones')) return <AdoptionCatalog standalone />
   if (hash.startsWith('#ong/')) return <PublicOngProfile id={hash.slice(5)} />
   if (hash.startsWith('#planes')) return <PublicPlans />
+  if (hash.startsWith('#explorar')) return <ExplorePage hash={hash} />
+  if (hash.startsWith('#local/')) return <PublicBusiness key={hash} id={hash.slice(7).split('?')[0]} />
 
-  const enter = (session: Session) => { setUser(session); setActive(firstView[session.rol]) }
-  const logout = () => { setSession(null); setUser(null) }
-  // Quita el token del enlace de la barra de direcciones y del historial al salir de la vista.
-  const leaveLink = () => { window.history.replaceState(null, '', window.location.pathname + window.location.search); setHash('') }
-  if (hash.startsWith('#verificar/')) return <VerifyEmail token={hash.slice(11)} onLogin={session => { leaveLink(); enter(session) }} onExit={leaveLink} />
+  // Cambia la dirección sin dejar en el historial el enlace anterior (por ejemplo, un token de un solo uso).
+  const goTo = (next: string) => { window.history.replaceState(null, '', window.location.pathname + window.location.search + next); setHash(next) }
+  const enter = (session: Session) => { goTo(''); setUser(session); setActive(firstView[session.rol]) }
+  const logout = () => { setSession(null); setUser(null); setMenuAbierto(false) }
+  const leaveLink = () => goTo('#ingresar')
+  if (hash.startsWith('#verificar/')) return <VerifyEmail token={hash.slice(11)} onLogin={enter} onExit={leaveLink} />
   // Una contraseña nueva cierra las sesiones en el servidor: también se cierra la de este navegador.
   if (hash.startsWith('#restablecer/')) return <ResetPassword token={hash.slice(13)} onDone={logout} onExit={leaveLink} />
-  if (!user) return <Login onLogin={enter} />
+  // Sin sesión, la raíz es la landing; el ingreso y el registro tienen su propia dirección.
+  if (!user) return hash.startsWith('#ingresar') || hash.startsWith('#registro') ? <Login key={hash} initialMode={hash.startsWith('#registro') ? 'register' : 'login'} onLogin={enter} /> : <Landing />
   const saveProfile = (next: Profile) => { setProfile(next); localStorage.setItem(`petsuite-profile-${user.id}`, JSON.stringify({ phone: next.phone })) }
+  const menu = menuVisible(roleMenus[user.rol], user.permisos)
+  const ir = (id: string) => { setActive(id); setMenuAbierto(false) }
+  const cerrarMenu = () => { volverFoco.current = true; setMenuAbierto(false) }
 
   return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <div className="brand"><span className="brand-mark"><LogoMark /></span><span>Pet<span>Suite</span></span></div>
+    <div className={contraido ? 'app-shell menu-collapsed' : 'app-shell'}>
+      <aside id="menu-lateral" className={menuAbierto ? 'sidebar is-open' : 'sidebar'} aria-label="Menú">
+        <div className="sidebar-head">
+          <div className="brand"><span className="brand-mark"><LogoMark /></span><span>Pet<span>Suite</span></span></div>
+          <button type="button" className="sidebar-toggle" aria-label={contraido ? 'Expandir el menú' : 'Contraer el menú'} title={contraido ? 'Expandir el menú' : 'Contraer el menú'} onClick={() => setContraido(!contraido)}>{contraido ? <PanelLeftOpen size={18} aria-hidden="true" /> : <PanelLeftClose size={18} aria-hidden="true" />}</button>
+          <button type="button" className="sidebar-close" aria-label="Cerrar el menú" onClick={cerrarMenu}><X size={20} aria-hidden="true" /></button>
+        </div>
         <div className="profile-mini"><div className="avatar">{user.nombre.slice(0, 2).toUpperCase()}</div><div><strong>{user.nombre}</strong><small>{roleLabels[user.rol]}</small></div></div>
-        <nav aria-label="Navegación principal">{roleMenus[user.rol].filter(([, , modulo]) => !modulo || user.permisos?.includes(modulo)).map(([label, id]) => { const Icon = navIcons[id]; return <button className={active === id ? 'nav-item active' : 'nav-item'} aria-current={active === id ? 'page' : undefined} aria-label={label} title={label} onClick={() => setActive(id)} key={id}><Icon className="nav-icon" size={19} strokeWidth={1.8} /><span>{label}</span></button> })}</nav>
+        <SideNav entries={menu} active={active} onSelect={ir} />
         <div className="sidebar-bottom"><button type="button" className="sidebar-logout" onClick={logout} title="Cerrar sesión"><LogOut size={18} aria-hidden="true" /><span>Cerrar sesión</span></button></div>
       </aside>
-      <main className="main-content">
-        <header className="topbar"><div className="mobile-brand brand"><span className="brand-mark"><LogoMark /></span><span>Pet<span>Suite</span></span></div><div className="topbar-context"><strong>{roleMenus[user.rol].find(([, id]) => id === active)?.[0] ?? 'Inicio'}</strong><span>{roleLabels[user.rol]}</span></div><div className="top-actions"><div className="topbar-user"><strong>{user.nombre}</strong><small>{roleLabels[user.rol]}</small></div><div className="avatar small" aria-label={user.nombre}>{user.nombre.slice(0, 2).toUpperCase()}</div></div></header>
+      {menuAbierto && <div className="sidebar-backdrop" onClick={cerrarMenu} />}
+      <main className="main-content" inert={menuAbierto}>
+        <header className="topbar"><button ref={menuBoton} type="button" className="menu-toggle" aria-label="Abrir el menú" aria-controls="menu-lateral" aria-expanded={menuAbierto} onClick={() => setMenuAbierto(true)}><Menu size={22} aria-hidden="true" /></button><div className="mobile-brand brand"><span className="brand-mark"><LogoMark /></span><span>Pet<span>Suite</span></span></div><div className="topbar-context"><strong>{vistasDe(menu).find(([, id]) => id === active)?.[0] ?? 'Inicio'}</strong><span>{roleLabels[user.rol]}</span></div><div className="top-actions"><div className="topbar-user"><strong>{user.nombre}</strong><small>{roleLabels[user.rol]}</small></div><div className="avatar small" aria-label={user.nombre}>{user.nombre.slice(0, 2).toUpperCase()}</div></div></header>
         {active !== 'settings' && user.rol === 'tutor' && <TutorArea active={active} setActive={setActive} name={user.nombre} />}
         {active !== 'settings' && (user.rol === 'pyme' || user.rol === 'jefe_local') && <BusinessArea active={active} />}
         {active !== 'settings' && user.rol === 'clinico' && <ClinicalArea active={active} />}

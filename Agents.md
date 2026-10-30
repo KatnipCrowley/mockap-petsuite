@@ -4,19 +4,27 @@ Este archivo registra cada cambio o agregado realizado en el proyecto a partir d
 
 ## Principio rector del producto
 
-La idea principal de PetSuite es crear una plataforma digital para centralizar el cuidado y la seguridad de las mascotas.
+PetSuite es un marketplace de servicios Pet-Care. Cualquier persona, sin crear una cuenta, busca veterinarias, tiendas, peluquerías y otros servicios de su comuna, los compara en un mapa y llega a ellos.
 
-Su núcleo es una Ficha Única de Salud vinculada a un código QR. Si una mascota se pierde o tiene una emergencia, cualquier persona puede escanear el QR y consultar información crítica, como alergias o condiciones médicas, además de contactar al tutor sin acceder a sus datos privados.
+Su núcleo es **Explorar**: la landing con su buscador y la página de resultados con lista y mapa. Ahí llegan todas las visitas, y la mayoría no creará una cuenta. Por eso:
 
-El proyecto también integra:
+- Explorar funciona completo sin sesión.
+- Es transparente: el orden de los resultados es igual para todos y lo pagado se marca como «Patrocinado».
+- El sello «Validado por PetSuite» dice exactamente qué se revisó.
 
-- Gestión de mascotas e historial médico.
-- Directorio de veterinarias, tiendas y peluquerías.
-- Muro comunal para extravíos, encuentros y recomendaciones.
-- Catálogo y métricas para Pymes.
-- Administración y moderación de la plataforma.
+Crear una cuenta es opcional y suma funciones:
 
-En resumen: PetSuite conecta tutores, mascotas, negocios veterinarios y comunidad en un solo lugar, priorizando la seguridad mediante el QR de emergencia.
+- Ficha Única de Salud con QR de emergencia: quien encuentra una mascota ve sus alergias y condiciones y avisa al tutor sin ver sus datos privados.
+- Historial médico y registros firmados por las veterinarias.
+- Consultas a los negocios.
+- Muro comunal para extravíos, encuentros, alertas y eventos.
+- Adopción y apoyo a las ONG.
+
+Los negocios tienen perfil público, catálogo, sucursales, equipo, publicidad y métricas según su plan. PetSuite valida, administra y modera la plataforma.
+
+En resumen: PetSuite conecta tutores, mascotas, negocios Pet-Care y comunidad en un solo lugar. La puerta de entrada es Explorar; la Ficha con QR es la razón para quedarse.
+
+Hasta el 2026-10-29 el núcleo era la Ficha Única con QR. Ese día, tras la reunión con el profesor, el usuario decidió que el núcleo pasa a ser Explorar.
 
 Este principio debe considerarse antes de cualquier decisión de arquitectura, frontend, diseño visual, datos, validaciones o nuevas funcionalidades.
 
@@ -37,7 +45,7 @@ Estas reglas resumen errores que ya ocurrieron. Léelas antes de cada tarea.
 
 - `src/shared/`: núcleo común (`api`, `validators`, `permissions`, `media`, `feedback`, `accessibility`, `share`, `errors`, `legal`, `cuentas`, `profile-cover`, `metric`).
 - `src/styles/`: hojas de estilo.
-- `src/modules/<área>/`: una carpeta por área (tutor, community, directory, business, clinical, ong, plans, promotions, advisor, admin, privacy, auth).
+- `src/modules/<área>/`: una carpeta por área (landing, tutor, community, directory, business, clinical, ong, plans, promotions, advisor, admin, privacy, auth).
 - `src/mock/`: API simulada en el navegador.
 - `backend/api/` y `backend/db/`: API sobre PostgreSQL y migraciones.
 - Todo archivo nuevo va en la carpeta de su módulo, nunca suelto en `src/`.
@@ -60,7 +68,9 @@ Estas reglas resumen errores que ya ocurrieron. Léelas antes de cada tarea.
 - Para carga, vacío, error y permiso insuficiente usa los componentes de `src/shared/feedback.tsx`.
 - El Inicio de cada rol abre con `ProfileCover` (`src/shared/profile-cover.tsx`) y los indicadores usan `Metric` (`src/shared/metric.tsx`). Las cifras de la portada salen siempre de datos reales; no se inventan seguidores, valoraciones ni notificaciones.
 - Los estilos visuales nuevos van en `src/styles/design-pro.css` (se carga al final) y usan solo los tokens de `design.css`, para que funcionen con los seis temas y el modo oscuro.
-- En teléfonos (≤600 px) el menú es una barra inferior. No agregues elementos fijos al borde inferior sin revisar que no la tapen.
+- El menú de cada rol se define en `roleMenus` (`src/App.tsx`), con secciones desplegables. Una vista nueva va dentro de la sección que le corresponde; una sección con una sola opción visible se muestra suelta. En escritorio el menú se contrae a íconos. Hasta 800 px es un panel que se abre con ☰ desde la barra superior, así que ya no hay barra inferior.
+- Sin sesión, la raíz es la landing. El ingreso está en `#ingresar` y el registro en `#registro`; no enlaces a `./` para ir al ingreso.
+- Las páginas públicas (landing, `#explorar`, `#local/<id>`) usan `PublicHeader` y `PublicFooter` (`src/modules/landing/public-layout.tsx`). La búsqueda de Explorar está en `src/modules/directory/explore-search.ts`: el plan solo decide el bloque «Patrocinado», nunca el orden normal.
 
 ### Cuentas reales
 
@@ -677,4 +687,109 @@ Cada entrada va al final del archivo, bajo el encabezado `## AAAA-MM-DD` de su d
   - `npx tsc -b` sin errores, `npm run build -- --base=/mockap-petsuite/` correcto y `npm test` 29 de 29.
   - Capturas con Chromium de las 59 vistas de 7 roles (más ingreso, adopciones, planes y ficha pública del QR) a 1366 px en claro y oscuro, y a 390 px en claro y oscuro.
   - Recorrido general por las 9 cuentas demo, flujos de QR, cartel y «Compartir», y flujos de cuentas reales con API HTTP: sin errores de JavaScript ni desplazamiento horizontal.
+  - `git diff --check` correcto.
+
+## 2026-10-29
+
+### Landing, Explorar y perfil público del local (solo frontend)
+
+- Fecha: 2026-10-29.
+- Rama: `patricioampuero/landing-explorar-frontend`.
+- Archivos agregados:
+  - `src/modules/landing/landing.tsx` y `src/modules/landing/public-layout.tsx`.
+  - `src/modules/directory/explore.tsx`, `src/modules/directory/public-business.tsx`, `src/modules/directory/explore-search.ts` y `src/modules/directory/explore-search.test.mjs`.
+- Archivos modificados: `src/App.tsx`, `src/modules/auth/Login.tsx`, `src/modules/directory/directory.tsx`, `src/modules/ong/ong-profile.tsx`, `src/modules/ong/adoption.tsx`, `src/modules/plans/plans-ui.tsx`, `src/shared/permissions.ts`, `src/styles/design-pro.css`, `package.json` y `AGENTS.md`.
+- Cambio realizado:
+  - Principio rector: el núcleo pasa a ser Explorar, y la Ficha con QR queda como la razón para crear una cuenta.
+  - Landing pública en la raíz para quien no tiene sesión. Tomó como referencia a Airbnb y Booking:
+    - Carrusel de tres diapositivas con la foto a la derecha. Avanza solo, se pausa al pasar el cursor y tiene botón de pausa. Con movimiento reducido no avanza.
+    - Buscador en píldora («¿Qué necesita tu mascota?», comuna y botón) encima del banner; en el teléfono queda debajo.
+    - Cinco categorías como accesos directos.
+    - Publicidad de inicio y negocios patrocinados (planes Plata y Oro, marcados).
+    - «Cómo funciona», organizaciones para apoyar, cinta de negocios y ONG con pausa, «Quiénes somos» y llamados para tutores y negocios.
+    - Todas las cifras salen de `GET /pymes`, `GET /ongs` y `GET /banners`.
+  - Explorar (`#explorar?q=&comuna=&rubro=&ofertas=1`), sin cuenta:
+    - Lista de tarjetas con foto arriba y mapa fijo al costado.
+    - Pines en píldora con el número del resultado y borde dorado (Oro), plateado (Plata) o neutro.
+    - Resumen al pasar el cursor por el pin, y el pin se resalta al pasar por la tarjeta.
+    - Filtro «Abierto ahora».
+    - En el teléfono, botón flotante Lista/Mapa. Las páginas públicas no tienen la barra inferior del menú, así que no tapa nada.
+    - La dirección guarda la búsqueda para compartirla.
+  - Búsqueda transparente (`explore-search.ts`):
+    - Sin tildes ni mayúsculas, con sinónimos (baño/lavado, vacuna/vacunación, peluquería/estética…) y palabras incompletas.
+    - El orden normal es por coincidencia y nombre; el plan no lo cambia.
+    - Hasta 2 negocios de Plata u Oro que coinciden se muestran aparte como «Patrocinado».
+    - El directorio dentro de la app usa la misma búsqueda.
+  - Perfil público del local (`#local/<id>`):
+    - Título, sello «Validado por PetSuite» con su explicación, estado de apertura, foto grande, servicios, cupones, catálogo, sucursales y mapa con el nombre de cada local.
+    - Tarjeta fija con el horario y los botones «Cómo llegar», llamar y WhatsApp.
+    - Escribir al negocio pide ingresar; con sesión aparece el formulario de consulta.
+    - Cada visita y clic cuenta en las métricas del negocio, con los eventos que ya existían.
+    - «Volver a Explorar» conserva la búsqueda.
+  - Catálogo, sucursales y formulario de consulta pasaron a componentes compartidos entre el directorio y el perfil público.
+  - Ingreso:
+    - `#ingresar` y `#registro` abren el formulario; al cerrar sesión se vuelve a la landing.
+    - Los enlaces de confirmación y contraseña llevan a `#ingresar`.
+    - Planes y Adopciones enlazan a `#ingresar`.
+  - Perfil público de la ONG:
+    - Primero los animales que buscan hogar.
+    - Después «Cómo ayudar», que suma el contacto y pliega los datos bancarios.
+    - Al final el impacto y los cupones.
+    - Los textos largos cargan recortados con «Leer más».
+  - Sello: «Validado por PetSuite» con texto que dice qué se revisó (nombre, RUT y rubro) y que no evalúa la calidad.
+  - El rol `pyme` se muestra como «Administrador del local».
+- Motivo: en la reunión del 29 de octubre, el profesor indicó que el módulo principal es Explorar (un marketplace de servicios Pet-Care) y que la mayoría de las visitas no creará una cuenta. El usuario eligió hacer primero todo el frontend.
+- Dependencias para las tareas con API (no se tocaron `src/mock/` ni `backend/`):
+  - Buscar dentro de los catálogos (marcas y medicamentos), con una búsqueda pública en el API.
+  - Mostrar en gris los negocios Gratis sin validar: `GET /pymes` hoy solo entrega los aprobados.
+  - Próximos eventos en la landing: falta una ruta pública con lista blanca, porque `GET /muro` pide sesión.
+  - Galería de fotos y video por plan, logos y fotos de las ONG: falta la carga de archivos.
+  - Editor del carrusel y de «Quiénes somos» en Admin: hoy el contenido es fijo.
+  - Equipo visible en el perfil del local y rol «Trabajador».
+- Verificación ejecutada:
+  - `npx tsc -b` sin errores y `npm run build -- --base=/mockap-petsuite/` correcto.
+  - `npm test`: 34 de 34, con 5 pruebas nuevas de búsqueda: tildes, sinónimos, orden que no depende del plan, comuna por sucursal y dirección compartible.
+  - Revisión con Chromium sobre la build de Pages:
+    - Landing, Explorar y perfil del local a 1366 px y 390 px, en claro y oscuro.
+    - ONG, ingreso y registro.
+    - Explorar con búsqueda, con el mapa en el teléfono y con el pin resaltado.
+    - En total, 19 capturas sin desplazamiento horizontal ni errores de JavaScript.
+  - Flujos revisados:
+    - Buscar desde la landing y entrar por una categoría.
+    - Perfil sin sesión (pide cuenta) y con sesión (formulario).
+    - «Volver a Explorar» con los filtros.
+    - Ingreso del tutor desde `#ingresar` y cierre de sesión que vuelve a la landing.
+    - El carrusel avanza a los 7 segundos y se detiene con el botón de pausa.
+  - `git diff --check` correcto.
+
+## 2026-10-30
+
+### Menú de cada rol con secciones desplegables
+
+- Fecha: 2026-10-30.
+- Rama: `patricioampuero/menu-desplegable`, creada sobre `patricioampuero/landing-explorar-frontend` porque ambas tocan `src/App.tsx` y esa rama aún no está en `main`. Se fusiona después de ella.
+- Archivos modificados: `src/App.tsx`, `src/styles/design-pro.css` y `AGENTS.md`.
+- Cambio realizado:
+  - Las opciones de cada rol se agrupan en secciones desplegables. Inicio y Configuración quedan sueltos.
+    - Pyme y jefe de local: Mi negocio, Clientes, Promoción y Cuenta.
+    - Tutor: Explorar y adoptar.
+    - ONG: Mi organización, y Alianzas y difusión.
+    - Clínico: Atención.
+    - Asesor: Cuentas y Gestión.
+    - Administrador: Comunidad, Cuentas comerciales y Cumplimiento.
+  - Una sección sin opciones permitidas desaparece, y una con una sola opción se muestra suelta. Por eso el clínico, que solo tiene Pacientes, ve su menú sin secciones.
+  - La sección de la vista actual se abre sola. Cerrada, se marca para que se sepa dónde se está.
+  - Escritorio: un botón contrae el menú a una columna de íconos con todas las opciones, separadas por sección. El navegador lo recuerda.
+  - Hasta 800 px se elimina la barra inferior y el riel de íconos de la tableta. El botón ☰ de la barra superior abre un panel lateral con las secciones, el perfil y «Cerrar sesión». Se cierra al elegir una opción, con la X, con Escape o tocando fuera, y el foco vuelve a ☰. Mientras está abierto, el resto de la pantalla queda inerte.
+- Motivo: el usuario pidió que el menú de cada vista fuera desplegable y que sus opciones también lo fueran. Eligió el menú lateral de cada rol y, en el teléfono, el botón ☰ con el menú completo.
+- Verificación ejecutada:
+  - `npx tsc -b` sin errores y `npm run build -- --base=/mockap-petsuite/` correcto. `npm test`: 34 de 34.
+  - Recorrido con Chromium sobre la build de Pages con las 9 cuentas demo:
+    - Cada opción a 1366 px en claro, con las secciones abiertas, y cada opción a 390 px en oscuro, desde el panel ☰. Son 72 opciones por tamaño.
+    - Sin errores de JavaScript ni desplazamiento horizontal, y el panel se cierra después de cada elección.
+  - Capturas:
+    - Menú abierto y contraído a 1366 px en claro, y menú del administrador a 1366 px en oscuro.
+    - Panel cerrado y abierto a 390 px en claro y oscuro, y a 768 px en oscuro.
+  - El menú contraído mide 84 px y se mantiene al recargar.
+  - Escape cierra el panel y devuelve el foco a ☰.
   - `git diff --check` correcto.

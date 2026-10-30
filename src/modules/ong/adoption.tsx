@@ -46,7 +46,7 @@ export function AdoptionCatalog({ standalone }: { standalone?: boolean }) {
   </section>
 
   if (!standalone) return content
-  return <div className="emergency-page adoption-public"><main style={{ width: 'min(1100px, 100%)' }}><div className="public-emergency-brand" style={{ justifyContent: 'space-between' }}><span><span className="brand-mark"><LogoMark /></span> PetSuite <span>ADOPCIONES</span></span><a className="secondary" href={import.meta.env.BASE_URL}>Ingresar a PetSuite</a></div>{content}</main></div>
+  return <div className="emergency-page adoption-public"><main style={{ width: 'min(1100px, 100%)' }}><div className="public-emergency-brand" style={{ justifyContent: 'space-between' }}><span><span className="brand-mark"><LogoMark /></span> PetSuite <span>ADOPCIONES</span></span><a className="secondary" href="#ingresar">Ingresar a PetSuite</a></div>{content}</main></div>
 }
 
 function AnimalModal({ id, onClose }: { id: string; onClose: () => void }) {

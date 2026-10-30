@@ -19,7 +19,7 @@ export const moduloLabel: Record<Modulo, string> = {
 }
 
 export const rolLabel: Record<Rol, string> = {
-  tutor: 'Tutor de mascotas', ong: 'ONG de rescate y adopción', pyme: 'Dueño o administrador de Pyme', jefe_local: 'Jefe de local',
+  tutor: 'Tutor de mascotas', ong: 'ONG de rescate y adopción', pyme: 'Administrador del local', jefe_local: 'Jefe de local',
   clinico: 'Personal clínico veterinario', asesor: 'Asesor PetSuite', admin: 'Administrador PetSuite',
 }
 
